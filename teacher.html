@@ -26,9 +26,11 @@
     <button data-tab="live" class="active">▶ Live session</button>
     <button data-tab="students">👥 Students</button>
     <button data-tab="questions">❓ Questions</button>
+    <button data-tab="resources">📎 Resources</button>
     <button data-tab="export">⬇ Export results</button>
     <button data-tab="classes">＋ Classes</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
+    <div id="whoAmI" style="color:#8FA9C8;font-size:12px;margin-top:8px;word-break:break-all"></div>
   </nav>
 
   <main>
@@ -57,8 +59,9 @@
               <button id="idleBtn" class="secondary">Waiting screen</button>
               <button id="projectorBtn" class="orange">Open projector window</button>
             </div>
-            <label for="linkSelect">Push a link (demo, document)</label>
-            <div class="row"><select id="linkSelect" style="max-width:320px"></select><button id="linkBtn" class="secondary">Push</button></div>
+            <label for="linkSelect">Push a demo, a link or a file (manage them in the Resources tab)</label>
+            <div class="row"><select id="linkSelect" style="max-width:320px"></select><button id="linkBtn" class="secondary">Push to phones</button>
+              <button id="screenBtn" class="secondary hidden">Open its big-screen page</button></div>
           </div>
           <div class="card">
             <h3>Attendance</h3>
@@ -155,6 +158,31 @@
         </div>
         <div id="questionsTable" style="margin-top:10px"></div>
       </div>
+    </section>
+
+    <!-- ===================== RESOURCES ===================== -->
+    <section id="tab-resources" class="hidden">
+      <div class="card">
+        <h2>Resources</h2>
+        <p class="muted">Links and files you can push to the phones from the Live session tab. They belong to you and are not shown to other teachers.
+          Files stay private: the phones receive a temporary link valid for <span id="signedHours"></span> hours.
+          Maximum <span id="maxMb"></span> MB per file (images, PDF, short videos...).</p>
+        <h3>Add a link</h3>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input id="resLinkTitle" placeholder="Title shown on the phones" style="max-width:260px">
+          <input id="resLinkUrl" placeholder="https://..." style="max-width:320px">
+          <input id="resLinkModule" list="moduleList" placeholder="Module (optional)" style="max-width:160px">
+          <button id="resLinkBtn">Add the link</button>
+        </div>
+        <h3>Add a file</h3>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input id="resFileTitle" placeholder="Title shown on the phones" style="max-width:260px">
+          <input type="file" id="resFile" style="max-width:320px">
+          <input id="resFileModule" list="moduleList" placeholder="Module (optional)" style="max-width:160px">
+          <button id="resFileBtn">Upload the file</button>
+        </div>
+      </div>
+      <div class="card"><div id="resourcesTable"></div></div>
     </section>
 
     <!-- ===================== EXPORT ===================== -->

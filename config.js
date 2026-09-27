@@ -10,11 +10,18 @@ const CONFIG = {
   appName: "ClassPulse",
   institution: "USTHB · Faculty of Electrical Engineering",
 
-  // Links the teacher can push to the students' phones (demos, documents...).
+  // Demos stored on this site (folder demos/), offered to every teacher in the push list.
+  //   url    = page opened on the students' phones
+  //   screen = page the teacher opens on the projector (optional)
+  // Each teacher adds his own links and files in the Resources tab, without touching this file.
   links: [
-    { label: "Demo IoT S1 - IoT live", url: "https://YOUR-GITHUB-ACCOUNT.github.io/demos/iot-live/" },
-    { label: "Demo EC-S1 - latency", url: "https://YOUR-GITHUB-ACCOUNT.github.io/demos/latency/" },
+    { label: "IoT S01 - IoT live (phones)", url: "demos/iot/s01-iot-live/", screen: "demos/iot/s01-iot-live/dashboard.html" },
+    { label: "Edge & Cloud S01 - How far is the cloud?", url: "demos/edge-cloud/s01-latency/", screen: "demos/edge-cloud/s01-latency/dashboard.html" },
   ],
+
+  // Files pushed to the phones: validity of the temporary link (hours) and maximum size (MB, 50 on the free plan).
+  signedLinkHours: 4,
+  maxFileMb: 50,
 
   // Excel export: number of lowest quiz marks dropped when computing the average.
   dropLowest: 2,

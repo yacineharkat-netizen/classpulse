@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>IoT live - you are a sensor</title>
+<style>
+  :root { --bg: #0B2545; --card: #13315C; --ink: #FFFFFF; --muted: #A9C0D9; --accent: #E8741E; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink);
+         min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 24px 16px; text-align: center; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  p { color: var(--muted); margin: 4px 0 16px; font-size: 16px; }
+  .card { background: var(--card); border-radius: 16px; padding: 20px; width: 100%; max-width: 420px; margin-bottom: 16px; }
+  label { display: block; font-size: 16px; margin-bottom: 8px; color: var(--muted); }
+  select, button { font-size: 20px; padding: 12px 16px; border-radius: 12px; border: none; width: 100%; }
+  select { background: #fff; color: #0B2545; }
+  button { background: var(--accent); color: #fff; font-weight: 700; margin-top: 16px; }
+  #tile { width: 120px; height: 120px; border-radius: 20px; margin: 22px auto 26px; display: flex; align-items: center; justify-content: center;
+          font-size: 30px; font-weight: 800; color: #0B2545; transition: transform 0.1s; }
+  #bar { height: 18px; background: #0B2545; border-radius: 9px; overflow: hidden; }
+  #barFill { height: 100%; width: 0%; background: var(--accent); transition: width 0.1s; }
+  .status { font-size: 14px; color: var(--muted); margin-top: 10px; }
+  .hidden { display: none; }
+  .big { font-size: 22px; font-weight: 700; margin: 6px 0; }
+</style>
+</head>
+<body>
+  <h1>IoT live</h1>
+  <p>For the next few minutes, your phone is a sensor.</p>
+
+  <div id="setup" class="card">
+    <label for="row">Which row are you sitting in? (1 = front)</label>
+    <select id="row"></select>
+    <button id="startBtn">Start</button>
+    <div class="status">No name, no location: only a random code and how much your phone moves.</div>
+  </div>
+
+  <div id="live" class="card hidden">
+    <div>Find yourself on the big screen:</div>
+    <div id="tile">----</div>
+    <div class="big" id="hint">Shake your phone!</div>
+    <div id="bar"><div id="barFill"></div></div>
+    <div class="status" id="status">Connecting...</div>
+  </div>
+
+<script src="lib/mqtt.min.js"></script>
+<script src="config.js"></script>
+<script>
+  // ---- Identity: a random 4-character code and a colour, nothing personal ----
+  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const phoneId = Array.from({ length: 4 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join("");
+  const hue = Math.floor(Math.random() * 360);
+  const room = demoRoom();
+  const baseTopic = `${DEMO_CONFIG.topicRoot}/${room}`;
+
+  const rowSelect = document.getElementById("row");
+  for (let r = 1; r <= DEMO_CONFIG.rows; r++) {
+    const opt = document.createElement("option");
+    opt.value = r; opt.textContent = "Row " + r;
+    rowSelect.appendChild(opt);
+  }
+
+  let client = null;
+  let row = 1;
+  let activity = 0;        // highest movement seen since the last message (m/s^2)
+  let sentCount = 0;
+  let lastSend = 0;
+  let hasMotion = false;
+
+  // ---- Movement sensor ----
+  function onMotion(event) {
+    hasMotion = true;
+    let a = event.acceleration;
+    let magnitude;
+    if (a && a.x !== null) {
+      magnitude = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    } else {
+      // Some phones only give acceleration including gravity: remove 9.81 m/s^2
+      const g = event.accelerationIncludingGravity || { x: 0, y: 0, z: 0 };
+      magnitude = Math.abs(Math.sqrt(g.x * g.x + g.y * g.y + g.z * g.z) - 9.81);
+    }
+    activity = Math.max(activity, magnitude);
+  }
+
+  // Fallback for devices without a motion sensor (laptops): tapping counts as movement
+  document.addEventListener("pointerdown", () => { if (!hasMotion) activity = Math.max(activity, 8); });
+
+  // ---- Sending loop ----
+  function sendLoop() {
+    const now = Date.now();
+    const moving = activity > DEMO_CONFIG.movingThreshold;
+    const period = moving ? DEMO_CONFIG.fastPeriodMs : DEMO_CONFIG.slowPeriodMs;
+    if (client && client.connected && now - lastSend >= period) {
+      const level = Math.min(activity, 20);
+      const payload = JSON.stringify({ id: phoneId, row: row, hue: hue, a: Math.round(level * 100) / 100 });
+      client.publish(`${baseTopic}/phone/${phoneId}`, payload, { qos: 0 });
+      sentCount += 1;
+      lastSend = now;
+      document.getElementById("barFill").style.width = Math.min(100, level * 5) + "%";
+      document.getElementById("tile").style.transform = `scale(${1 + Math.min(level, 20) / 80})`;
+      document.getElementById("status").textContent = `Connected - ${sentCount} messages sent`;
+      activity = 0;
+    }
+    requestAnimationFrame(sendLoop);
+  }
+
+  // ---- Start button: permission (iPhone), then connection ----
+  document.getElementById("startBtn").addEventListener("click", async () => {
+    row = parseInt(rowSelect.value, 10);
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const answer = await DeviceMotionEvent.requestPermission();
+        if (answer !== "granted") document.getElementById("hint").textContent = "No motion access: tap the screen instead";
+      } catch (e) { /* ignored: tapping still works */ }
+    }
+    window.addEventListener("devicemotion", onMotion);
+
+    document.getElementById("setup").classList.add("hidden");
+    document.getElementById("live").classList.remove("hidden");
+    const tile = document.getElementById("tile");
+    tile.textContent = phoneId;
+    tile.style.background = `hsl(${hue}, 80%, 65%)`;
+
+    client = mqtt.connect(demoBroker(), {
+      clientId: "phone-" + phoneId + "-" + Math.random().toString(16).slice(2, 6),
+      clean: true,
+      keepalive: 30,
+      reconnectPeriod: 2000,
+      will: { topic: `${baseTopic}/status/${phoneId}`, payload: "offline", qos: 0, retain: false },
+    });
+    client.on("connect", () => { document.getElementById("status").textContent = "Connected"; });
+    client.on("reconnect", () => { document.getElementById("status").textContent = "Reconnecting..."; });
+    client.on("error", (err) => { document.getElementById("status").textContent = "Error: " + err.message; });
+    requestAnimationFrame(sendLoop);
+
+    setTimeout(() => {
+      if (!hasMotion) document.getElementById("hint").textContent = "Tap the screen quickly!";
+    }, 2500);
+  });
+</script>
+</body>
+</html>

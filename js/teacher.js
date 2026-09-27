@@ -15,8 +15,8 @@ async function init() {
   $("autoDelay").textContent = CONFIG.autoNextDelayS;
   $("dropLowest").textContent = CONFIG.dropLowest;
   $("newSessionDate").value = new Date().toISOString().slice(0, 10);
-  CONFIG.links.forEach((l, i) => { $("linkSelect").insertAdjacentHTML("beforeend", `<option value="${i}">${esc(l.label)}</option>`); });
-  $("linkSelect").insertAdjacentHTML("beforeend", `<option value="custom">Other address…</option>`);
+  $("signedHours").textContent = CONFIG.signedLinkHours;
+  $("maxMb").textContent = CONFIG.maxFileMb;
   const { data } = await db.auth.getSession();
   if (data.session) await showApp(); else $("loginView").classList.remove("hidden");
 }
@@ -32,7 +32,10 @@ $("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(
 
 async function showApp() {
   $("appView").classList.remove("hidden");
+  const { data } = await db.auth.getUser();
+  $("whoAmI").textContent = data && data.user ? data.user.email : "";
   await loadClasses();
+  await loadResources();
 }
 
 // ------------------------------------------------------------------ navigation
@@ -40,7 +43,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
   b.onclick = () => {
     document.querySelectorAll("nav button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
     document.querySelectorAll("main section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab));
-    const loaders = { students: loadStudents, questions: loadQuestions, classes: loadClasses };
+    const loaders = { students: loadStudents, questions: loadQuestions, classes: loadClasses, resources: loadResources };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
 });
@@ -126,15 +129,51 @@ $("attOnBtn").onclick = () => act("t_set_activity", { p_session: sessionId, p_ac
 $("attOffBtn").onclick = () => act("t_set_attendance_open", { p_session: sessionId, p_open: false }, "Attendance closed.");
 $("idleBtn").onclick = () => act("t_set_activity", { p_session: sessionId, p_activity: "idle" });
 $("projectorBtn").onclick = () => window.open("projector.html?session=" + sessionId, "classpulse_projector");
-$("linkBtn").onclick = () => {
+// The push list: demos of the site (config.js) + the teacher's own resources + a free address.
+function pushChoices() {
+  const site = CONFIG.links.map((l) => ({ label: l.label, url: l.url, screen: l.screen, group: "Demos of the site" }));
+  const mine = myResources.map((r) => ({ label: r.title, url: r.url, path: r.storage_path, group: r.module ? "My resources - " + r.module : "My resources" }));
+  return site.concat(mine);
+}
+
+function fillPushList() {
+  const choices = pushChoices();
+  const groups = [...new Set(choices.map((c) => c.group))];
+  $("linkSelect").innerHTML = groups.map((g) => `<optgroup label="${esc(g)}">` +
+    choices.map((c, i) => c.group === g ? `<option value="${i}">${esc(c.label)}</option>` : "").join("") + `</optgroup>`).join("") +
+    `<option value="custom">Other address…</option>`;
+  updateScreenBtn();
+}
+
+function updateScreenBtn() {
+  const c = pushChoices()[$("linkSelect").value];
+  $("screenBtn").classList.toggle("hidden", !(c && c.screen));
+}
+$("linkSelect").onchange = updateScreenBtn;
+$("screenBtn").onclick = () => {
+  const c = pushChoices()[$("linkSelect").value];
+  if (c && c.screen) window.open(new URL(c.screen, location.href).href, "classpulse_demo_screen");
+};
+
+$("linkBtn").onclick = async () => {
   const v = $("linkSelect").value;
-  let link = CONFIG.links[v];
+  let link = pushChoices()[v];
   if (v === "custom") {
     const url = prompt("Address to open on the phones (https://...)");
     if (!url) return;
     link = { label: "Open the link", url };
   }
-  act("t_set_activity", { p_session: sessionId, p_activity: "link", p_link_url: link.url, p_link_label: link.label }, "Link sent to the phones.");
+  if (!link) return;
+  let url = link.url;
+  if (link.path) {
+    // private file: give the phones a temporary signed link
+    const { data, error } = await db.storage.from(BUCKET).createSignedUrl(link.path, CONFIG.signedLinkHours * 3600);
+    if (error) { toast("Cannot create the file link: " + error.message, "error"); return; }
+    url = data.signedUrl;
+  } else {
+    url = new URL(url, location.href).href; // "demos/..." becomes a full address
+  }
+  act("t_set_activity", { p_session: sessionId, p_activity: "link", p_link_url: url, p_link_label: link.label }, "Sent to the phones.");
 };
 
 // ------------------------------------------------------------------ live figures
@@ -378,6 +417,63 @@ $("importQuestionsBtn").onclick = async () => {
     loadQuestions(module);
   } catch (e) { toast(e.message, "error"); }
   finally { btn.disabled = false; }
+};
+
+// ------------------------------------------------------------------ resources
+const BUCKET = "classpulse";
+let myResources = [];
+
+async function loadResources() {
+  try { myResources = await rpc("t_list_resources"); } catch (e) { myResources = []; }
+  fillPushList();
+  if (!$("resourcesTable")) return;
+  $("resourcesTable").innerHTML = `<p class="muted">${myResources.length} resource(s)</p><table><tr><th>Module</th><th>Title</th><th>Type</th><th></th></tr>` +
+    myResources.map((r) => `<tr><td>${esc(r.module)}</td><td>${esc(r.title)}</td>
+      <td>${r.kind === "link" ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">link</a>` : `file · ${esc(r.mime || "")} · ${(r.size_bytes / 1048576).toFixed(1)} MB`}</td>
+      <td>${r.kind === "file" ? `<button class="small secondary" data-view="${r.id}">View</button> ` : ""}<button class="small red" data-del="${r.id}">Delete</button></td></tr>`).join("") + `</table>`;
+  $("resourcesTable").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Delete this resource?")) return;
+    try {
+      const path = await rpc("t_delete_resource", { p_id: b.dataset.del });
+      if (path) await db.storage.from(BUCKET).remove([path]);
+      toast("Deleted.", "ok"); loadResources();
+    } catch (e) { toast(e.message, "error"); }
+  });
+  $("resourcesTable").querySelectorAll("[data-view]").forEach((b) => b.onclick = async () => {
+    const r = myResources.find((x) => x.id === b.dataset.view);
+    const { data, error } = await db.storage.from(BUCKET).createSignedUrl(r.storage_path, 600);
+    if (error) { toast(error.message, "error"); return; }
+    window.open(data.signedUrl, "_blank");
+  });
+}
+
+$("resLinkBtn").onclick = async () => {
+  const title = $("resLinkTitle").value.trim(), url = $("resLinkUrl").value.trim();
+  if (!title || !/^https?:\/\//i.test(url)) { toast("Give a title and an address starting with https://", "error"); return; }
+  try {
+    await rpc("t_add_resource", { p_title: title, p_kind: "link", p_url: url, p_storage_path: null, p_mime: null, p_size: null, p_module: $("resLinkModule").value.trim() });
+    $("resLinkTitle").value = ""; $("resLinkUrl").value = "";
+    toast("Link added.", "ok"); loadResources();
+  } catch (e) { toast(e.message, "error"); }
+};
+
+$("resFileBtn").onclick = async () => {
+  const file = $("resFile").files[0];
+  const title = $("resFileTitle").value.trim() || (file && file.name);
+  if (!file) { toast("Choose a file.", "error"); return; }
+  if (file.size > CONFIG.maxFileMb * 1048576) { toast(`File too big (maximum ${CONFIG.maxFileMb} MB).`, "error"); return; }
+  const btn = $("resFileBtn"); btn.disabled = true; btn.textContent = "Uploading...";
+  try {
+    const { data: u } = await db.auth.getUser();
+    const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_");
+    const path = `${u.user.id}/${Date.now()}_${safeName}`;
+    const { error } = await db.storage.from(BUCKET).upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (error) throw error;
+    await rpc("t_add_resource", { p_title: title, p_kind: "file", p_url: null, p_storage_path: path, p_mime: file.type || "", p_size: file.size, p_module: $("resFileModule").value.trim() });
+    $("resFile").value = ""; $("resFileTitle").value = "";
+    toast("File uploaded.", "ok"); loadResources();
+  } catch (e) { toast("Upload failed: " + e.message, "error"); }
+  finally { btn.disabled = false; btn.textContent = "Upload the file"; }
 };
 
 // ------------------------------------------------------------------ export
