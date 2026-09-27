@@ -75,7 +75,21 @@ function forgetDevice() {
   show("viewRegister");
 }
 
+// Optional position check: sent after a successful check-in, never before (the code would expire).
+let positionSent = false;
+function sendPositionIfAsked(result) {
+  const asked = (state && state.check_location) || (sessionInfo && sessionInfo.check_location);
+  if (!asked || positionSent || !(result === "PRESENT" || result === "ALREADY_PRESENT") || !navigator.geolocation) return;
+  positionSent = true;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => rpc("s_report_position", { p_device: deviceToken, p_code: sessionCode,
+      p_lat: pos.coords.latitude, p_lon: pos.coords.longitude, p_acc: pos.coords.accuracy }).catch(() => {}),
+    () => toast("Position not shared: the teacher will see it in the attendance list.", "error"),
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+}
+
 function showCheckinResult(result) {
+  sendPositionIfAsked(result);
   const messages = {
     PRESENT: ["You are checked in. Welcome!", "ok"],
     ALREADY_PRESENT: ["You were already checked in.", "ok"],
@@ -160,7 +174,7 @@ function render() {
   const live = $("viewLive");
 
   if (!state.present && state.attendance_open) {
-    live.innerHTML = who + bigStatus("📷", "Scan the QR code on the screen", "It changes every 15 seconds. You can also type the code shown under it:") +
+    live.innerHTML = who + bigStatus("📷", "Scan the QR code on the screen", `It changes every ${state.att_window_s || 15} seconds. You can also type the code shown under it:`) +
       `<div class="card"><input id="attInput" maxlength="6" style="text-transform:uppercase;font-size:22px;letter-spacing:4px"><button id="attBtn" style="margin-top:10px;width:100%">Check in</button></div>`;
     $("attBtn").onclick = async () => {
       try {
@@ -173,7 +187,7 @@ function render() {
   }
 
   if (state.activity === "quiz" && state.quiz) { renderQuiz(live, who); return; }
-  if (state.activity === "quiz" && !state.present) {
+  if (state.activity === "quiz" && !state.present && !state.attendance_open) {
     live.innerHTML = who + bigStatus("⛔", "Quiz in progress", "Only students checked in during this session can take part.");
     return;
   }
@@ -200,7 +214,16 @@ function renderQuiz(live, who) {
     (q.index >= 0 && q.phase !== "finished" ? `<span class="muted">Question ${q.index + 1} / ${q.count}</span>` : "") + `</div>`;
 
   if (q.phase === "finished") {
-    live.innerHTML = who + head + bigStatus("🏁", "Quiz finished", `Your mark: <strong style="font-size:26px">${q.total == null ? "-" : q.total} / 20</strong>`);
+    let html = who + head + bigStatus("🏁", "Quiz finished", `Your mark: <strong style="font-size:26px">${q.total == null ? "-" : q.total} / 20</strong>`);
+    if (q.review) {
+      html += `<div class="protected">` + q.review.map((r, i) => `<div class="card"><div class="muted">Question ${i + 1} · ${r.score == null ? "no answer" : Number(r.score) + " / " + Number(r.points)}</div>
+        <div class="question-text">${esc(r.question)}</div>` + r.options.map((o, pos) => {
+          let cls = "option";
+          if (r.correct && r.correct.includes(pos)) cls += " correct"; else if (r.mine && r.mine.includes(pos)) cls += " wrong";
+          return `<div class="${cls}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`;
+        }).join("") + `</div>`).join("") + watermark() + `</div>`;
+    }
+    live.innerHTML = html;
     return;
   }
   if (q.locked) {
@@ -224,18 +247,24 @@ function renderQuiz(live, who) {
   const answered = q.my_answer && q.my_answer.length > 0;
   let html = who + head;
   if (!reveal) html += `<div class="row" style="justify-content:space-between"><span class="timer" id="timer"></span>` +
-    `<span class="muted">${q.multiple ? "Several answers possible" : "One answer"}</span></div><div class="progress"><div id="bar"></div></div>`;
-  html += `<div class="question-text">${esc(q.question)}</div>`;
+    `<span class="answer-kind ${q.multiple ? "multi" : "single"}">${q.multiple ? "One or more correct answers: tick all" : "Only one correct answer"}</span></div><div class="progress"><div id="bar"></div></div>`;
+  html += `<div class="protected"><div class="question-text">${esc(q.question)}</div>`;
   q.options.forEach((opt, pos) => {
     let cls = "option";
-    if (reveal) {
-      if (q.correct && q.correct.includes(pos)) cls += " correct";
+    if (reveal && q.correct) {
+      if (q.correct.includes(pos)) cls += " correct";
       else if (q.my_answer && q.my_answer.includes(pos)) cls += " wrong";
+    } else if (reveal) {
+      if (q.my_answer && q.my_answer.includes(pos)) cls += " selected";
     } else if (selection.includes(pos)) cls += " selected";
     html += `<button class="${cls}" data-pos="${pos}" ${reveal ? "disabled" : ""}><strong>${LETTERS[pos]}.</strong> ${esc(opt)}</button>`;
   });
-  if (reveal) {
+  html += watermark() + `</div>`;
+  if (reveal && q.reveal_mode === "each") {
     html += `<div class="card" style="text-align:center"><strong>${answered ? "Your score: " + Number(q.my_score) : "No answer"}</strong></div>`;
+  } else if (reveal) {
+    html += `<div class="card" style="text-align:center"><strong>${answered ? "✔ Answer recorded" : "No answer"}</strong><br>
+      <span class="muted">${q.reveal_mode === "end" ? "The correct answers will be shown at the end of the quiz." : "The correct answers are not shown for this quiz."}</span></div>`;
   } else {
     html += `<button id="sendBtn" class="orange" style="width:100%;font-size:19px;margin-top:6px">${answered ? "Change my answer" : "Send my answer"}</button>`;
     if (answered) html += `<p class="muted" style="text-align:center">✔ Answer received. You can change it until the time is over.</p>`;
@@ -279,6 +308,15 @@ function tick() {
   const btn = $("sendBtn");
   if (btn) btn.disabled = left <= 0;
 }
+
+// Name and student number printed across the question: a screenshot or a photo shows who took it.
+function watermark() {
+  const tag = esc(`${state.student.last_name} ${state.student.first_name} · ${state.student.matricule}`);
+  return `<div class="watermark" aria-hidden="true">${Array(14).fill(`<span>${tag}</span>`).join("")}</div>`;
+}
+// No text selection, no copy, no long-press menu on the quiz.
+["copy", "cut", "contextmenu", "selectstart", "dragstart"].forEach((ev) =>
+  document.addEventListener(ev, (e) => { if (e.target.closest && e.target.closest(".protected")) e.preventDefault(); }));
 
 // ------------------------------------------------------------------ anti-leave guard
 async function enterQuiz() {

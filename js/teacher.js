@@ -10,6 +10,7 @@ let attendanceTimer = null;
 let autoTimer = null;
 let allQuestions = [];
 let activeTab = "live";
+let checkLocation = false;    // this session asks the phone position at check-in
 let classNames = {};          // class id -> "name year"
 
 // Each class gets its own colour, always the same, so that the current class is obvious on every tab.
@@ -135,6 +136,7 @@ async function selectSession(id) {
   clearInterval(pollTimer); clearInterval(attendanceTimer);
   $("liveArea").classList.toggle("hidden", !sessionId);
   $("sessionCodeBox").classList.toggle("hidden", !sessionId);
+  $("sessionOptions").classList.toggle("hidden", !sessionId);
   $("noSessionHelp").classList.toggle("hidden", !!sessionId);
   if (!sessionId) { $("sessionUrl").textContent = ""; return; }
   localStorage.setItem("cp_session", sessionId);
@@ -160,9 +162,22 @@ async function act(fn, args, okMessage) {
   } catch (e) { toast(e.message, "error"); }
 }
 
-$("attOnBtn").onclick = () => act("t_set_activity", { p_session: sessionId, p_activity: "attendance" }, "Attendance open.");
+$("attOnBtn").onclick = () => act("t_set_attendance_open", { p_session: sessionId, p_open: true }, "Attendance open.");
 $("attOffBtn").onclick = () => act("t_set_attendance_open", { p_session: sessionId, p_open: false }, "Attendance closed.");
-$("idleBtn").onclick = () => act("t_set_activity", { p_session: sessionId, p_activity: "idle" });
+
+// Leaving the quiz screen while a question is running: ask first.
+function questionRunning() { return live && live.session.activity === "quiz" && live.quiz && live.quiz.phase === "question"; }
+$("idleBtn").onclick = () => {
+  if (questionRunning() && !confirm("A question is running. The phones will leave the quiz (you can come back with 'Show the quiz'). Continue?")) return;
+  act("t_set_activity", { p_session: sessionId, p_activity: "idle" });
+};
+$("showQuizBtn").onclick = () => act("t_set_activity", { p_session: sessionId, p_activity: "quiz" }, "The phones show the quiz again.");
+
+async function saveSessionOptions() {
+  await act("t_set_session_options", { p_session: sessionId, p_att_window: Number($("optWindow").value), p_check_location: $("optLocation").checked }, "Session settings saved.");
+}
+$("optWindow").onchange = saveSessionOptions;
+$("optLocation").onchange = saveSessionOptions;
 $("projectorBtn").onclick = () => window.open("projector.html?session=" + sessionId, "classpulse_projector");
 // The push list: demos of the site (config.js) + the teacher's own resources + a free address.
 function pushChoices() {
@@ -199,6 +214,7 @@ $("linkBtn").onclick = async () => {
     link = { label: "Open the link", url };
   }
   if (!link) return;
+  if (questionRunning() && !confirm("A question is running. The phones will leave the quiz (you can come back with 'Show the quiz'). Continue?")) return;
   let url = link.url;
   if (link.path) {
     // private file: give the phones a temporary signed link
@@ -216,10 +232,18 @@ async function refreshLive() {
   if (!sessionId) return;
   try { live = await rpc("t_live", { p_session: sessionId }); } catch (e) { return; }
   const s = live.session;
-  $("activityBadge").textContent = { idle: "Waiting screen", attendance: "Attendance", quiz: "Quiz", link: "Link: " + (s.link_label || "") }[s.activity] || s.activity;
+  $("activityBadge").textContent = { idle: "Waiting screen", attendance: "Waiting screen", quiz: "Quiz", link: "Link: " + (s.link_label || "") }[s.activity] || s.activity;
   $("presentCount").textContent = live.present;
   $("classSize").textContent = live.class_size;
   $("attState").textContent = s.attendance_open ? "open" : "closed";
+  $("attBadge").textContent = s.attendance_open ? "attendance OPEN" : "attendance closed";
+  $("attBadge").className = "badge " + (s.attendance_open ? "open" : "closed");
+  $("attOnBtn").disabled = s.attendance_open;
+  $("attOffBtn").disabled = !s.attendance_open;
+  $("showQuizBtn").disabled = !s.active_quiz_id || s.activity === "quiz";
+  if (document.activeElement !== $("optWindow")) $("optWindow").value = String(s.att_window_s || 15);
+  $("optLocation").checked = !!s.check_location;
+  checkLocation = !!s.check_location;
   renderQuizLive();
   autoMode();
 }
@@ -227,12 +251,12 @@ async function refreshLive() {
 function renderQuizLive() {
   const q = live.quiz;
   const box = $("quizLive");
-  if (!q) { box.innerHTML = `<p class="muted">No quiz running.</p>`; $("lockedList").textContent = "None."; return; }
+  if (!q) { box.innerHTML = `<p class="muted">No quiz running.</p>`; $("lockedBox").classList.add("hidden"); return; }
   let left = "";
   if (q.phase === "question" || q.phase === "reveal") {
     const max = Math.max(1, ...(q.distribution || [0]));
     left = `<div><p><strong>Question ${q.index + 1} / ${q.count}</strong> · ${q.phase === "question" ? `<span class="timer">${formatSeconds(q.remaining_ms)} s</span>` : "answers shown"}</p>
-      <p>${esc(q.question)}</p><div class="bars">` +
+      <p>${esc(q.question)}</p><p class="muted">Answers shown to students: ${{ each: "after each question", end: "at the end", never: "never" }[q.reveal_mode] || ""}</p><div class="bars">` +
       q.options.map((o, i) => `<div class="bar"><span class="l">${LETTERS[i]}</span><div class="b ${q.correct.includes(i) ? "ok" : ""}" style="width:${Math.max(4, (200 * q.distribution[i]) / max)}px"></div>
         <span>${q.distribution[i]}</span><span class="muted">${esc(o)}</span></div>`).join("") + `</div></div>`;
   } else {
@@ -241,7 +265,9 @@ function renderQuizLive() {
   const right = `<div><div class="stat">${q.answers} / ${live.present}</div><div class="muted">answers to this question</div>
     <div class="stat" style="margin-top:10px">${q.success_rate == null ? "-" : q.success_rate + " %"}</div><div class="muted">full marks</div></div>`;
   box.innerHTML = left + right;
-  $("lockedList").innerHTML = q.locked.length === 0 ? "None." : `<table>` + q.locked.map((l) =>
+  $("lockedBox").classList.toggle("hidden", q.locked.length === 0);
+  $("lockedCount").textContent = q.locked.length;
+  $("lockedList").innerHTML = q.locked.length === 0 ? "" : `<table>` + q.locked.map((l) =>
     `<tr><td>${esc(l.name)}</td><td>left ${l.leaves} time(s)</td><td><button class="small green" data-unlock="${l.student_id}">Unlock</button></td></tr>`).join("") + `</table>`;
   $("lockedList").querySelectorAll("[data-unlock]").forEach((b) => b.onclick = () =>
     act("t_unlock", { p_quiz: q.id, p_student: b.dataset.unlock }, "Student unlocked."));
@@ -262,27 +288,95 @@ function autoMode() {
 // ------------------------------------------------------------------ quiz controls
 async function loadQuizzes() {
   const quizzes = await rpc("t_list_quizzes", { p_session: sessionId });
-  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">${esc(q.title)} (${q.count} questions, ${q.status})</option>`).join("") ||
+  const modeLabel = { each: "answers after each question", end: "answers at the end", never: "answers never shown" };
+  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">${esc(q.title)} (${q.count} q., ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
     `<option value="">- create a quiz below -</option>`;
-  if (allQuestions.length === 0) allQuestions = await rpc("t_list_questions", { p_module: null });
+  allQuestions = await rpc("t_list_questions", { p_module: null });
+  fillPickFilters();
   renderQuestionPicker();
+  if ($("drawRules").children.length === 0) addDrawRule();
+}
+
+// ----- question picker (tick by hand)
+let picked = [];              // ticked question ids, in the order they were chosen
+const modulesOf = () => [...new Set(allQuestions.map((q) => q.module))].sort();
+const chaptersOf = (m) => [...new Set(allQuestions.filter((q) => !m || q.module === m).map((q) => q.chapter))].sort();
+
+function fillPickFilters() {
+  const m = $("pickModule").value;
+  $("pickModule").innerHTML = `<option value="">All modules</option>` + modulesOf().map((x) => `<option ${x === m ? "selected" : ""}>${esc(x)}</option>`).join("");
+  const c = $("pickChapter").value;
+  $("pickChapter").innerHTML = `<option value="">All chapters</option>` + chaptersOf($("pickModule").value).map((x) => `<option ${x === c ? "selected" : ""}>${esc(x)}</option>`).join("");
 }
 
 function renderQuestionPicker() {
-  const f = $("quizFilter").value.trim().toLowerCase();
-  const list = allQuestions.filter((q) => !f || (q.module + " " + q.chapter).toLowerCase().includes(f));
+  const m = $("pickModule").value, c = $("pickChapter").value, f = $("quizFilter").value.trim().toLowerCase();
+  const list = allQuestions.filter((q) => (!m || q.module === m) && (!c || q.chapter === c) && (!f || q.text.toLowerCase().includes(f)));
+  $("pickCount").textContent = picked.length;
   $("quizQuestionList").innerHTML = list.length === 0 ? `<p class="muted">No question. Import questions in the Questions tab.</p>` :
-    `<table>` + list.map((q) => `<tr><td><input type="checkbox" value="${q.id}" style="width:auto"></td><td>${esc(q.module)} · ${esc(q.chapter)} · ${esc(q.ref)}</td>
-      <td>${esc(q.text)}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
+    `<table>` + list.map((q) => `<tr><td><input type="checkbox" value="${q.id}" ${picked.includes(q.id) ? "checked" : ""} style="width:auto"></td>
+      <td>${esc(q.module)} · ${esc(q.chapter)} · ${esc(q.ref)}</td><td>${esc(q.text)}</td><td>${q.correct.length > 1 ? "several" : "one"}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
+  $("quizQuestionList").querySelectorAll("input[type=checkbox]").forEach((cb) => cb.onchange = () => {
+    picked = cb.checked ? picked.concat(cb.value) : picked.filter((id) => id !== cb.value);
+    $("pickCount").textContent = picked.length;
+  });
 }
+$("pickModule").onchange = () => { $("pickChapter").value = ""; fillPickFilters(); renderQuestionPicker(); };
+$("pickChapter").onchange = renderQuestionPicker;
 $("quizFilter").oninput = renderQuestionPicker;
+$("clearPickBtn").onclick = () => { picked = []; renderQuestionPicker(); };
+
+// ----- random draw: rules "N questions from module M, chapter C"
+function addDrawRule() {
+  const row = document.createElement("div");
+  row.className = "row draw-rule";
+  row.style.cssText = "gap:6px;margin-top:4px;align-items:center";
+  row.innerHTML = `<input type="number" class="rCount" min="1" value="2" style="width:70px"> <span class="muted">question(s) from</span>
+    <select class="rModule" style="width:auto"><option value="">any module</option>${modulesOf().map((x) => `<option>${esc(x)}</option>`).join("")}</select>
+    <select class="rChapter" style="width:auto"></select> <button class="small secondary rDel">✕</button>`;
+  const fillCh = () => { row.querySelector(".rChapter").innerHTML = `<option value="">any chapter</option>` +
+    chaptersOf(row.querySelector(".rModule").value).map((x) => `<option>${esc(x)}</option>`).join(""); };
+  row.querySelector(".rModule").onchange = fillCh;
+  row.querySelector(".rDel").onclick = () => row.remove();
+  fillCh();
+  $("drawRules").appendChild(row);
+}
+$("addRuleBtn").onclick = addDrawRule;
+
+function shuffled(list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+$("drawBtn").onclick = () => {
+  const chosen = [];
+  const messages = [];
+  document.querySelectorAll("#drawRules .draw-rule").forEach((row) => {
+    const n = Number(row.querySelector(".rCount").value) || 0;
+    const m = row.querySelector(".rModule").value, c = row.querySelector(".rChapter").value;
+    const pool = allQuestions.filter((q) => (!m || q.module === m) && (!c || q.chapter === c) && !chosen.includes(q.id));
+    const take = shuffled(pool).slice(0, n).map((q) => q.id);
+    if (take.length < n) messages.push(`only ${take.length} available for ${m || "any module"} / ${c || "any chapter"}`);
+    chosen.push(...take);
+  });
+  picked = chosen;
+  $("pickModule").value = ""; $("pickChapter").value = ""; $("quizFilter").value = "";
+  fillPickFilters();
+  renderQuestionPicker();
+  toast(`${chosen.length} question(s) drawn and ticked.` + (messages.length ? " Note: " + messages.join("; ") : ""), messages.length ? "error" : "ok");
+};
 
 $("createQuizBtn").onclick = async () => {
-  const ids = [...$("quizQuestionList").querySelectorAll("input:checked")].map((c) => c.value);
+  if (picked.length === 0) { toast("Tick questions or use the random draw first.", "error"); return; }
+  const ids = $("quizShuffle").checked ? shuffled(picked) : picked;
   try {
-    await rpc("t_create_quiz", { p_session: sessionId, p_title: $("quizTitle").value || "Quiz", p_question_ids: ids });
-    toast("Quiz created.", "ok");
+    await rpc("t_create_quiz", { p_session: sessionId, p_title: $("quizTitle").value || "Quiz", p_question_ids: ids,
+      p_reveal_mode: $("quizReveal").value, p_time_override: $("quizTime").value ? Number($("quizTime").value) : null });
+    toast(`Quiz created with ${ids.length} question(s).`, "ok");
+    picked = [];
     await loadQuizzes();
+    $("quizSelect").value = $("quizSelect").options[$("quizSelect").options.length - 1].value;
   } catch (e) { toast(e.message, "error"); }
 };
 
@@ -294,7 +388,8 @@ $("startBtn").onclick = () => {
 };
 $("revealBtn").onclick = () => act("t_quiz_reveal", { p_quiz: currentQuiz() });
 $("nextBtn").onclick = () => act("t_quiz_next", { p_quiz: currentQuiz() });
-$("addTimeBtn").onclick = () => act("t_quiz_add_time", { p_quiz: currentQuiz(), p_seconds: 15 });
+$("addTimeBtn").onclick = () => act("t_quiz_add_time", { p_quiz: currentQuiz(), p_seconds: Number($("addTimeSel").value) },
+  `+${$("addTimeSel").value} s added to the current question.`);
 $("finishBtn").onclick = () => { if (confirm("Finish the quiz now?")) act("t_quiz_finish", { p_quiz: currentQuiz() }); };
 
 // ------------------------------------------------------------------ attendance list
@@ -304,10 +399,21 @@ async function refreshAttendance() {
   try { list = await rpc("t_attendance_list", { p_session: sessionId }); } catch (e) { return; }
   if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.student) return; // user is editing
   const opts = ["", "present", "late", "absent", "excused"];
-  $("attendanceTable").innerHTML = `<table><tr><th>Name</th><th>Matricule</th><th>Status</th><th></th></tr>` + list.map((r) =>
+  // the distance is measured to the median of the class: it only means something with at least 3 positions
+  const enoughPositions = list.filter((r) => r.located).length >= 3;
+  const place = (r) => {
+    if (!checkLocation || !r.status || r.method === "manual") return "";
+    if (!r.located) return '<span class="badge no">no position</span>';
+    if (r.distance == null) return "";
+    const d = r.distance >= 1000 ? (r.distance / 1000).toFixed(1) + " km" : r.distance + " m";
+    return enoughPositions && r.distance > (CONFIG.farFromRoomM || 300) ? `<span class="far">📍 ${d} away</span>` : `<span class="muted">📍 ${d}</span>`;
+  };
+  const far = enoughPositions ? list.filter((r) => checkLocation && r.distance > (CONFIG.farFromRoomM || 300)).length : 0;
+  $("attendanceTable").innerHTML = (far ? `<p class="far">⚠ ${far} student(s) checked in far from the rest of the class.</p>` : "") +
+    `<table><tr><th>Name</th><th>Matricule</th><th>Status</th><th></th>${checkLocation ? "<th>Position</th>" : ""}</tr>` + list.map((r) =>
     `<tr><td>${esc(r.name)} ${r.official ? "" : '<span class="badge no">not in official list</span>'}</td><td>${esc(r.matricule)}</td>
      <td><select data-student="${r.student_id}" style="width:auto">${opts.map((o) => `<option value="${o || "none"}" ${(r.status || "") === o ? "selected" : ""}>${o || "-"}</option>`).join("")}</select></td>
-     <td class="muted">${r.method === "manual" ? "manual" : r.at ? new Date(r.at).toLocaleTimeString() : ""}</td></tr>`).join("") + `</table>`;
+     <td class="muted">${r.method === "manual" ? "manual" : r.at ? new Date(r.at).toLocaleTimeString() : ""}</td>${checkLocation ? `<td>${place(r)}</td>` : ""}</tr>`).join("") + `</table>`;
   $("attendanceTable").querySelectorAll("select").forEach((sel) => sel.onchange = async () => {
     await act("t_set_attendance", { p_session: sessionId, p_student: sel.dataset.student, p_status: sel.value });
     sel.blur();
@@ -320,16 +426,51 @@ async function loadStudents() {
   if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const list = await rpc("t_list_students", { p_class: classId });
   $("studentsTable").innerHTML = `<p class="muted">${list.length} students · ${list.filter((s) => s.registered).length} registered a phone</p>
-    <table><tr><th>Matricule</th><th>Name</th><th>Official list</th><th>Phone</th><th></th></tr>` + list.map((s) =>
-    `<tr><td>${esc(s.matricule)}</td><td>${esc(s.last_name)} ${esc(s.first_name)}</td><td>${s.official ? "yes" : '<span class="badge no">no</span>'}</td>
+    <table><tr><th>Matricule</th><th>Last name</th><th>First name</th><th>Official list</th><th>Phone</th><th></th></tr>` + list.map((s) =>
+    `<tr data-id="${s.id}"><td class="c-mat">${esc(s.matricule)}</td><td class="c-last">${esc(s.last_name)}</td><td class="c-first">${esc(s.first_name)}</td>
+     <td>${s.official ? "yes" : '<span class="badge no">no</span>'}</td>
      <td>${s.registered ? "registered" : "-"}${s.reset_allowed ? ' <span class="badge info">new phone allowed</span>' : ""}</td>
-     <td>${s.registered ? `<button class="small secondary" data-reset="${s.id}">Allow a new phone</button>` : ""}</td></tr>`).join("") + `</table>`;
+     <td style="white-space:nowrap"><button class="small secondary" data-edit="${s.id}">Edit</button>
+       <button class="small red" data-del="${s.id}">Delete</button>
+       ${s.registered ? `<button class="small secondary" data-reset="${s.id}">Allow a new phone</button>` : ""}</td></tr>`).join("") + `</table>`;
   $("studentsTable").querySelectorAll("[data-reset]").forEach((b) => b.onclick = async () => {
     if (!confirm("Allow this student to register a new phone? The old phone will stop working.")) return;
     try { await rpc("t_allow_new_device", { p_student: b.dataset.reset }); toast("The student can now log in on a new phone with his PIN.", "ok"); loadStudents(); }
     catch (e) { toast(e.message, "error"); }
   });
+  $("studentsTable").querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
+    const tr = b.closest("tr");
+    const name = tr.querySelector(".c-last").textContent + " " + tr.querySelector(".c-first").textContent;
+    if (!confirm(`Delete ${name} (${tr.querySelector(".c-mat").textContent}) from this class?\nHis attendance and quiz answers are deleted too.`)) return;
+    try { await rpc("t_delete_student", { p_student: b.dataset.del }); toast("Student deleted.", "ok"); loadStudents(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  $("studentsTable").querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => {
+    const tr = b.closest("tr");
+    const cell = (cls) => tr.querySelector(cls);
+    const val = (cls) => esc(cell(cls).textContent);
+    cell(".c-mat").innerHTML = `<input class="e-mat" value="${val(".c-mat")}" style="width:140px">`;
+    cell(".c-last").innerHTML = `<input class="e-last" value="${val(".c-last")}" style="width:160px">`;
+    cell(".c-first").innerHTML = `<input class="e-first" value="${val(".c-first")}" style="width:160px">`;
+    b.textContent = "Save"; b.className = "small green";
+    b.onclick = async () => {
+      try {
+        await rpc("t_update_student", { p_student: b.dataset.edit, p_matricule: tr.querySelector(".e-mat").value,
+          p_last_name: tr.querySelector(".e-last").value, p_first_name: tr.querySelector(".e-first").value });
+        toast("Student updated.", "ok"); loadStudents();
+      } catch (e) { toast(e.message, "error"); }
+    };
+  });
 }
+
+$("addStudentBtn").onclick = async () => {
+  if (!classId) { toast("Choose a class first.", "error"); return; }
+  try {
+    await rpc("t_add_student", { p_class: classId, p_matricule: $("addMat").value, p_last_name: $("addLast").value, p_first_name: $("addFirst").value });
+    $("addMat").value = ""; $("addLast").value = ""; $("addFirst").value = "";
+    toast(`Student added to ${classNames[classId]}.`, "ok"); loadStudents();
+  } catch (e) { toast(e.message, "error"); }
+};
 
 // Student list import: choose the sheet and the columns, preview, then import.
 let studentBook = null;
@@ -415,11 +556,44 @@ function renderQuestionsTable() {
   const m = $("qModuleFilter").value;
   const list = allQuestions.filter((q) => !m || q.module === m);
   $("questionsTable").innerHTML = `<p class="muted">${list.length} questions shown</p><table><tr><th></th><th>Module</th><th>Chapter</th><th>Ref</th><th>Question</th><th>Correct</th><th>Pts</th><th>Time</th></tr>` +
-    list.map((q) => `<tr><td><input type="checkbox" class="qdel" value="${q.id}" style="width:auto"></td><td>${esc(q.module)}</td><td>${esc(q.chapter)}</td><td>${esc(q.ref)}</td><td>${esc(q.text)}<br><span class="muted">${q.options.map((o, i) => LETTERS[i] + ". " + esc(o)).join(" · ")}</span></td>
+    list.map((q) => `<tr><td><input type="checkbox" class="qdel" value="${q.id}" style="width:auto"><br><button class="small secondary" data-qedit="${q.id}">Edit</button></td><td>${esc(q.module)}</td><td>${esc(q.chapter)}</td><td>${esc(q.ref)}</td><td>${esc(q.text)}<br><span class="muted">${q.options.map((o, i) => LETTERS[i] + ". " + esc(o)).join(" · ")}</span></td>
       <td>${q.correct.map((c) => LETTERS[c]).join(",")}</td><td>${q.points}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
 }
 
 $("qModuleFilter").onchange = renderQuestionsTable;
+
+// ----- editing one question
+let editingQuestion = null;
+$("questionsTable").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-qedit]");
+  if (b) openQuestionEditor(allQuestions.find((q) => q.id === b.dataset.qedit));
+});
+function openQuestionEditor(q) {
+  editingQuestion = q;
+  $("qeRef").textContent = `${q.module} · ${q.ref}`;
+  $("qeChapter").value = q.chapter; $("qeText").value = q.text;
+  $("qePoints").value = q.points; $("qeTime").value = q.time_limit;
+  $("qeOptions").innerHTML = [..."ABCDE"].map((L, i) => `<div class="row" style="gap:8px;margin-top:6px;align-items:center">
+      <label style="margin:0;width:70px"><input type="checkbox" class="qeCorrect" ${q.correct.includes(i) ? "checked" : ""} style="width:auto"> ${L}</label>
+      <input class="qeOpt" value="${esc(q.options[i] || "")}"></div>`).join("");
+  $("questionEditor").classList.remove("hidden");
+  $("questionEditor").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+$("qeCancel").onclick = () => { $("questionEditor").classList.add("hidden"); editingQuestion = null; };
+$("qeSave").onclick = async () => {
+  const opts = [...document.querySelectorAll(".qeOpt")].map((i) => i.value.trim());
+  const ticks = [...document.querySelectorAll(".qeCorrect")].map((c) => c.checked);
+  const options = [], correct = [];
+  opts.forEach((o, i) => { if (o) { if (ticks[i]) correct.push(options.length); options.push(o); } });
+  if (options.length < 2 || correct.length === 0) { toast("At least 2 options and 1 correct answer.", "error"); return; }
+  try {
+    await rpc("t_update_question", { p_id: editingQuestion.id, p_row: { chapter: $("qeChapter").value.trim(), text: $("qeText").value,
+      options, correct, points: Number($("qePoints").value), time_limit: Number($("qeTime").value) } });
+    toast("Question saved.", "ok");
+    $("questionEditor").classList.add("hidden");
+    loadQuestions();
+  } catch (e) { toast(e.message, "error"); }
+};
 $("qSelectAllBtn").onclick = () => {
   const boxes = [...document.querySelectorAll(".qdel")];
   const tick = boxes.some((b) => !b.checked);
