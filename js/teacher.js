@@ -9,6 +9,29 @@ let pollTimer = null;
 let attendanceTimer = null;
 let autoTimer = null;
 let allQuestions = [];
+let activeTab = "live";
+let classNames = {};          // class id -> "name year"
+
+// Each class gets its own colour, always the same, so that the current class is obvious on every tab.
+const CLASS_COLORS = ["#1B7F8C", "#E8741E", "#6A4C93", "#2E7D4F", "#B83227", "#1F5FA8", "#8A6D0B", "#C2185B"];
+function classColor(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return CLASS_COLORS[h % CLASS_COLORS.length];
+}
+
+function updateBanner() {
+  const color = classId ? classColor(classId) : "#5A6B7D";
+  document.documentElement.style.setProperty("--class-color", color);
+  document.documentElement.style.setProperty("--class-bg", color + "1A");
+  $("bannerName").textContent = classId ? classNames[classId] : "no class yet - create one in the Classes tab";
+  const notes = {
+    questions: "The question bank is shared by all your classes (sorted by module).",
+    resources: "Resources are shared by all your classes.",
+    classes: "",
+  };
+  $("bannerNote").textContent = notes[activeTab] || "";
+}
 
 // ------------------------------------------------------------------ login
 async function init() {
@@ -43,6 +66,8 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
   b.onclick = () => {
     document.querySelectorAll("nav button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
     document.querySelectorAll("main section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab));
+    activeTab = b.dataset.tab;
+    updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: loadClasses, resources: loadResources };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
@@ -51,6 +76,8 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
 // ------------------------------------------------------------------ classes
 async function loadClasses() {
   const classes = await rpc("t_list_classes");
+  classNames = {};
+  classes.forEach((c) => { classNames[c.id] = `${c.name} ${c.year}`; });
   const keep = classId || localStorage.getItem("cp_class");
   $("classSelect").innerHTML = classes.map((c) => `<option value="${c.id}">${esc(c.name)} ${esc(c.year)}</option>`).join("") ||
     `<option value="">- create a class first -</option>`;
@@ -63,9 +90,14 @@ async function loadClasses() {
 $("classSelect").onchange = () => selectClass($("classSelect").value);
 
 async function selectClass(id) {
+  const changed = id !== classId;
   classId = id;
   if (id) localStorage.setItem("cp_class", id);
+  updateBanner();
+  if (changed) { sessionId = null; localStorage.removeItem("cp_session"); }
   await loadSessions();
+  // refresh the tab currently shown, so that it always matches the selected class
+  if (changed && activeTab === "students") await loadStudents();
 }
 
 $("createClassBtn").onclick = async () => {
@@ -102,11 +134,14 @@ async function selectSession(id) {
   sessionId = id || null;
   clearInterval(pollTimer); clearInterval(attendanceTimer);
   $("liveArea").classList.toggle("hidden", !sessionId);
+  $("sessionCodeBox").classList.toggle("hidden", !sessionId);
+  $("noSessionHelp").classList.toggle("hidden", !!sessionId);
   if (!sessionId) { $("sessionUrl").textContent = ""; return; }
   localStorage.setItem("cp_session", sessionId);
   sessionCode = $("sessionSelect").selectedOptions[0].dataset.code;
   const url = siteUrl("student.html") + "?s=" + sessionCode;
-  $("sessionUrl").innerHTML = `Student address: <a href="${url}" target="_blank">${url}</a>`;
+  $("sessionCodeBig").textContent = sessionCode;
+  $("sessionUrl").innerHTML = `Student address: <a href="${url}" target="_blank">${url}</a><br>Tip: click <strong>Open projector window</strong> to show the QR code.`;
   channel = liveChannel(sessionCode, () => {});
   await loadQuizzes();
   await refreshLive();
@@ -282,7 +317,7 @@ async function refreshAttendance() {
 
 // ------------------------------------------------------------------ students
 async function loadStudents() {
-  if (!classId) return;
+  if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const list = await rpc("t_list_students", { p_class: classId });
   $("studentsTable").innerHTML = `<p class="muted">${list.length} students · ${list.filter((s) => s.registered).length} registered a phone</p>
     <table><tr><th>Matricule</th><th>Name</th><th>Official list</th><th>Phone</th><th></th></tr>` + list.map((s) =>
@@ -356,7 +391,7 @@ $("importStudentsBtn").onclick = async () => {
   if (!studentBook) { toast("Choose a file.", "error"); return; }
   const rows = mappedStudents();
   if (rows.length === 0) { toast("No student found: check the sheet, the header line and the columns.", "error"); return; }
-  if (!confirm(`Import ${rows.length} students from sheet "${$("stSheet").value}" into this class?`)) return;
+  if (!confirm(`Import ${rows.length} students from sheet "${$("stSheet").value}" into the class "${classNames[classId]}"?`)) return;
   try {
     const r = await rpc("t_import_students", { p_class: classId, p_rows: rows });
     toast(`${r.added} added, ${r.updated} updated.`, "ok");
