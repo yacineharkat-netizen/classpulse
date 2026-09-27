@@ -16,18 +16,14 @@
     <input id="code" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:24px;letter-spacing:4px">
     <button id="go" style="margin-top:14px;width:100%">Join</button>
   </div>
-  <div class="card">
-    <h3>Demos and resources</h3>
-    <div id="links"></div>
-  </div>
+  <p class="muted">In class, simply scan the QR code shown on the screen: you do not need to type anything.
+    Demos and documents are sent to your phone by the teacher during the session.</p>
   <p class="muted" style="text-align:right"><a href="teacher.html">Teacher</a></p>
 </div>
 <script src="config.js"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = CONFIG.institution;
-  document.getElementById("links").innerHTML = CONFIG.links.map((l) =>
-    `<p><a href="${l.url}" target="_blank" rel="noopener">${l.label}</a></p>`).join("") || "<p class='muted'>None yet.</p>";
   document.getElementById("go").onclick = () => {
     const code = document.getElementById("code").value.trim().toUpperCase();
     if (code.length === 6) location.href = "student.html?s=" + encodeURIComponent(code);

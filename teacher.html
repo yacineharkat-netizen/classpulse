@@ -34,6 +34,10 @@
   </nav>
 
   <main>
+    <div id="classBanner" class="class-banner">
+      <span class="dot"></span><span>Class: <strong id="bannerName">-</strong></span>
+      <span id="bannerNote" class="note"></span>
+    </div>
     <!-- ===================== LIVE ===================== -->
     <section id="tab-live">
       <div class="card">
@@ -45,7 +49,12 @@
           <input id="newSessionDate" type="date" style="max-width:170px">
           <button id="createSessionBtn" class="secondary">Create</button>
         </div>
-        <p class="muted" id="sessionUrl"></p>
+        <p class="muted" id="noSessionHelp">To start a class: type a title and click <strong>Create</strong>. ClassPulse gives the session a
+          6-character code. Students join by scanning the QR code of the projector window (or by typing the code on the home page).</p>
+        <div id="sessionCodeBox" class="session-code hidden">
+          <div><div class="label">Session code</div><div class="code" id="sessionCodeBig">------</div></div>
+          <div class="muted" id="sessionUrl"></div>
+        </div>
       </div>
 
       <div id="liveArea" class="hidden">
