@@ -16,6 +16,70 @@ function normaliseHeader(h) {
   return String(h).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
+// ---- Student lists: any workbook, any sheet, any column layout ----
+
+// Read every sheet of a workbook as arrays of rows (array of arrays of strings).
+async function readWorkbookGrid(file) {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const sheets = {};
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws["!ref"]) { sheets[name] = []; continue; }
+    // Start at A1 and keep blank lines, so line numbers and column letters match the spreadsheet.
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    range.s.r = 0; range.s.c = 0;
+    sheets[name] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false, blankrows: true, range })
+      .map((row) => row.map((v) => String(v).trim()));
+  }
+  return { names: wb.SheetNames, sheets };
+}
+
+const STUDENT_HEADER_WORDS = {
+  matricule: ["matricule", "mat", "matr", "student_number", "numero", "num", "n_inscription", "numero_inscription", "id"],
+  last_name: ["nom", "last_name", "lastname", "surname", "nom_etudiant", "name", "nom_et_prenom", "nom_prenom"],
+  first_name: ["prenom", "first_name", "firstname", "prenoms"],
+};
+
+// Which role (matricule / last_name / first_name) a header cell plays, or null.
+function studentHeaderRole(cell) {
+  const h = normaliseHeader(cell);
+  if (!h) return null;
+  for (const [role, words] of Object.entries(STUDENT_HEADER_WORDS)) if (words.includes(h)) return role;
+  if (h.startsWith("matric")) return "matricule";
+  if (h.startsWith("prenom")) return "first_name";
+  if (h.startsWith("nom")) return "last_name";
+  return null;
+}
+
+// Find the header line (0-based) in the first 30 lines and the columns of the three fields.
+function detectStudentColumns(grid) {
+  let best = { row: 0, score: -1, cols: {} };
+  grid.slice(0, 30).forEach((row, r) => {
+    const cols = {};
+    row.forEach((cell, c) => { const role = studentHeaderRole(cell); if (role && cols[role] === undefined) cols[role] = c; });
+    const score = Object.keys(cols).length;
+    if (score > best.score) best = { row: r, score, cols };
+  });
+  return { headerRow: best.row, cols: best.cols };
+}
+
+// Build the student list from a grid, a header line and the chosen columns (-1 = none).
+function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst) {
+  const seen = new Set();
+  const out = [];
+  for (const row of grid.slice(headerRow + 1)) {
+    const matricule = (row[colMat] || "").replace(/\s+/g, "");
+    if (!matricule || seen.has(matricule)) continue;
+    seen.add(matricule);
+    out.push({
+      matricule,
+      last_name: colLast >= 0 ? row[colLast] || "" : "",
+      first_name: colFirst >= 0 ? row[colFirst] || "" : "",
+    });
+  }
+  return out;
+}
+
 // Accepts English or French column names.
 function parseStudents(rows) {
   const pick = (r, names) => { for (const n of names) if (r[n]) return r[n]; return ""; };

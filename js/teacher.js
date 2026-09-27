@@ -257,12 +257,68 @@ async function loadStudents() {
   });
 }
 
-$("importStudentsBtn").onclick = async () => {
+// Student list import: choose the sheet and the columns, preview, then import.
+let studentBook = null;
+
+function columnLabel(i) { let s = ""; i += 1; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+
+function fillColumnSelect(id, headers, selected, allowNone) {
+  const opts = allowNone ? [`<option value="-1">(none)</option>`] : [];
+  headers.forEach((h, i) => opts.push(`<option value="${i}" ${i === selected ? "selected" : ""}>${columnLabel(i)} - ${esc(h || "(empty)")}</option>`));
+  $(id).innerHTML = opts.join("");
+  if (selected === undefined || selected < 0) $(id).value = allowNone ? "-1" : "0";
+}
+
+function currentGrid() { return studentBook.sheets[$("stSheet").value] || []; }
+
+function setupColumns(autoDetect) {
+  const grid = currentGrid();
+  let headerRow = Math.max(0, (parseInt($("stHeader").value, 10) || 1) - 1);
+  let cols = {};
+  if (autoDetect) { const d = detectStudentColumns(grid); headerRow = d.headerRow; cols = d.cols; $("stHeader").value = headerRow + 1; }
+  else { grid[headerRow]?.forEach((cell, c) => { const role = studentHeaderRole(cell); if (role && cols[role] === undefined) cols[role] = c; }); }
+  const width = Math.max(0, ...grid.slice(0, 50).map((r) => r.length));
+  const headers = Array.from({ length: width }, (_, i) => (grid[headerRow] || [])[i] || "");
+  fillColumnSelect("stColMat", headers, cols.matricule, false);
+  fillColumnSelect("stColLast", headers, cols.last_name, true);
+  fillColumnSelect("stColFirst", headers, cols.first_name, true);
+  previewStudents();
+}
+
+function mappedStudents() {
+  return studentsFromGrid(currentGrid(), Math.max(0, (parseInt($("stHeader").value, 10) || 1) - 1),
+    parseInt($("stColMat").value, 10), parseInt($("stColLast").value, 10), parseInt($("stColFirst").value, 10));
+}
+
+function previewStudents() {
+  const list = mappedStudents();
+  $("stPreview").innerHTML = `<p><strong>${list.length}</strong> students found. First lines:</p>` +
+    `<table><tr><th>Matricule</th><th>Last name</th><th>First name</th></tr>` +
+    list.slice(0, 5).map((s) => `<tr><td>${esc(s.matricule)}</td><td>${esc(s.last_name)}</td><td>${esc(s.first_name)}</td></tr>`).join("") + `</table>`;
+}
+
+$("studentsFile").onchange = async () => {
   const file = $("studentsFile").files[0];
-  if (!file || !classId) { toast("Choose a class and a file.", "error"); return; }
+  $("studentsMapping").classList.add("hidden");
+  if (!file) return;
   try {
-    const rows = parseStudents(await readSheet(file));
-    if (rows.length === 0) { toast("No student found: check the column names.", "error"); return; }
+    studentBook = await readWorkbookGrid(file);
+    $("stSheet").innerHTML = studentBook.names.map((n) => `<option value="${esc(n)}">${esc(n)} (${studentBook.sheets[n].length} lines)</option>`).join("");
+    $("studentsMapping").classList.remove("hidden");
+    setupColumns(true);
+  } catch (e) { toast("Cannot read this file: " + e.message, "error"); }
+};
+$("stSheet").onchange = () => setupColumns(true);
+$("stHeader").onchange = () => setupColumns(false);
+["stColMat", "stColLast", "stColFirst"].forEach((id) => { $(id).onchange = previewStudents; });
+
+$("importStudentsBtn").onclick = async () => {
+  if (!classId) { toast("Choose a class first.", "error"); return; }
+  if (!studentBook) { toast("Choose a file.", "error"); return; }
+  const rows = mappedStudents();
+  if (rows.length === 0) { toast("No student found: check the sheet, the header line and the columns.", "error"); return; }
+  if (!confirm(`Import ${rows.length} students from sheet "${$("stSheet").value}" into this class?`)) return;
+  try {
     const r = await rpc("t_import_students", { p_class: classId, p_rows: rows });
     toast(`${r.added} added, ${r.updated} updated.`, "ok");
     loadStudents();
@@ -270,24 +326,58 @@ $("importStudentsBtn").onclick = async () => {
 };
 
 // ------------------------------------------------------------------ questions
-async function loadQuestions() {
+async function loadQuestions(showModule) {
   allQuestions = await rpc("t_list_questions", { p_module: null });
-  $("questionsTable").innerHTML = `<p class="muted">${allQuestions.length} questions</p><table><tr><th>Module</th><th>Chapter</th><th>Ref</th><th>Question</th><th>Correct</th><th>Pts</th><th>Time</th></tr>` +
-    allQuestions.map((q) => `<tr><td>${esc(q.module)}</td><td>${esc(q.chapter)}</td><td>${esc(q.ref)}</td><td>${esc(q.text)}<br><span class="muted">${q.options.map((o, i) => LETTERS[i] + ". " + esc(o)).join(" · ")}</span></td>
+  const modules = [...new Set(allQuestions.map((q) => q.module))].sort();
+  $("moduleList").innerHTML = modules.map((m) => `<option value="${esc(m)}">`).join("");
+  const current = showModule !== undefined ? showModule : $("qModuleFilter").value;
+  $("qModuleFilter").innerHTML = `<option value="">All modules (${allQuestions.length})</option>` +
+    modules.map((m) => `<option value="${esc(m)}">${esc(m)} (${allQuestions.filter((q) => q.module === m).length})</option>`).join("");
+  if (modules.includes(current)) $("qModuleFilter").value = current;
+  renderQuestionsTable();
+}
+
+function renderQuestionsTable() {
+  const m = $("qModuleFilter").value;
+  const list = allQuestions.filter((q) => !m || q.module === m);
+  $("questionsTable").innerHTML = `<p class="muted">${list.length} questions shown</p><table><tr><th></th><th>Module</th><th>Chapter</th><th>Ref</th><th>Question</th><th>Correct</th><th>Pts</th><th>Time</th></tr>` +
+    list.map((q) => `<tr><td><input type="checkbox" class="qdel" value="${q.id}" style="width:auto"></td><td>${esc(q.module)}</td><td>${esc(q.chapter)}</td><td>${esc(q.ref)}</td><td>${esc(q.text)}<br><span class="muted">${q.options.map((o, i) => LETTERS[i] + ". " + esc(o)).join(" · ")}</span></td>
       <td>${q.correct.map((c) => LETTERS[c]).join(",")}</td><td>${q.points}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
 }
+
+$("qModuleFilter").onchange = renderQuestionsTable;
+$("qSelectAllBtn").onclick = () => {
+  const boxes = [...document.querySelectorAll(".qdel")];
+  const tick = boxes.some((b) => !b.checked);
+  boxes.forEach((b) => { b.checked = tick; });
+};
+$("qDeleteBtn").onclick = async () => {
+  const ids = [...document.querySelectorAll(".qdel:checked")].map((b) => b.value);
+  if (ids.length === 0) { toast("Tick the questions to delete first.", "error"); return; }
+  if (!confirm(`Delete ${ids.length} question(s) from the bank?\nQuestions already used in a quiz are only hidden, so past marks are kept.`)) return;
+  try {
+    const r = await rpc("t_delete_questions", { p_ids: ids });
+    toast(`${r.deleted} deleted` + (r.hidden ? `, ${r.hidden} hidden (already used in a quiz)` : "") + ".", "ok");
+    allQuestions = [];
+    loadQuestions();
+  } catch (e) { toast(e.message, "error"); }
+};
 
 $("importQuestionsBtn").onclick = async () => {
   const file = $("questionsFile").files[0];
   const module = $("moduleName").value.trim();
   if (!file || !module) { toast("Type the module name and choose a file.", "error"); return; }
+  const btn = $("importQuestionsBtn");
+  btn.disabled = true;
   try {
     const { questions, problems } = parseQuestions(await readSheet(file));
     if (problems.length) { alert("Problems in the file:\n" + problems.join("\n")); return; }
     const r = await rpc("t_import_questions", { p_module: module, p_rows: questions });
-    toast(`${r.imported} questions imported.`, "ok");
-    loadQuestions();
+    toast(`Module "${module}": ${r.added} new question(s), ${r.updated} already in the bank (updated, not duplicated).`, "ok");
+    $("questionsFile").value = "";
+    loadQuestions(module);
   } catch (e) { toast(e.message, "error"); }
+  finally { btn.disabled = false; }
 };
 
 // ------------------------------------------------------------------ export
