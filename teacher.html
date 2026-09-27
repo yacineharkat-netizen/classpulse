@@ -111,9 +111,23 @@
     <section id="tab-students" class="hidden">
       <div class="card">
         <h2>Official student list</h2>
-        <p class="muted">Excel or CSV file with the columns <strong>matricule</strong>, <strong>last_name</strong> (or Nom), <strong>first_name</strong> (or Prénom).
+        <p class="muted">Any Excel, OpenOffice/LibreOffice (.ods) or CSV file. Choose the file, then the sheet (one sheet per section),
+          then check the three columns detected automatically. Other columns are ignored.
           Students who already registered themselves are matched by their student number. <a href="templates/students_template.xlsx">Template</a></p>
-        <div class="row"><input type="file" id="studentsFile" accept=".xlsx,.xls,.csv" style="max-width:360px"><button id="importStudentsBtn">Import</button></div>
+        <div class="row"><input type="file" id="studentsFile" accept=".xlsx,.xls,.ods,.csv" style="max-width:360px"></div>
+        <div id="studentsMapping" class="hidden">
+          <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
+            <label style="margin:0">Sheet <select id="stSheet" style="width:auto"></select></label>
+            <label style="margin:0">Header line <input id="stHeader" type="number" min="1" style="width:70px"></label>
+          </div>
+          <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
+            <label style="margin:0">Student number <select id="stColMat" style="width:auto"></select></label>
+            <label style="margin:0">Last name <select id="stColLast" style="width:auto"></select></label>
+            <label style="margin:0">First name <select id="stColFirst" style="width:auto"></select></label>
+          </div>
+          <div id="stPreview" style="margin-top:10px"></div>
+          <button id="importStudentsBtn" style="margin-top:10px">Import these students</button>
+        </div>
       </div>
       <div class="card"><div id="studentsTable"></div></div>
     </section>
@@ -124,13 +138,23 @@
         <h2>Question bank</h2>
         <p class="muted">Fill the <a href="templates/questions_template.xlsx">Excel template</a> (one question per row, up to 5 options A-E,
           correct answers as letters, e.g. <code>C</code> or <code>A,D</code>). Importing a row with an existing <em>ref</em> replaces the question.</p>
+        <p class="muted">The question bank is shared by all your classes: the <strong>module</strong> name is what keeps the questions of each course apart.
+          Pick an existing module in the list or type a new one.</p>
         <div class="row">
-          <input id="moduleName" placeholder="Module, e.g. IoT" style="max-width:200px">
-          <input type="file" id="questionsFile" accept=".xlsx,.xls,.csv" style="max-width:360px">
+          <input id="moduleName" list="moduleList" placeholder="Module, e.g. IoT" style="max-width:200px">
+          <datalist id="moduleList"></datalist>
+          <input type="file" id="questionsFile" accept=".xlsx,.xls,.ods,.csv" style="max-width:360px">
           <button id="importQuestionsBtn">Import</button>
         </div>
       </div>
-      <div class="card"><div id="questionsTable"></div></div>
+      <div class="card">
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+          <label style="margin:0">Show module <select id="qModuleFilter" style="width:auto"></select></label>
+          <button id="qSelectAllBtn" class="small secondary">Tick all shown</button>
+          <button id="qDeleteBtn" class="small red">Delete ticked questions</button>
+        </div>
+        <div id="questionsTable" style="margin-top:10px"></div>
+      </div>
     </section>
 
     <!-- ===================== EXPORT ===================== -->
