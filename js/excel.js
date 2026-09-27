@@ -1,4 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "4"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -129,23 +130,33 @@ function downloadResults(exp) {
       ...cells, cells.filter((c) => c === "P" || c === "L").length, cells.filter((c) => c === "A").length]);
   });
 
-  // Sheet 2: quiz marks /20. Absent = 0 (the dropped lowest marks absorb occasional absences).
+  // Marks /20, one sheet per type of evaluation (course quizzes, tests, TP tests).
+  // Absent = 0; excused = EXC (ignored in the averages). The lowest marks are dropped only for course quizzes.
   const finished = exp.quizzes.filter((q) => q.status === "finished" && Number(q.max_points) > 0);
-  const markRows = [["Matricule", "Last name", "First name", ...finished.map((q) => `${q.date} ${q.title}`),
-    `Average /20 (without the ${CONFIG.dropLowest} lowest)`, "Average /20 (all)"]];
-  exp.students.forEach((st) => {
-    const marks = finished.map((q) => {
-      const p = pts[q.id + "|" + st.id];
-      const status = att[q.session_id + "|" + st.id];
-      if (p === undefined) return status === "excused" ? "EXC" : 0;
-      return Math.round((p / Number(q.max_points)) * 20 * 100) / 100;
+  const markSheet = (kind, dropLowest) => {
+    const list = finished.filter((q) => (q.kind || "quiz") === kind);
+    const head = ["Matricule", "Last name", "First name", ...list.map((q) => `${q.date} ${q.title}`)];
+    if (dropLowest) head.push(`Average /20 (without the ${dropLowest} lowest)`);
+    head.push("Average /20 (all)");
+    const rows = [head];
+    exp.students.forEach((st) => {
+      const marks = list.map((q) => {
+        const p = pts[q.id + "|" + st.id];
+        const status = att[q.session_id + "|" + st.id];
+        if (p === undefined) return status === "excused" ? "EXC" : 0;
+        return Math.round((p / Number(q.max_points)) * 20 * 100) / 100;
+      });
+      const numeric = marks.filter((m) => typeof m === "number");
+      const sorted = numeric.slice().sort((x, y) => x - y);
+      const kept = sorted.slice(Math.min(dropLowest, Math.max(0, sorted.length - 1)));
+      const avg = (arr) => (arr.length ? Math.round((arr.reduce((x, y) => x + y, 0) / arr.length) * 100) / 100 : "");
+      rows.push([st.matricule, st.last_name, st.first_name, ...marks, ...(dropLowest ? [avg(kept)] : []), avg(numeric)]);
     });
-    const numeric = marks.filter((m) => typeof m === "number");
-    const sorted = numeric.slice().sort((a, b) => a - b);
-    const kept = sorted.slice(Math.min(CONFIG.dropLowest, Math.max(0, sorted.length - 1)));
-    const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100 : "");
-    markRows.push([st.matricule, st.last_name, st.first_name, ...marks, avg(kept), avg(numeric)]);
-  });
+    return { rows, count: list.length };
+  };
+  const quizSheet = markSheet("quiz", CONFIG.dropLowest);
+  const testSheet = markSheet("test", 0);
+  const tpSheet = markSheet("tp", 0);
 
   // Sheet 3: questions
   const qRows = [["Quiz", "Ref", "Question", "Answers", "Full marks", "Success rate %", "Average score %"]];
@@ -167,7 +178,9 @@ function downloadResults(exp) {
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
   add(attRows, "Attendance", [12, 18, 16, 10, ...exp.sessions.map(() => 14), 9, 12]);
-  add(markRows, "Quiz marks", [12, 18, 16, ...finished.map(() => 14), 18, 12]);
+  add(quizSheet.rows, "Course quizzes", [12, 18, 16, ...Array(quizSheet.count).fill(14), 18, 12]);
+  add(testSheet.rows, "Tests", [12, 18, 16, ...Array(testSheet.count).fill(14), 12]);
+  add(tpSheet.rows, "TP tests", [12, 18, 16, ...Array(tpSheet.count).fill(14), 12]);
   add(qRows, "Questions", [22, 8, 60, 9, 10, 12, 14]);
   add(lRows, "Left the quiz", [12, 18, 16, 26, 12]);
   const safe = exp.class.name.replace(/[^\w-]+/g, "_");

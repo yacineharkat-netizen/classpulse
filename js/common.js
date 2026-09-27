@@ -1,4 +1,5 @@
 // Shared helpers for all ClassPulse pages.
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "4"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -95,3 +96,4 @@ function liveChannel(sessionCode, onPing) {
 function formatSeconds(ms) {
   return Math.max(0, Math.ceil(ms / 1000));
 }
+
