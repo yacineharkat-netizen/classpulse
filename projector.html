@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-version="4">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -16,7 +16,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js"></script>
+<script src="js/common.js?v=4"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -50,7 +50,7 @@
     if (!live) return;
     const s = live.session, q = live.quiz;
     const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
-    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode]]);
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready]]);
     if (key === lastKey && !force) { updateTimer(); return; }
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
@@ -84,6 +84,11 @@
       return;
     }
     $("content").className = "center";
+    if (showQuiz && q.phase === "lobby") {
+      $("content").innerHTML = `<div style="text-align:center"><h1>${esc(q.title)}</h1><div class="sub">Read the rules on your phone, then tap "I am ready".</div>
+        <div class="huge" style="margin-top:4vh">${q.ready}<span class="sub"> / ${live.present} ready</span></div></div>`;
+      return;
+    }
     if (showQuiz && q.phase === "finished") {
       $("content").innerHTML = `<div style="text-align:center"><h1>Quiz finished</h1><div class="sub">Your mark is on your phone.</div></div>`;
       return;
@@ -115,6 +120,27 @@
     setInterval(refresh, 1000);
     setInterval(updateTimer, 250);
   })();
+</script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.CP_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    document.querySelectorAll("script[src*='js/']").forEach(function (sc) {
+      var f = sc.getAttribute("src").split("js/")[1].split("?")[0];
+      if (!files[f]) wrong.push("js/" + f + " (old)");
+    });
+    var css = getComputedStyle(document.documentElement).getPropertyValue("--cp-version").replace(/["'\s]/g, "");
+    if (css !== expected) wrong.push("css/style.css (" + (css ? "v" + css : "old") + ")");
+    if (!wrong.length) return;
+    var bar = document.createElement("div");
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:#B83227;color:#fff;padding:10px 16px;font:600 15px system-ui";
+    bar.textContent = "Version problem: this page is version " + expected + " but these files are older: " + wrong.join(", ") +
+      ". Upload them again to GitHub in the right folder, wait one minute, then press Ctrl+F5.";
+    document.body.appendChild(bar);
+  });
+})();
 </script>
 </body>
 </html>

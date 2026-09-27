@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-version="4">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -26,7 +26,7 @@
     <button data-tab="live" class="active">▶ Live session</button>
     <button data-tab="students">👥 Students</button>
     <button data-tab="questions">❓ Questions</button>
-    <button data-tab="resources">📎 Resources</button>
+    <button data-tab="resources">🎬 Demos &amp; resources</button>
     <button data-tab="export">⬇ Export results</button>
     <button data-tab="classes">＋ Classes</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
@@ -52,7 +52,7 @@
         <p class="muted" id="noSessionHelp">To start a class: type a title and click <strong>Create</strong>. ClassPulse gives the session a
           6-character code. Students join by scanning the QR code of the projector window (or by typing the code on the home page).</p>
         <div id="sessionCodeBox" class="session-code hidden">
-          <div><div class="label">Session code</div><div class="code" id="sessionCodeBig">------</div></div>
+          <div><div class="label">Session code (fixed)</div><div class="code" id="sessionCodeBig">------</div></div>
           <div class="muted" id="sessionUrl"></div>
         </div>
         <div id="sessionOptions" class="row hidden" style="gap:18px;flex-wrap:wrap;margin-top:10px;align-items:center">
@@ -98,7 +98,8 @@
           <h3>Quiz</h3>
           <div class="row">
             <select id="quizSelect" style="max-width:380px"></select>
-            <button id="startBtn" class="green">Start</button>
+            <button id="openBtn" class="orange">1. Show the rules on the phones</button>
+            <button id="startBtn" class="green">2. Start question 1</button>
             <button id="revealBtn">Close question and show answers</button>
             <button id="nextBtn" class="orange">Next question</button>
             <span class="row" style="gap:4px;align-items:center"><button id="addTimeBtn" class="secondary">Add</button>
@@ -117,7 +118,13 @@
           <details style="margin-top:14px" id="quizCreate">
             <summary><strong>Create a quiz for this session</strong></summary>
             <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
-              <input id="quizTitle" placeholder="Quiz title" style="max-width:240px">
+              <input id="quizTitle" placeholder="Title" style="max-width:240px">
+              <label style="margin:0">Type
+                <select id="quizKind" style="width:auto">
+                  <option value="quiz">Course quiz</option>
+                  <option value="test">Continuous assessment test</option>
+                  <option value="tp">Lab (TP) test</option>
+                </select></label>
               <label style="margin:0">Answers shown to students
                 <select id="quizReveal" style="width:auto">
                   <option value="each">after each question</option>
@@ -128,6 +135,8 @@
                 <select id="quizTime" style="width:auto"><option value="">as in the bank</option><option>10</option><option>15</option><option>20</option>
                   <option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select></label>
               <label style="margin:0"><input type="checkbox" id="quizShuffle" style="width:auto"> Mix the order of the questions</label>
+              <label style="margin:0"><input type="checkbox" id="quizShowCount" style="width:auto"> Tell students when a question has only one correct answer
+                <span class="muted">(unticked: "one or more answers may be correct" on every question)</span></label>
             </div>
             <div class="card" style="margin-top:10px;background:#F5F8FB">
               <strong>Random draw</strong> <span class="muted">e.g. 2 questions from chapter S1, then 2 from S2...</span>
@@ -203,6 +212,7 @@
           <datalist id="moduleList"></datalist>
           <input type="file" id="questionsFile" accept=".xlsx,.xls,.ods,.csv" style="max-width:360px">
           <button id="importQuestionsBtn">Import</button>
+          <button id="exportBankBtn" class="secondary">Download the bank (Excel)</button>
         </div>
       </div>
       <div class="card">
@@ -230,7 +240,13 @@
     <!-- ===================== RESOURCES ===================== -->
     <section id="tab-resources" class="hidden">
       <div class="card">
-        <h2>Resources</h2>
+        <h2>Demos of the site</h2>
+        <p class="muted">Programmed demos stored on the site (folder <code>demos/</code>, declared in <code>config.js</code>). Everybody can use them.
+          To send one to the phones, a session must be chosen in the Live session tab.</p>
+        <div id="demosTable"></div>
+      </div>
+      <div class="card">
+        <h2>My resources</h2>
         <p class="muted">Links and files you can push to the phones from the Live session tab. They belong to you and are not shown to other teachers.
           Files stay private: the phones receive a temporary link valid for <span id="signedHours"></span> hours.
           Maximum <span id="maxMb"></span> MB per file (images, PDF, short videos...).</p>
@@ -280,8 +296,29 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js"></script>
-<script src="js/excel.js"></script>
-<script src="js/teacher.js"></script>
+<script src="js/common.js?v=4"></script>
+<script src="js/excel.js?v=4"></script>
+<script src="js/teacher.js?v=4"></script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.CP_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    document.querySelectorAll("script[src*='js/']").forEach(function (sc) {
+      var f = sc.getAttribute("src").split("js/")[1].split("?")[0];
+      if (!files[f]) wrong.push("js/" + f + " (old)");
+    });
+    var css = getComputedStyle(document.documentElement).getPropertyValue("--cp-version").replace(/["'\s]/g, "");
+    if (css !== expected) wrong.push("css/style.css (" + (css ? "v" + css : "old") + ")");
+    if (!wrong.length) return;
+    var bar = document.createElement("div");
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:#B83227;color:#fff;padding:10px 16px;font:600 15px system-ui";
+    bar.textContent = "Version problem: this page is version " + expected + " but these files are older: " + wrong.join(", ") +
+      ". Upload them again to GitHub in the right folder, wait one minute, then press Ctrl+F5.";
+    document.body.appendChild(bar);
+  });
+})();
+</script>
 </body>
 </html>
