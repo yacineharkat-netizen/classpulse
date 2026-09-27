@@ -95,3 +95,25 @@ th { color: var(--muted); font-weight: 600; }
   border-radius: 12px; background: var(--ice); }
 .session-code .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
 .session-code .code { font-size: 38px; font-weight: 800; letter-spacing: 6px; color: var(--navy); font-family: ui-monospace, Consolas, monospace; }
+
+.locked-alert { margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: #FBE6E3; border: 2px solid var(--red); }
+.locked-alert table { margin-top: 6px; }
+.badge.open { background: #DDF0E4; color: var(--green); }
+.badge.closed { background: var(--ice); color: var(--muted); }
+.far { color: var(--red); font-weight: 700; }
+button:disabled { opacity: .45; cursor: default; }
+
+/* ---------- student quiz: kind of answer, protection against copy, watermark ---------- */
+.answer-kind { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+.answer-kind.single { background: var(--ice); color: var(--navy); }
+.answer-kind.multi { background: #FFE6D2; color: #A34A0B; }
+.protected { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.watermark { position: absolute; inset: 0; overflow: hidden; pointer-events: none; display: flex; flex-wrap: wrap;
+  align-content: space-around; justify-content: space-around; transform: rotate(-24deg); opacity: .13; z-index: 2; }
+.watermark span { font-size: 14px; font-weight: 800; color: var(--navy); white-space: nowrap; padding: 6px 10px; }
+
+/* ---------- projector: QR code for late students during a quiz ---------- */
+.late-qr { position: fixed; right: 2vw; bottom: 2vh; display: flex; gap: 12px; align-items: center; background: #13315C;
+  padding: 10px 14px; border-radius: 12px; font-size: 2vh; color: #fff; }
+.late-qr .qrbox { background: #fff; padding: 6px; border-radius: 6px; line-height: 0; }
+.late-qr strong { color: #E8741E; letter-spacing: .2vw; font-size: 2.6vh; }
