@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "4";
+:root { --cp-version: "5";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -120,3 +120,13 @@ button:disabled { opacity: .45; cursor: default; }
 
 .rules { padding-left: 20px; line-height: 1.45; }
 .rules li { margin: 6px 0; }
+
+/* ---------- v5: session type, bonus, student profile ---------- */
+.kind { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--ice); color: var(--navy); }
+.kind.td { background: #EDE3F7; color: #5B3A8C; }
+.kind.tp { background: #DDF0E4; color: var(--green); }
+.bonus-cell { white-space: nowrap; }
+.bonus-cell button { padding: 2px 8px; font-size: 13px; }
+.linklike { background: none; color: var(--teal); padding: 0; text-decoration: underline; font-weight: 600; }
+.modal { position: fixed; inset: 0; background: rgba(11, 37, 69, .55); z-index: 50; display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 4vh 12px; }
+.modal-content { max-width: 900px; width: 100%; }

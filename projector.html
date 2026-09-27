@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="4">
+<html lang="en" data-version="5">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -16,7 +16,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=4"></script>
+<script src="js/common.js?v=5"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -50,7 +50,7 @@
     if (!live) return;
     const s = live.session, q = live.quiz;
     const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
-    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready]]);
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector]]);
     if (key === lastKey && !force) { updateTimer(); return; }
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
@@ -65,6 +65,18 @@
         and type the code <strong style="font-size:5vh;color:#E8741E;letter-spacing:.3vw">${att && att.open ? att.code : "-"}</strong></p></div>`;
       return;
     }
+    if (showQuiz && (q.phase === "question" || q.phase === "reveal") && !q.show_on_projector) {
+      // questions not shown on the big screen (teacher's choice, or different questions for each student)
+      const lateQr0 = s.attendance_open && att && att.open
+        ? `<div class="late-qr"><div class="qrbox">${qrSvg(joinUrl + "&a=" + att.code, 3)}</div><div>Late? Scan to check in<br><strong>${att.code}</strong></div></div>` : "";
+      $("content").className = "center";
+      $("content").innerHTML = `<div style="text-align:center"><div class="sub">${esc(q.title)}</div>
+        <h1>Question ${q.index + 1} / ${q.count}</h1>
+        ${q.phase === "question" ? `<div class="ptimer" id="ptimer" style="font-size:14vh"></div>` : `<div class="sub">Question closed${q.success_rate == null ? "" : " · " + q.success_rate + "% full marks"}</div>`}
+        <div class="sub" style="margin-top:3vh">${q.answers} / ${live.present} answers · the question is on your phone${q.per_student ? " (each student has his own)" : ""}</div></div>` + lateQr0;
+      updateTimer();
+      return;
+    }
     if (showQuiz && (q.phase === "question" || q.phase === "reveal")) {
       const max = Math.max(1, ...q.distribution);
       const showCorrect = q.phase === "reveal" && q.reveal_mode === "each";
@@ -76,10 +88,10 @@
           <div class="sub">${esc(q.title)} · question ${q.index + 1} / ${q.count}</div>
           <div class="sub">${q.answers} / ${live.present} answers</div></div>
         <div class="row" style="justify-content:space-between"><div class="pq" style="flex:1">${esc(q.question)}</div>
-          ${q.phase === "question" ? `<div class="ptimer" id="ptimer"></div>` : `<div class="ptimer">${q.success_rate == null ? "" : q.success_rate + "%"}</div>`}</div>` +
+          ${q.phase === "question" ? `<div class="ptimer" id="ptimer"></div>` : `<div class="ptimer">${q.success_rate == null || q.survey ? "" : q.success_rate + "%"}</div>`}</div>` +
         q.options.map((o, i) => `<div class="popt ${showCorrect && q.correct.includes(i) ? "correct" : ""}"><span class="lt">${LETTERS[i]}</span>
-          <span>${esc(o)}</span>${q.phase === "reveal" ? `<span class="cnt">${q.distribution[i]}</span>` : ""}</div>`).join("") +
-        `<p class="sub">On the phones, the options are shown in a different order for each student.</p>` + lateQr;
+          <span>${esc(o)}</span>${q.phase === "reveal" ? `<span class="cnt">${q.survey ? Math.round(100 * q.distribution[i] / Math.max(1, q.answers)) + "%" : q.distribution[i]}</span>` : ""}</div>`).join("") +
+        (q.survey ? `<p class="sub">Survey: anonymous results, not graded.</p>` : `<p class="sub">On the phones, the options are shown in a different order for each student.</p>`) + lateQr;
       updateTimer();
       return;
     }

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="4">
+<html lang="en" data-version="5">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 
@@ -24,6 +24,7 @@
     <label for="classSelect" style="color:#C9DCEB">Class</label>
     <select id="classSelect"></select>
     <button data-tab="live" class="active">▶ Live session</button>
+    <button data-tab="sessions">📅 Sessions</button>
     <button data-tab="students">👥 Students</button>
     <button data-tab="questions">❓ Questions</button>
     <button data-tab="resources">🎬 Demos &amp; resources</button>
@@ -47,6 +48,8 @@
           <span class="muted">or create:</span>
           <input id="newSessionTitle" placeholder="Title, e.g. S1 - Discover IoT" style="max-width:260px">
           <input id="newSessionDate" type="date" style="max-width:170px">
+          <input id="newSessionTime" type="time" style="max-width:120px">
+          <select id="newSessionKind" style="width:auto"><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select>
           <button id="createSessionBtn" class="secondary">Create</button>
         </div>
         <p class="muted" id="noSessionHelp">To start a class: type a title and click <strong>Create</strong>. ClassPulse gives the session a
@@ -118,12 +121,20 @@
           <details style="margin-top:14px" id="quizCreate">
             <summary><strong>Create a quiz for this session</strong></summary>
             <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
-              <input id="quizTitle" placeholder="Title" style="max-width:240px">
+              <input id="quizTitle" placeholder="Title (empty = automatic title)" style="max-width:260px">
               <label style="margin:0">Type
                 <select id="quizKind" style="width:auto">
                   <option value="quiz">Course quiz</option>
                   <option value="test">Continuous assessment test</option>
                   <option value="tp">Lab (TP) test</option>
+                  <option value="survey">Survey (opinions, not graded)</option>
+                </select></label>
+              <label style="margin:0"><input type="checkbox" id="quizGraded" checked style="width:auto"> Graded (counted in the marks)</label>
+              <label style="margin:0">Marked out of <input id="quizTotal" type="number" min="1" max="100" step="0.5" value="20" style="width:70px"></label>
+              <label style="margin:0">Scoring
+                <select id="quizScoring" style="width:auto">
+                  <option value="partial">partial (1 correct of 3 = 1/3; a wrong tick cancels a correct one)</option>
+                  <option value="all">all or nothing</option>
                 </select></label>
               <label style="margin:0">Answers shown to students
                 <select id="quizReveal" style="width:auto">
@@ -135,6 +146,9 @@
                 <select id="quizTime" style="width:auto"><option value="">as in the bank</option><option>10</option><option>15</option><option>20</option>
                   <option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select></label>
               <label style="margin:0"><input type="checkbox" id="quizShuffle" style="width:auto"> Mix the order of the questions</label>
+              <label style="margin:0"><input type="checkbox" id="quizPerStudent" style="width:auto"> Different questions for each student:
+                <input id="quizPerStudentN" type="number" min="1" value="5" style="width:60px"> drawn from the ticked ones</label>
+              <label style="margin:0"><input type="checkbox" id="quizProjector" style="width:auto"> Show the questions on the projector</label>
               <label style="margin:0"><input type="checkbox" id="quizShowCount" style="width:auto"> Tell students when a question has only one correct answer
                 <span class="muted">(unticked: "one or more answers may be correct" on every question)</span></label>
             </div>
@@ -162,6 +176,16 @@
           <h3>Attendance list</h3>
           <div id="attendanceTable"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===================== SESSIONS ===================== -->
+    <section id="tab-sessions" class="hidden">
+      <div class="card">
+        <h2>Sessions of this class</h2>
+        <p class="muted">A session created by mistake can be corrected (title, date, time, type) or deleted with its attendance and quizzes.
+          <strong>Open</strong> takes you to the live session.</p>
+        <div id="sessionsTable"></div>
       </div>
     </section>
 
@@ -196,7 +220,10 @@
           <button id="addStudentBtn">Add</button>
         </div>
       </div>
-      <div class="card"><div id="studentsTable"></div></div>
+      <div class="card">
+        <input id="studentSearch" placeholder="🔍 Search a student (name, first name, matricule)" style="max-width:420px">
+        <div id="studentsTable" style="margin-top:8px"></div>
+      </div>
     </section>
 
     <!-- ===================== QUESTIONS ===================== -->
@@ -231,8 +258,10 @@
             <label style="margin:0">Time (s) <input id="qeTime" type="number" min="5" max="600" style="width:90px"></label>
             <button id="qeSave" class="green">Save</button><button id="qeCancel" class="secondary">Cancel</button>
           </div>
-          <p class="muted">Tick the correct option(s). Leave an option empty to remove it (2 to 5 options).</p>
+          <p class="muted">Tick the correct option(s). Leave an option empty to remove it (2 to 8 options).
+            A question with no correct option is a <strong>survey</strong> question (opinions, not graded).</p>
         </div>
+        <input id="questionSearch" placeholder="🔍 Search in the questions (text, ref, chapter)" style="max-width:420px;margin-top:10px">
         <div id="questionsTable" style="margin-top:10px"></div>
       </div>
     </section>
@@ -265,7 +294,10 @@
           <button id="resFileBtn">Upload the file</button>
         </div>
       </div>
-      <div class="card"><div id="resourcesTable"></div></div>
+      <div class="card">
+        <input id="resourceSearch" placeholder="🔍 Search a resource (title, module)" style="max-width:420px">
+        <div id="resourcesTable" style="margin-top:8px"></div>
+      </div>
     </section>
 
     <!-- ===================== EXPORT ===================== -->
@@ -291,14 +323,23 @@
       <div class="card"><div id="classesTable"></div></div>
     </section>
   </main>
+  <div id="profileBox" class="modal hidden">
+    <div class="modal-content card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 id="profileTitle" style="margin:0">Student</h2>
+        <div><button id="profileExport" class="small secondary">Download (Excel)</button> <button id="profileClose" class="small">Close</button></div>
+      </div>
+      <div id="profileBody"></div>
+    </div>
+  </div>
 </div>
 
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=4"></script>
-<script src="js/excel.js?v=4"></script>
-<script src="js/teacher.js?v=4"></script>
+<script src="js/common.js?v=5"></script>
+<script src="js/excel.js?v=5"></script>
+<script src="js/teacher.js?v=5"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

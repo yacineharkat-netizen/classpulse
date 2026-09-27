@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "5"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -194,11 +194,11 @@ function render() {
   }
   if (state.activity === "link" && state.link_url) {
     live.innerHTML = who + bigStatus("🔗", esc(state.link_label || "Open the link"), "") +
-      `<a href="${esc(state.link_url)}" target="_blank" rel="noopener"><button style="width:100%;font-size:20px">Open</button></a>`;
+      `<a href="${esc(state.link_url)}" target="_blank" rel="noopener"><button style="width:100%;font-size:20px">Open</button></a>` + sharedLinksHtml();
     return;
   }
   if (state.present) {
-    live.innerHTML = who + bigStatus("✅", "You are checked in", "Keep this page open. The next activity will appear here automatically.");
+    live.innerHTML = who + bigStatus("✅", "You are checked in", "Keep this page open. The next activity will appear here automatically.") + sharedLinksHtml();
   } else {
     live.innerHTML = who + bigStatus("⏳", "Waiting for the teacher", "Attendance is not open yet.");
   }
@@ -209,13 +209,36 @@ function bigStatus(icon, title, text) {
 }
 
 // ------------------------------------------------------------------ quiz
+function rulesFor(q) {
+  if (q.kind === "survey") {
+    return `<li>This is a <strong>survey</strong>: there is no right or wrong answer and it is <strong>not graded</strong>.</li>
+      <li>Answer honestly: the teacher only sees the totals for the class, to improve the course.</li>`;
+  }
+  const what = !q.graded ? "This quiz is for practice: it is <strong>not counted</strong> in your marks."
+    : q.kind === "test" ? "This is a graded test." : q.kind === "tp" ? "This is the test of the lab session (TP)." : "This quiz counts in your course mark.";
+  const scoring = q.scoring === "all"
+    ? `<li><strong>All or nothing:</strong> a question gives its points only if you tick exactly all the correct answers.</li>`
+    : `<li><strong>Each wrong tick cancels one correct tick.</strong> With 3 correct answers, 1 correct tick gives one third of the points. A question never gives negative points; ticking everything gives 0.</li>`;
+  return `<li>${what} Marked out of <strong>${Number(q.total_points)}</strong>${q.per_student ? "; each student has his own questions" : ""}.</li>
+    <li><strong>A question may have one or more correct answers.</strong> Tick every answer you think is correct.</li>${scoring}`;
+}
+
+// Documents and links shared by the teacher during this session (kept after they were pushed).
+function sharedLinksHtml() {
+  const list = state.shared_links || [];
+  if (!list.length) return "";
+  return `<div class="card"><strong>Documents of this session</strong>` +
+    list.map((l) => `<p><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label || l.url)}</a></p>`).join("") + `</div>`;
+}
 function renderQuiz(live, who) {
   const q = state.quiz;
   const head = `<div class="row" style="justify-content:space-between"><strong>${esc(q.title)}</strong>` +
     (q.index >= 0 && q.phase !== "finished" ? `<span class="muted">Question ${q.index + 1} / ${q.count}</span>` : "") + `</div>`;
 
   if (q.phase === "finished") {
-    let html = who + head + bigStatus("🏁", "Quiz finished", `Your mark: <strong style="font-size:26px">${q.total == null ? "-" : q.total} / 20</strong>`);
+    const markText = q.kind === "survey" ? "Thank you for your answers."
+      : `${q.graded ? "Your mark" : "Your score (practice, not counted)"}: <strong style="font-size:26px">${q.total == null ? "-" : q.total} / ${Number(q.total_points)}</strong>`;
+    let html = who + head + bigStatus("🏁", q.kind === "survey" ? "Survey finished" : "Quiz finished", markText) + sharedLinksHtml();
     if (q.review) {
       html += `<div class="protected">` + q.review.map((r, i) => `<div class="card"><div class="muted">Question ${i + 1} · ${r.score == null ? "no answer" : Number(r.score) + " / " + Number(r.points)}</div>
         <div class="question-text">${esc(r.question)}</div>` + r.options.map((o, pos) => {
@@ -236,10 +259,7 @@ function renderQuiz(live, who) {
     // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
     live.innerHTML = who + head + `<div class="card">
       <div style="font-size:42px;text-align:center">📝</div><h2 style="text-align:center">Read the rules</h2>
-      <ol class="rules">
-        <li>${q.kind === "test" ? "This is a graded test." : q.kind === "tp" ? "This is the test of the lab session (TP)." : "This quiz counts in your course mark."}</li>
-        <li><strong>A question may have one or more correct answers.</strong> Tick every answer you think is correct.</li>
-        <li><strong>Each wrong tick cancels one correct tick.</strong> A question never gives negative points; ticking everything gives 0.</li>
+      <ol class="rules">${rulesFor(q)}
         <li>You can change your answer until the time of the question is over.</li>
         <li><strong>Do not leave this screen</strong> (no other app, no other tab, no notification opened). If you leave, you are locked and only the teacher can unlock you.</li>
         <li>Your name and student number are printed on the questions: any photo or screenshot shows who took it.</li>
@@ -259,7 +279,7 @@ function renderQuiz(live, who) {
   const answered = q.my_answer && q.my_answer.length > 0;
   let html = who + head;
   if (!reveal) html += `<div class="row" style="justify-content:space-between"><span class="timer" id="timer"></span>` +
-    `<span class="answer-kind ${q.multiple === false ? "single" : "multi"}">${q.multiple === false ? "Only one correct answer" : q.multiple ? "Several correct answers: tick all" : "One or more answers may be correct"}</span></div><div class="progress"><div id="bar"></div></div>`;
+    `<span class="answer-kind ${q.multiple === false ? "single" : "multi"}">${q.survey ? "Survey: your opinion, not graded" : q.multiple === false ? "Only one correct answer" : q.multiple ? "Several correct answers: tick all" : "One or more answers may be correct"}</span></div><div class="progress"><div id="bar"></div></div>`;
   html += `<div class="protected"><div class="question-text">${esc(q.question)}</div>`;
   q.options.forEach((opt, pos) => {
     let cls = "option";
@@ -272,7 +292,9 @@ function renderQuiz(live, who) {
     html += `<button class="${cls}" data-pos="${pos}" ${reveal ? "disabled" : ""}><strong>${LETTERS[pos]}.</strong> ${esc(opt)}</button>`;
   });
   html += watermark() + `</div>`;
-  if (reveal && q.reveal_mode === "each") {
+  if (reveal && q.survey) {
+    html += `<div class="card" style="text-align:center"><strong>${answered ? "✔ Thank you, answer recorded" : "No answer"}</strong></div>`;
+  } else if (reveal && q.reveal_mode === "each") {
     html += `<div class="card" style="text-align:center"><strong>${answered ? "Your score: " + Number(q.my_score) : "No answer"}</strong></div>`;
   } else if (reveal) {
     html += `<div class="card" style="text-align:center"><strong>${answered ? "✔ Answer recorded" : "No answer"}</strong><br>

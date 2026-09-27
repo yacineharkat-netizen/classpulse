@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-version="5">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 <div class="student" style="margin-top:6vh">
@@ -28,6 +28,27 @@
     const code = document.getElementById("code").value.trim().toUpperCase();
     if (code.length === 6) location.href = "student.html?s=" + encodeURIComponent(code);
   };
+</script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.CP_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    document.querySelectorAll("script[src*='js/']").forEach(function (sc) {
+      var f = sc.getAttribute("src").split("js/")[1].split("?")[0];
+      if (!files[f]) wrong.push("js/" + f + " (old)");
+    });
+    var css = getComputedStyle(document.documentElement).getPropertyValue("--cp-version").replace(/["'\s]/g, "");
+    if (css !== expected) wrong.push("css/style.css (" + (css ? "v" + css : "old") + ")");
+    if (!wrong.length) return;
+    var bar = document.createElement("div");
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:#B83227;color:#fff;padding:10px 16px;font:600 15px system-ui";
+    bar.textContent = "Version problem: this page is version " + expected + " but these files are older: " + wrong.join(", ") +
+      ". Upload them again to GitHub in the right folder, wait one minute, then press Ctrl+F5.";
+    document.body.appendChild(bar);
+  });
+})();
 </script>
 </body>
 </html>

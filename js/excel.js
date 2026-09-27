@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "5"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -95,62 +95,71 @@ function parseStudents(rows) {
 function parseQuestions(rows) {
   const problems = [];
   const out = [];
+  const surveys = [];
   rows.forEach((r, i) => {
     const line = i + 2; // Excel line number (line 1 = headers)
     const text = r.question || r.text || "";
     if (!text) return;
-    const options = ["a", "b", "c", "d", "e"].map((k) => r[k]).filter((v) => v !== undefined && v !== "");
-    const correct = String(r.correct || "").toUpperCase().split(/[^A-E]+/).filter(Boolean).map((l) => "ABCDE".indexOf(l));
+    const options = ["a", "b", "c", "d", "e", "f", "g", "h"].map((k) => r[k]).filter((v) => v !== undefined && v !== "");
+    const correct = String(r.correct || "").toUpperCase().split(/[^A-H]+/).filter(Boolean).map((l) => "ABCDEFGH".indexOf(l));
     if (options.length < 2) problems.push(`line ${line}: at least 2 options needed`);
-    else if (correct.length === 0 || correct.some((c) => c < 0 || c >= options.length)) problems.push(`line ${line}: "correct" must use the letters of existing options`);
-    else out.push({
-      ref: r.ref || `Q${line}`, chapter: r.chapter || "", text, options, correct,
-      points: Number(r.points) || 1, time_limit: Number(r.time_s || r.time_limit) || 30,
-    });
+    else if (correct.some((c) => c < 0 || c >= options.length)) problems.push(`line ${line}: "correct" must use the letters of existing options`);
+    else {
+      if (correct.length === 0) surveys.push(r.ref || `line ${line}`);
+      out.push({
+        ref: r.ref || `Q${line}`, chapter: r.chapter || "", text, options, correct,
+        points: Number(r.points) || 1, time_limit: Number(r.time_s || r.time_limit) || 30,
+      });
+    }
   });
-  return { questions: out, problems };
+  return { questions: out, problems, surveys };
 }
 
 // Build and download the results workbook from the t_export data.
 function downloadResults(exp) {
+  const KIND = { course: "Course", td: "TD", tp: "TP" };
   const statusLetter = { present: "P", late: "L", absent: "A", excused: "E" };
   const att = {};
   exp.attendance.forEach((a) => { att[a.session_id + "|" + a.student_id] = a.status; });
-  const pts = {};
-  exp.scores.forEach((s) => { pts[s.quiz_id + "|" + s.student_id] = Number(s.points); });
-  const sessionOfQuiz = {};
-  exp.quizzes.forEach((q) => { sessionOfQuiz[q.id] = q.session_id; });
+  const pts = {}, maxOf = {};
+  exp.scores.forEach((s) => { pts[s.quiz_id + "|" + s.student_id] = Number(s.points); maxOf[s.quiz_id + "|" + s.student_id] = Number(s.max); });
+  const sessionLabel = (s) => `${s.date}${s.time ? " " + s.time : ""} ${KIND[s.kind] || ""} ${s.title}`.replace(/\s+/g, " ");
 
-  // Sheet 1: attendance
-  const attRows = [["Matricule", "Last name", "First name", "In official list",
-    ...exp.sessions.map((s) => `${s.date} ${s.title}`), "Present", "Absent (unexcused)"]];
+  // Sheet 1: attendance, one column per session (date, time, type)
+  const attRows = [["Matricule", "Last name", "First name", "In official list", ...exp.sessions.map(sessionLabel), "Present", "Absent (unexcused)"]];
   exp.students.forEach((st) => {
     const cells = exp.sessions.map((s) => statusLetter[att[s.id + "|" + st.id]] || "A");
     attRows.push([st.matricule, st.last_name, st.first_name, st.official ? "yes" : "NO",
       ...cells, cells.filter((c) => c === "P" || c === "L").length, cells.filter((c) => c === "A").length]);
   });
 
-  // Marks /20, one sheet per type of evaluation (course quizzes, tests, TP tests).
-  // Absent = 0; excused = EXC (ignored in the averages). The lowest marks are dropped only for course quizzes.
-  const finished = exp.quizzes.filter((q) => q.status === "finished" && Number(q.max_points) > 0);
+  // Marks, one sheet per type of evaluation. Each cell is the mark on the scale of the quiz (e.g. /5);
+  // the averages are computed on /20. Absent = 0; excused = EXC (ignored). Only graded quizzes.
+  const finished = exp.quizzes.filter((q) => q.status === "finished" && q.graded !== false && q.kind !== "survey");
   const markSheet = (kind, dropLowest) => {
     const list = finished.filter((q) => (q.kind || "quiz") === kind);
-    const head = ["Matricule", "Last name", "First name", ...list.map((q) => `${q.date} ${q.title}`)];
+    const head = ["Matricule", "Last name", "First name", ...list.map((q) => `${q.date}${q.time ? " " + q.time : ""} ${q.title} (/${Number(q.total_points || 20)})`)];
     if (dropLowest) head.push(`Average /20 (without the ${dropLowest} lowest)`);
     head.push("Average /20 (all)");
     const rows = [head];
     exp.students.forEach((st) => {
-      const marks = list.map((q) => {
-        const p = pts[q.id + "|" + st.id];
-        const status = att[q.session_id + "|" + st.id];
-        if (p === undefined) return status === "excused" ? "EXC" : 0;
-        return Math.round((p / Number(q.max_points)) * 20 * 100) / 100;
+      const on20 = [];
+      const cells = list.map((q) => {
+        const key = q.id + "|" + st.id;
+        const scale = Number(q.total_points || 20);
+        if (pts[key] === undefined) {
+          if (att[q.session_id + "|" + st.id] === "excused") return "EXC";
+          on20.push(0); return 0;
+        }
+        const max = maxOf[key] || Number(q.max_points) || 1;
+        const mark = Math.round((pts[key] / max) * scale * 100) / 100;
+        on20.push((pts[key] / max) * 20);
+        return mark;
       });
-      const numeric = marks.filter((m) => typeof m === "number");
-      const sorted = numeric.slice().sort((x, y) => x - y);
+      const sorted = on20.slice().sort((x, y) => x - y);
       const kept = sorted.slice(Math.min(dropLowest, Math.max(0, sorted.length - 1)));
       const avg = (arr) => (arr.length ? Math.round((arr.reduce((x, y) => x + y, 0) / arr.length) * 100) / 100 : "");
-      rows.push([st.matricule, st.last_name, st.first_name, ...marks, ...(dropLowest ? [avg(kept)] : []), avg(numeric)]);
+      rows.push([st.matricule, st.last_name, st.first_name, ...cells, ...(dropLowest ? [avg(kept)] : []), avg(on20)]);
     });
     return { rows, count: list.length };
   };
@@ -158,12 +167,26 @@ function downloadResults(exp) {
   const testSheet = markSheet("test", 0);
   const tpSheet = markSheet("tp", 0);
 
-  // Sheet 3: questions
+  // Bonus points by category
+  const bonus = {};
+  (exp.bonuses || []).forEach((b) => { bonus[b.student_id + "|" + b.category] = Number(b.points); });
+  const bRows = [["Matricule", "Last name", "First name", "Bonus course", "Bonus TD", "Bonus TP", "Total"]];
+  exp.students.forEach((st) => {
+    const v = ["course", "td", "tp"].map((c) => bonus[st.id + "|" + c] || 0);
+    bRows.push([st.matricule, st.last_name, st.first_name, ...v, v.reduce((x, y) => x + y, 0)]);
+  });
+
+  // Questions (success rates)
   const qRows = [["Quiz", "Ref", "Question", "Answers", "Full marks", "Success rate %", "Average score %"]];
   exp.question_stats.forEach((q) => qRows.push([q.quiz, q.ref, q.text, q.answers, q.full_marks,
     q.answers ? Math.round((100 * q.full_marks) / q.answers) : "", q.avg_score == null ? "" : Number(q.avg_score)]));
 
-  // Sheet 4: students who left a quiz screen
+  // Surveys: percentage of each option (anonymous)
+  const sRows = [["Date", "Survey", "Question", "Answers", "Option", "Count", "%"]];
+  (exp.surveys || []).forEach((q) => q.options.forEach((o, i) => sRows.push([q.date, q.quiz, i === 0 ? q.question : "", i === 0 ? q.answers : "",
+    o, q.counts[i], q.answers ? Math.round((100 * q.counts[i]) / q.answers) : 0])));
+
+  // Students who left a quiz screen
   const nameOf = {};
   exp.students.forEach((s) => { nameOf[s.id] = s; });
   const quizTitle = {};
@@ -177,11 +200,13 @@ function downloadResults(exp) {
     ws["!cols"] = widths.map((w) => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
-  add(attRows, "Attendance", [12, 18, 16, 10, ...exp.sessions.map(() => 14), 9, 12]);
-  add(quizSheet.rows, "Course quizzes", [12, 18, 16, ...Array(quizSheet.count).fill(14), 18, 12]);
-  add(testSheet.rows, "Tests", [12, 18, 16, ...Array(testSheet.count).fill(14), 12]);
-  add(tpSheet.rows, "TP tests", [12, 18, 16, ...Array(tpSheet.count).fill(14), 12]);
+  add(attRows, "Attendance", [12, 18, 16, 10, ...exp.sessions.map(() => 16), 9, 12]);
+  add(quizSheet.rows, "Course quizzes", [12, 18, 16, ...Array(quizSheet.count).fill(16), 18, 12]);
+  add(testSheet.rows, "Tests", [12, 18, 16, ...Array(testSheet.count).fill(16), 12]);
+  add(tpSheet.rows, "TP tests", [12, 18, 16, ...Array(tpSheet.count).fill(16), 12]);
+  add(bRows, "Bonus", [12, 18, 16, 12, 10, 10, 8]);
   add(qRows, "Questions", [22, 8, 60, 9, 10, 12, 14]);
+  add(sRows, "Surveys", [11, 24, 50, 9, 30, 8, 6]);
   add(lRows, "Left the quiz", [12, 18, 16, 26, 12]);
   const safe = exp.class.name.replace(/[^\w-]+/g, "_");
   XLSX.writeFile(wb, `ClassPulse_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
