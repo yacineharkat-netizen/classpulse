@@ -50,16 +50,16 @@
     if (!live) return;
     const s = live.session, q = live.quiz;
     const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
-    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution]]);
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode]]);
     if (key === lastKey && !force) { updateTimer(); return; }
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
 
-    if (s.activity === "attendance" || (s.attendance_open && !showQuiz && s.activity !== "link")) {
+    if (s.attendance_open && !showQuiz && s.activity !== "link") {
       const url = att && att.open ? joinUrl + "&a=" + att.code : joinUrl;
       $("content").innerHTML = `<div class="qr">${qrSvg(url, 8)}</div>
         <div><h1>Scan to check in</h1>
-        <div class="sub">The code changes every 15 seconds</div>
+        <div class="sub">The code changes every ${att && att.window_s ? att.window_s : 15} seconds</div>
         <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> / ${live.class_size || "?"} present</span></div>
         <p class="sub" style="margin-top:4vh">No camera? Open <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong><br>
         and type the code <strong style="font-size:5vh;color:#E8741E;letter-spacing:.3vw">${att && att.open ? att.code : "-"}</strong></p></div>`;
@@ -67,15 +67,19 @@
     }
     if (showQuiz && (q.phase === "question" || q.phase === "reveal")) {
       const max = Math.max(1, ...q.distribution);
+      const showCorrect = q.phase === "reveal" && q.reveal_mode === "each";
+      // late students can still check in during the quiz: small QR code in the corner
+      const lateQr = s.attendance_open && att && att.open
+        ? `<div class="late-qr"><div class="qrbox">${qrSvg(joinUrl + "&a=" + att.code, 3)}</div><div>Late? Scan to check in<br><strong>${att.code}</strong></div></div>` : "";
       $("content").className = "";
       $("content").innerHTML = `<div class="row" style="justify-content:space-between;margin-top:2vh">
           <div class="sub">${esc(q.title)} · question ${q.index + 1} / ${q.count}</div>
           <div class="sub">${q.answers} / ${live.present} answers</div></div>
         <div class="row" style="justify-content:space-between"><div class="pq" style="flex:1">${esc(q.question)}</div>
           ${q.phase === "question" ? `<div class="ptimer" id="ptimer"></div>` : `<div class="ptimer">${q.success_rate == null ? "" : q.success_rate + "%"}</div>`}</div>` +
-        q.options.map((o, i) => `<div class="popt ${q.phase === "reveal" && q.correct.includes(i) ? "correct" : ""}"><span class="lt">${LETTERS[i]}</span>
+        q.options.map((o, i) => `<div class="popt ${showCorrect && q.correct.includes(i) ? "correct" : ""}"><span class="lt">${LETTERS[i]}</span>
           <span>${esc(o)}</span>${q.phase === "reveal" ? `<span class="cnt">${q.distribution[i]}</span>` : ""}</div>`).join("") +
-        `<p class="sub">On the phones, the options are shown in a different order for each student.</p>`;
+        `<p class="sub">On the phones, the options are shown in a different order for each student.</p>` + lateQr;
       updateTimer();
       return;
     }

@@ -55,25 +55,37 @@
           <div><div class="label">Session code</div><div class="code" id="sessionCodeBig">------</div></div>
           <div class="muted" id="sessionUrl"></div>
         </div>
+        <div id="sessionOptions" class="row hidden" style="gap:18px;flex-wrap:wrap;margin-top:10px;align-items:center">
+          <label style="margin:0">Attendance code changes every
+            <select id="optWindow" style="width:auto"><option>15</option><option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select> s</label>
+          <label style="margin:0"><input type="checkbox" id="optLocation" style="width:auto"> Ask the phone position at check-in (flags students far from the room)</label>
+        </div>
       </div>
 
       <div id="liveArea" class="hidden">
         <div class="grid2">
           <div class="card">
-            <h3>What the phones show</h3>
-            <p>Now: <span class="badge info" id="activityBadge">-</span></p>
-            <div class="row">
+            <h3>Attendance</h3>
+            <div class="row" style="gap:8px;align-items:center">
+              <span class="badge" id="attBadge">closed</span>
               <button id="attOnBtn" class="green">Open attendance</button>
               <button id="attOffBtn" class="secondary">Close attendance</button>
-              <button id="idleBtn" class="secondary">Waiting screen</button>
               <button id="projectorBtn" class="orange">Open projector window</button>
+            </div>
+            <p class="muted">Attendance does not change what the phones show: a student who is not checked in sees the check-in screen first,
+              then the current activity. You can leave attendance open during a quiz for late students.</p>
+            <h3 style="margin-top:14px">What the phones show</h3>
+            <p>Now: <span class="badge info" id="activityBadge">-</span></p>
+            <div class="row">
+              <button id="idleBtn" class="secondary">Waiting screen</button>
+              <button id="showQuizBtn" class="secondary">Show the quiz</button>
             </div>
             <label for="linkSelect">Push a demo, a link or a file (manage them in the Resources tab)</label>
             <div class="row"><select id="linkSelect" style="max-width:320px"></select><button id="linkBtn" class="secondary">Push to phones</button>
               <button id="screenBtn" class="secondary hidden">Open its big-screen page</button></div>
           </div>
           <div class="card">
-            <h3>Attendance</h3>
+            <h3>Figures</h3>
             <div class="row" style="gap:30px">
               <div><div class="stat" id="presentCount">0</div><div class="muted">present</div></div>
               <div><div class="stat" id="classSize">0</div><div class="muted">in the class list</div></div>
@@ -89,27 +101,52 @@
             <button id="startBtn" class="green">Start</button>
             <button id="revealBtn">Close question and show answers</button>
             <button id="nextBtn" class="orange">Next question</button>
-            <button id="addTimeBtn" class="secondary">+15 s</button>
+            <span class="row" style="gap:4px;align-items:center"><button id="addTimeBtn" class="secondary">Add</button>
+              <select id="addTimeSel" style="width:auto"><option>15</option><option>30</option><option>60</option></select>
+              <span class="muted">s to this question</span></span>
             <button id="finishBtn" class="red">Finish quiz</button>
           </div>
           <div class="row" style="margin-top:8px">
             <label style="margin:0"><input type="checkbox" id="autoMode" style="width:auto"> Automatic mode: close each question when the time is over, then go to the next one after <span id="autoDelay"></span> s</label>
           </div>
+          <div id="lockedBox" class="locked-alert hidden">
+            <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
+            <div id="lockedList"></div>
+          </div>
           <div id="quizLive" class="grid2" style="margin-top:14px"></div>
-          <details style="margin-top:14px">
+          <details style="margin-top:14px" id="quizCreate">
             <summary><strong>Create a quiz for this session</strong></summary>
-            <div class="row" style="margin-top:10px">
-              <input id="quizTitle" placeholder="Quiz title" style="max-width:260px">
-              <input id="quizFilter" placeholder="Filter: module or chapter" style="max-width:220px">
-              <button id="createQuizBtn" class="secondary">Create with the ticked questions</button>
+            <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
+              <input id="quizTitle" placeholder="Quiz title" style="max-width:240px">
+              <label style="margin:0">Answers shown to students
+                <select id="quizReveal" style="width:auto">
+                  <option value="each">after each question</option>
+                  <option value="end">only at the end (review)</option>
+                  <option value="never">never (only the mark)</option>
+                </select></label>
+              <label style="margin:0">Time per question
+                <select id="quizTime" style="width:auto"><option value="">as in the bank</option><option>10</option><option>15</option><option>20</option>
+                  <option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select></label>
+              <label style="margin:0"><input type="checkbox" id="quizShuffle" style="width:auto"> Mix the order of the questions</label>
             </div>
-            <div id="quizQuestionList" style="max-height:320px;overflow:auto;margin-top:10px"></div>
+            <div class="card" style="margin-top:10px;background:#F5F8FB">
+              <strong>Random draw</strong> <span class="muted">e.g. 2 questions from chapter S1, then 2 from S2...</span>
+              <div id="drawRules" style="margin-top:8px"></div>
+              <div class="row" style="gap:8px;margin-top:6px">
+                <button id="addRuleBtn" class="small secondary">+ Add a rule</button>
+                <button id="drawBtn" class="small">Draw the questions</button>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="pickModule" style="width:auto"></select>
+              <select id="pickChapter" style="width:auto"></select>
+              <input id="quizFilter" placeholder="Search in the text" style="max-width:220px">
+              <span class="muted"><strong id="pickCount">0</strong> question(s) ticked</span>
+              <button id="clearPickBtn" class="small secondary">Untick all</button>
+              <button id="createQuizBtn" class="green">Create the quiz with the ticked questions</button>
+            </div>
+            <div id="quizQuestionList" style="max-height:340px;overflow:auto;margin-top:10px"></div>
           </details>
-        </div>
-
-        <div class="card">
-          <h3>Locked students <span class="muted">(left the quiz screen)</span></h3>
-          <div id="lockedList" class="muted">None.</div>
         </div>
 
         <div class="card">
@@ -141,6 +178,15 @@
           <button id="importStudentsBtn" style="margin-top:10px">Import these students</button>
         </div>
       </div>
+      <div class="card">
+        <h3>Add a student by hand</h3>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input id="addMat" placeholder="Matricule" style="max-width:180px">
+          <input id="addLast" placeholder="Last name" style="max-width:200px">
+          <input id="addFirst" placeholder="First name" style="max-width:200px">
+          <button id="addStudentBtn">Add</button>
+        </div>
+      </div>
       <div class="card"><div id="studentsTable"></div></div>
     </section>
 
@@ -164,6 +210,18 @@
           <label style="margin:0">Show module <select id="qModuleFilter" style="width:auto"></select></label>
           <button id="qSelectAllBtn" class="small secondary">Tick all shown</button>
           <button id="qDeleteBtn" class="small red">Delete ticked questions</button>
+        </div>
+        <div id="questionEditor" class="card hidden" style="margin-top:10px;background:#FFF8F1;border:2px solid #E8741E">
+          <h3>Edit the question <span class="muted" id="qeRef"></span></h3>
+          <label>Chapter</label><input id="qeChapter" style="max-width:200px">
+          <label>Question</label><textarea id="qeText" rows="3"></textarea>
+          <div id="qeOptions"></div>
+          <div class="row" style="gap:12px;margin-top:8px;flex-wrap:wrap">
+            <label style="margin:0">Points <input id="qePoints" type="number" step="0.25" min="0.25" style="width:90px"></label>
+            <label style="margin:0">Time (s) <input id="qeTime" type="number" min="5" max="600" style="width:90px"></label>
+            <button id="qeSave" class="green">Save</button><button id="qeCancel" class="secondary">Cancel</button>
+          </div>
+          <p class="muted">Tick the correct option(s). Leave an option empty to remove it (2 to 5 options).</p>
         </div>
         <div id="questionsTable" style="margin-top:10px"></div>
       </div>
