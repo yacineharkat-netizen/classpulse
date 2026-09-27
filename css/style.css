@@ -84,3 +84,14 @@ th { color: var(--muted); font-weight: 600; }
 .projector .popt .cnt { margin-left: auto; font-weight: 800; }
 .projector .ptimer { font-size: 9vh; font-weight: 800; color: var(--orange); }
 .projector .center { display: flex; gap: 5vw; align-items: center; justify-content: center; flex: 1; }
+
+/* ---------- teacher: current class banner and session code ---------- */
+.class-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; margin-bottom: 16px;
+  border-radius: 12px; background: var(--class-bg, var(--ice)); border-left: 8px solid var(--class-color, var(--navy)); font-size: 17px; }
+.class-banner .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--class-color, var(--navy)); }
+.class-banner .note { color: var(--muted); font-size: 14px; }
+#classSelect { border: 3px solid var(--class-color, var(--ice2)); font-weight: 700; }
+.session-code { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-top: 12px; padding: 12px 16px;
+  border-radius: 12px; background: var(--ice); }
+.session-code .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+.session-code .code { font-size: 38px; font-weight: 800; letter-spacing: 6px; color: var(--navy); font-family: ui-monospace, Consolas, monospace; }
