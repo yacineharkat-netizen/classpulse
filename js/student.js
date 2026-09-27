@@ -1,4 +1,5 @@
 // ClassPulse - student page.
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "4"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -232,12 +233,23 @@ function renderQuiz(live, who) {
     return;
   }
   if (armedQuiz !== q.quiz_id) {
-    live.innerHTML = who + head + `<div class="card" style="text-align:center">
-      <div style="font-size:48px">📝</div><h2>The quiz is starting</h2>
-      <p><strong>Rule:</strong> once inside, do not leave this screen (no other app, no other tab, no notification opened).
-      If you leave, you are locked and only the teacher can unlock you.</p>
-      <button id="enterBtn" class="orange" style="width:100%;font-size:20px">Enter the quiz</button></div>`;
+    // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
+    live.innerHTML = who + head + `<div class="card">
+      <div style="font-size:42px;text-align:center">📝</div><h2 style="text-align:center">Read the rules</h2>
+      <ol class="rules">
+        <li>${q.kind === "test" ? "This is a graded test." : q.kind === "tp" ? "This is the test of the lab session (TP)." : "This quiz counts in your course mark."}</li>
+        <li><strong>A question may have one or more correct answers.</strong> Tick every answer you think is correct.</li>
+        <li><strong>Each wrong tick cancels one correct tick.</strong> A question never gives negative points; ticking everything gives 0.</li>
+        <li>You can change your answer until the time of the question is over.</li>
+        <li><strong>Do not leave this screen</strong> (no other app, no other tab, no notification opened). If you leave, you are locked and only the teacher can unlock you.</li>
+        <li>Your name and student number are printed on the questions: any photo or screenshot shows who took it.</li>
+      </ol>
+      <button id="enterBtn" class="orange" style="width:100%;font-size:19px">I have read the rules, I am ready</button></div>`;
     $("enterBtn").onclick = enterQuiz;
+    return;
+  }
+  if (q.phase === "lobby") {
+    live.innerHTML = who + head + bigStatus("✅", "You are ready", "The first question will appear when the teacher starts the quiz. Stay on this screen.");
     return;
   }
 
@@ -247,7 +259,7 @@ function renderQuiz(live, who) {
   const answered = q.my_answer && q.my_answer.length > 0;
   let html = who + head;
   if (!reveal) html += `<div class="row" style="justify-content:space-between"><span class="timer" id="timer"></span>` +
-    `<span class="answer-kind ${q.multiple ? "multi" : "single"}">${q.multiple ? "One or more correct answers: tick all" : "Only one correct answer"}</span></div><div class="progress"><div id="bar"></div></div>`;
+    `<span class="answer-kind ${q.multiple === false ? "single" : "multi"}">${q.multiple === false ? "Only one correct answer" : q.multiple ? "Several correct answers: tick all" : "One or more answers may be correct"}</span></div><div class="progress"><div id="bar"></div></div>`;
   html += `<div class="protected"><div class="question-text">${esc(q.question)}</div>`;
   q.options.forEach((opt, pos) => {
     let cls = "option";
@@ -271,7 +283,7 @@ function renderQuiz(live, who) {
   }
   live.innerHTML = html;
   if (!reveal) {
-    live.querySelectorAll(".option").forEach((b) => b.onclick = () => toggleOption(Number(b.dataset.pos), q.multiple));
+    live.querySelectorAll(".option").forEach((b) => b.onclick = () => toggleOption(Number(b.dataset.pos), q.multiple !== false));
     $("sendBtn").onclick = sendAnswer;
     tick();
   }
@@ -321,6 +333,7 @@ function watermark() {
 // ------------------------------------------------------------------ anti-leave guard
 async function enterQuiz() {
   armedQuiz = state.quiz.quiz_id;
+  rpc("s_quiz_ready", { p_device: deviceToken, p_code: sessionCode, p_quiz: armedQuiz }).catch(() => {});
   const el = document.documentElement;
   // Full screen exists on Android/desktop browsers, not on iPhone: we still guard with visibility.
   if (el.requestFullscreen) { try { await el.requestFullscreen({ navigationUI: "hide" }); } catch (e) { /* refused: ignore */ } }

@@ -1,4 +1,5 @@
 // ClassPulse - teacher console.
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "4"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -143,7 +144,8 @@ async function selectSession(id) {
   sessionCode = $("sessionSelect").selectedOptions[0].dataset.code;
   const url = siteUrl("student.html") + "?s=" + sessionCode;
   $("sessionCodeBig").textContent = sessionCode;
-  $("sessionUrl").innerHTML = `Student address: <a href="${url}" target="_blank">${url}</a><br>Tip: click <strong>Open projector window</strong> to show the QR code.`;
+  $("sessionUrl").innerHTML = `Student address: <a href="${url}" target="_blank">${url}</a><br>The session code identifies the session and never changes. The projector also shows an <strong>attendance code</strong>
+    that changes every few seconds (it is inside the QR code): it proves that the student is in the room when he checks in.`;
   channel = liveChannel(sessionCode, () => {});
   await loadQuizzes();
   await refreshLive();
@@ -205,7 +207,7 @@ $("screenBtn").onclick = () => {
   if (c && c.screen) window.open(new URL(c.screen, location.href).href, "classpulse_demo_screen");
 };
 
-$("linkBtn").onclick = async () => {
+$("linkBtn").onclick = () => {
   const v = $("linkSelect").value;
   let link = pushChoices()[v];
   if (v === "custom") {
@@ -213,7 +215,12 @@ $("linkBtn").onclick = async () => {
     if (!url) return;
     link = { label: "Open the link", url };
   }
+  pushLink(link);
+};
+
+async function pushLink(link) {
   if (!link) return;
+  if (!sessionId) { toast("Choose or create a session first (Live session tab).", "error"); return; }
   if (questionRunning() && !confirm("A question is running. The phones will leave the quiz (you can come back with 'Show the quiz'). Continue?")) return;
   let url = link.url;
   if (link.path) {
@@ -225,7 +232,7 @@ $("linkBtn").onclick = async () => {
     url = new URL(url, location.href).href; // "demos/..." becomes a full address
   }
   act("t_set_activity", { p_session: sessionId, p_activity: "link", p_link_url: url, p_link_label: link.label }, "Sent to the phones.");
-};
+}
 
 // ------------------------------------------------------------------ live figures
 async function refreshLive() {
@@ -259,6 +266,9 @@ function renderQuizLive() {
       <p>${esc(q.question)}</p><p class="muted">Answers shown to students: ${{ each: "after each question", end: "at the end", never: "never" }[q.reveal_mode] || ""}</p><div class="bars">` +
       q.options.map((o, i) => `<div class="bar"><span class="l">${LETTERS[i]}</span><div class="b ${q.correct.includes(i) ? "ok" : ""}" style="width:${Math.max(4, (200 * q.distribution[i]) / max)}px"></div>
         <span>${q.distribution[i]}</span><span class="muted">${esc(o)}</span></div>`).join("") + `</div></div>`;
+  } else if (q.phase === "lobby") {
+    left = `<div><p><strong>${esc(q.title)}</strong> · ${KIND_LABEL[q.kind] || ""}</p><p>The phones show the rules. No timer runs.</p>
+      <p><span class="stat">${q.ready}</span> / ${live.present} ready</p><p class="muted">When enough students are ready, click <strong>2. Start question 1</strong>.</p></div>`;
   } else {
     left = `<div><p><strong>${esc(q.title)}</strong></p><p>${q.phase === "finished" ? "Finished." : "Not started."}</p></div>`;
   }
@@ -289,13 +299,15 @@ function autoMode() {
 async function loadQuizzes() {
   const quizzes = await rpc("t_list_quizzes", { p_session: sessionId });
   const modeLabel = { each: "answers after each question", end: "answers at the end", never: "answers never shown" };
-  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">${esc(q.title)} (${q.count} q., ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
+  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">[${KIND_LABEL[q.kind] || "Quiz"}] ${esc(q.title)} (${q.count} q., ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
     `<option value="">- create a quiz below -</option>`;
   allQuestions = await rpc("t_list_questions", { p_module: null });
   fillPickFilters();
   renderQuestionPicker();
   if ($("drawRules").children.length === 0) addDrawRule();
 }
+
+const KIND_LABEL = { quiz: "Course quiz", test: "Test", tp: "TP test" };
 
 // ----- question picker (tick by hand)
 let picked = [];              // ticked question ids, in the order they were chosen
@@ -372,7 +384,8 @@ $("createQuizBtn").onclick = async () => {
   const ids = $("quizShuffle").checked ? shuffled(picked) : picked;
   try {
     await rpc("t_create_quiz", { p_session: sessionId, p_title: $("quizTitle").value || "Quiz", p_question_ids: ids,
-      p_reveal_mode: $("quizReveal").value, p_time_override: $("quizTime").value ? Number($("quizTime").value) : null });
+      p_reveal_mode: $("quizReveal").value, p_time_override: $("quizTime").value ? Number($("quizTime").value) : null,
+      p_kind: $("quizKind").value, p_show_answer_count: $("quizShowCount").checked });
     toast(`Quiz created with ${ids.length} question(s).`, "ok");
     picked = [];
     await loadQuizzes();
@@ -381,10 +394,19 @@ $("createQuizBtn").onclick = async () => {
 };
 
 const currentQuiz = () => (live && live.quiz ? live.quiz.id : $("quizSelect").value);
-$("startBtn").onclick = () => {
+$("openBtn").onclick = () => {
   if (!$("quizSelect").value) { toast("Create or choose a quiz first.", "error"); return; }
-  if (!confirm("Start this quiz now? The phones will show the first question.")) return;
-  act("t_quiz_start", { p_quiz: $("quizSelect").value });
+  if (questionRunning() && !confirm("A question is running. Leave it and show the rules of the selected quiz?")) return;
+  act("t_quiz_open", { p_quiz: $("quizSelect").value }, "The phones show the rules. No timer runs yet.");
+};
+$("startBtn").onclick = () => {
+  const q = live && live.quiz;
+  const id = q && q.phase === "lobby" ? q.id : $("quizSelect").value;
+  if (!id) { toast("Create or choose a quiz first.", "error"); return; }
+  const msg = q && q.phase === "lobby" ? `Start question 1 now? ${q.ready} student(s) ready out of ${live.present} present.`
+    : "Start this quiz now WITHOUT showing the rules first?";
+  if (!confirm(msg)) return;
+  act("t_quiz_start", { p_quiz: id });
 };
 $("revealBtn").onclick = () => act("t_quiz_reveal", { p_quiz: currentQuiz() });
 $("nextBtn").onclick = () => act("t_quiz_next", { p_quiz: currentQuiz() });
@@ -562,6 +584,22 @@ function renderQuestionsTable() {
 
 $("qModuleFilter").onchange = renderQuestionsTable;
 
+// Backup of the question bank: one sheet per module, same columns as the import template (re-importable).
+$("exportBankBtn").onclick = async () => {
+  const all = await rpc("t_list_questions", { p_module: null });
+  if (all.length === 0) { toast("The bank is empty.", "error"); return; }
+  const wb = XLSX.utils.book_new();
+  [...new Set(all.map((q) => q.module))].sort().forEach((m) => {
+    const rows = [["ref", "chapter", "question", "A", "B", "C", "D", "E", "correct", "points", "time_s"]];
+    all.filter((q) => q.module === m).forEach((q) => rows.push([q.ref, q.chapter, q.text,
+      ...[0, 1, 2, 3, 4].map((i) => q.options[i] || ""), q.correct.map((c) => LETTERS[c]).join(","), Number(q.points), q.time_limit]));
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [8, 10, 60, 28, 28, 28, 28, 28, 8, 7, 7].map((w) => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, (m || "no module").replace(/[\\/?*\[\]:]/g, "_").slice(0, 31));
+  });
+  XLSX.writeFile(wb, `ClassPulse_question_bank_${new Date().toISOString().slice(0, 10)}.xlsx`);
+};
+
 // ----- editing one question
 let editingQuestion = null;
 $("questionsTable").addEventListener("click", (ev) => {
@@ -635,6 +673,7 @@ let myResources = [];
 async function loadResources() {
   try { myResources = await rpc("t_list_resources"); } catch (e) { myResources = []; }
   fillPushList();
+  renderDemos();
   if (!$("resourcesTable")) return;
   $("resourcesTable").innerHTML = `<p class="muted">${myResources.length} resource(s)</p><table><tr><th>Module</th><th>Title</th><th>Type</th><th></th></tr>` +
     myResources.map((r) => `<tr><td>${esc(r.module)}</td><td>${esc(r.title)}</td>
@@ -653,6 +692,20 @@ async function loadResources() {
     const { data, error } = await db.storage.from(BUCKET).createSignedUrl(r.storage_path, 600);
     if (error) { toast(error.message, "error"); return; }
     window.open(data.signedUrl, "_blank");
+  });
+}
+
+function renderDemos() {
+  if (!$("demosTable")) return;
+  const full = (u) => new URL(u, location.href).href;
+  $("demosTable").innerHTML = CONFIG.links.length === 0 ? `<p class="muted">No demo declared in config.js.</p>` :
+    `<table><tr><th>Demo</th><th></th></tr>` + CONFIG.links.map((l, i) => `<tr><td><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.url)}</span></td>
+      <td style="white-space:nowrap">${l.screen ? `<a href="${esc(full(l.screen))}" target="classpulse_demo_screen"><button class="small orange">Open the big screen</button></a> ` : ""}
+        <a href="${esc(full(l.url))}" target="_blank" rel="noopener"><button class="small secondary">Open the phone page</button></a>
+        <button class="small green" data-push-demo="${i}">Push to phones</button></td></tr>`).join("") + `</table>`;
+  $("demosTable").querySelectorAll("[data-push-demo]").forEach((b) => b.onclick = () => {
+    const l = CONFIG.links[Number(b.dataset.pushDemo)];
+    pushLink({ label: l.label, url: l.url });
   });
 }
 
