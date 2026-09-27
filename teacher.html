@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassPulse - teacher</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginView" class="student hidden" style="margin-top:8vh">
+  <div class="card">
+    <h2>Teacher login</h2>
+    <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+    <label for="password">Password</label><input id="password" type="password" autocomplete="current-password">
+    <button id="loginBtn" style="margin-top:14px;width:100%">Log in</button>
+  </div>
+</div>
+
+<div id="appView" class="teacher hidden">
+  <nav>
+    <div class="brand">ClassPulse</div>
+    <label for="classSelect" style="color:#C9DCEB">Class</label>
+    <select id="classSelect"></select>
+    <button data-tab="live" class="active">▶ Live session</button>
+    <button data-tab="students">👥 Students</button>
+    <button data-tab="questions">❓ Questions</button>
+    <button data-tab="export">⬇ Export results</button>
+    <button data-tab="classes">＋ Classes</button>
+    <button id="logoutBtn" style="margin-top:30px">Log out</button>
+  </nav>
+
+  <main>
+    <!-- ===================== LIVE ===================== -->
+    <section id="tab-live">
+      <div class="card">
+        <h2>Session</h2>
+        <div class="row">
+          <select id="sessionSelect" style="max-width:420px"></select>
+          <span class="muted">or create:</span>
+          <input id="newSessionTitle" placeholder="Title, e.g. S1 - Discover IoT" style="max-width:260px">
+          <input id="newSessionDate" type="date" style="max-width:170px">
+          <button id="createSessionBtn" class="secondary">Create</button>
+        </div>
+        <p class="muted" id="sessionUrl"></p>
+      </div>
+
+      <div id="liveArea" class="hidden">
+        <div class="grid2">
+          <div class="card">
+            <h3>What the phones show</h3>
+            <p>Now: <span class="badge info" id="activityBadge">-</span></p>
+            <div class="row">
+              <button id="attOnBtn" class="green">Open attendance</button>
+              <button id="attOffBtn" class="secondary">Close attendance</button>
+              <button id="idleBtn" class="secondary">Waiting screen</button>
+              <button id="projectorBtn" class="orange">Open projector window</button>
+            </div>
+            <label for="linkSelect">Push a link (demo, document)</label>
+            <div class="row"><select id="linkSelect" style="max-width:320px"></select><button id="linkBtn" class="secondary">Push</button></div>
+          </div>
+          <div class="card">
+            <h3>Attendance</h3>
+            <div class="row" style="gap:30px">
+              <div><div class="stat" id="presentCount">0</div><div class="muted">present</div></div>
+              <div><div class="stat" id="classSize">0</div><div class="muted">in the class list</div></div>
+              <div><div class="stat" id="attState">-</div><div class="muted">attendance</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Quiz</h3>
+          <div class="row">
+            <select id="quizSelect" style="max-width:380px"></select>
+            <button id="startBtn" class="green">Start</button>
+            <button id="revealBtn">Close question and show answers</button>
+            <button id="nextBtn" class="orange">Next question</button>
+            <button id="addTimeBtn" class="secondary">+15 s</button>
+            <button id="finishBtn" class="red">Finish quiz</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label style="margin:0"><input type="checkbox" id="autoMode" style="width:auto"> Automatic mode: close each question when the time is over, then go to the next one after <span id="autoDelay"></span> s</label>
+          </div>
+          <div id="quizLive" class="grid2" style="margin-top:14px"></div>
+          <details style="margin-top:14px">
+            <summary><strong>Create a quiz for this session</strong></summary>
+            <div class="row" style="margin-top:10px">
+              <input id="quizTitle" placeholder="Quiz title" style="max-width:260px">
+              <input id="quizFilter" placeholder="Filter: module or chapter" style="max-width:220px">
+              <button id="createQuizBtn" class="secondary">Create with the ticked questions</button>
+            </div>
+            <div id="quizQuestionList" style="max-height:320px;overflow:auto;margin-top:10px"></div>
+          </details>
+        </div>
+
+        <div class="card">
+          <h3>Locked students <span class="muted">(left the quiz screen)</span></h3>
+          <div id="lockedList" class="muted">None.</div>
+        </div>
+
+        <div class="card">
+          <h3>Attendance list</h3>
+          <div id="attendanceTable"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STUDENTS ===================== -->
+    <section id="tab-students" class="hidden">
+      <div class="card">
+        <h2>Official student list</h2>
+        <p class="muted">Excel or CSV file with the columns <strong>matricule</strong>, <strong>last_name</strong> (or Nom), <strong>first_name</strong> (or Prénom).
+          Students who already registered themselves are matched by their student number. <a href="templates/students_template.xlsx">Template</a></p>
+        <div class="row"><input type="file" id="studentsFile" accept=".xlsx,.xls,.csv" style="max-width:360px"><button id="importStudentsBtn">Import</button></div>
+      </div>
+      <div class="card"><div id="studentsTable"></div></div>
+    </section>
+
+    <!-- ===================== QUESTIONS ===================== -->
+    <section id="tab-questions" class="hidden">
+      <div class="card">
+        <h2>Question bank</h2>
+        <p class="muted">Fill the <a href="templates/questions_template.xlsx">Excel template</a> (one question per row, up to 5 options A-E,
+          correct answers as letters, e.g. <code>C</code> or <code>A,D</code>). Importing a row with an existing <em>ref</em> replaces the question.</p>
+        <div class="row">
+          <input id="moduleName" placeholder="Module, e.g. IoT" style="max-width:200px">
+          <input type="file" id="questionsFile" accept=".xlsx,.xls,.csv" style="max-width:360px">
+          <button id="importQuestionsBtn">Import</button>
+        </div>
+      </div>
+      <div class="card"><div id="questionsTable"></div></div>
+    </section>
+
+    <!-- ===================== EXPORT ===================== -->
+    <section id="tab-export" class="hidden">
+      <div class="card">
+        <h2>Export results</h2>
+        <p class="muted">One Excel file for the selected class: attendance for every session, quiz marks out of 20, average without the
+          <span id="dropLowest"></span> lowest marks, statistics per question, and the list of students who left a quiz screen.</p>
+        <button id="exportBtn" class="green">Download the Excel file</button>
+      </div>
+    </section>
+
+    <!-- ===================== CLASSES ===================== -->
+    <section id="tab-classes" class="hidden">
+      <div class="card">
+        <h2>New class</h2>
+        <div class="row">
+          <input id="className" placeholder="e.g. IoT - 4th year engineering" style="max-width:320px">
+          <input id="classYear" placeholder="2026-2027" style="max-width:160px">
+          <button id="createClassBtn">Create</button>
+        </div>
+      </div>
+      <div class="card"><div id="classesTable"></div></div>
+    </section>
+  </main>
+</div>
+
+<script src="lib/supabase.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js"></script>
+<script src="js/excel.js"></script>
+<script src="js/teacher.js"></script>
+</body>
+</html>

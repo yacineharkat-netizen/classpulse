@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassPulse - projector</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="projector" id="screen">
+  <div class="row" style="justify-content:space-between">
+    <div class="sub" id="topLeft"></div>
+    <div class="sub" id="topRight">Press F for full screen</div>
+  </div>
+  <div id="content" class="center"></div>
+
+<script src="lib/supabase.js"></script>
+<script src="lib/qrcode.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js"></script>
+<script>
+  // Projector window: opened from the teacher console (same browser, already logged in).
+  const sessionId = new URLSearchParams(location.search).get("session");
+  let live = null;
+  let att = null;          // current attendance code
+  let lastKey = "";
+  let localDeadline = 0;
+
+  function qrSvg(text, cell) {
+    const qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize: cell || 8, margin: 0 });
+  }
+
+  async function refresh() {
+    try { live = await rpc("t_live", { p_session: sessionId }); } catch (e) { $("content").innerHTML = `<h1>${esc(e.message)}</h1>`; return; }
+    if (live.quiz && live.quiz.phase === "question") localDeadline = Date.now() + live.quiz.remaining_ms;
+    $("topLeft").textContent = live.session.title;
+    render();
+  }
+
+  async function refreshAttendanceCode() {
+    try { att = await rpc("t_attendance_code", { p_session: sessionId }); } catch (e) { att = null; }
+    render(true);
+    // Next refresh right after the code changes on the server.
+    setTimeout(refreshAttendanceCode, att ? Math.max(500, att.next_change_ms + 300) : 5000);
+  }
+
+  function render(force) {
+    if (!live) return;
+    const s = live.session, q = live.quiz;
+    const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution]]);
+    if (key === lastKey && !force) { updateTimer(); return; }
+    lastKey = key;
+    const joinUrl = siteUrl("student.html") + "?s=" + s.code;
+
+    if (s.activity === "attendance" || (s.attendance_open && !showQuiz && s.activity !== "link")) {
+      const url = att && att.open ? joinUrl + "&a=" + att.code : joinUrl;
+      $("content").innerHTML = `<div class="qr">${qrSvg(url, 8)}</div>
+        <div><h1>Scan to check in</h1>
+        <div class="sub">The code changes every 15 seconds</div>
+        <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> / ${live.class_size || "?"} present</span></div>
+        <p class="sub" style="margin-top:4vh">No camera? Open <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong><br>
+        and type the code <strong style="font-size:5vh;color:#E8741E;letter-spacing:.3vw">${att && att.open ? att.code : "-"}</strong></p></div>`;
+      return;
+    }
+    if (showQuiz && (q.phase === "question" || q.phase === "reveal")) {
+      const max = Math.max(1, ...q.distribution);
+      $("content").className = "";
+      $("content").innerHTML = `<div class="row" style="justify-content:space-between;margin-top:2vh">
+          <div class="sub">${esc(q.title)} · question ${q.index + 1} / ${q.count}</div>
+          <div class="sub">${q.answers} / ${live.present} answers</div></div>
+        <div class="row" style="justify-content:space-between"><div class="pq" style="flex:1">${esc(q.question)}</div>
+          ${q.phase === "question" ? `<div class="ptimer" id="ptimer"></div>` : `<div class="ptimer">${q.success_rate == null ? "" : q.success_rate + "%"}</div>`}</div>` +
+        q.options.map((o, i) => `<div class="popt ${q.phase === "reveal" && q.correct.includes(i) ? "correct" : ""}"><span class="lt">${LETTERS[i]}</span>
+          <span>${esc(o)}</span>${q.phase === "reveal" ? `<span class="cnt">${q.distribution[i]}</span>` : ""}</div>`).join("") +
+        `<p class="sub">On the phones, the options are shown in a different order for each student.</p>`;
+      updateTimer();
+      return;
+    }
+    $("content").className = "center";
+    if (showQuiz && q.phase === "finished") {
+      $("content").innerHTML = `<div style="text-align:center"><h1>Quiz finished</h1><div class="sub">Your mark is on your phone.</div></div>`;
+      return;
+    }
+    if (s.activity === "link" && s.link_url) {
+      $("content").innerHTML = `<div class="qr">${qrSvg(s.link_url, 8)}</div><div><h1>${esc(s.link_label || "")}</h1>
+        <div class="sub">The link is on your phone, or scan this code.</div></div>`;
+      return;
+    }
+    $("content").innerHTML = `<div class="qr">${qrSvg(joinUrl, 8)}</div><div><h1>${esc(live.session.title)}</h1>
+      <div class="sub">Join: <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong></div>
+      <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
+  }
+
+  function updateTimer() {
+    const t = $("ptimer");
+    if (t) t.textContent = formatSeconds(localDeadline - Date.now());
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "f" && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  });
+
+  (async () => {
+    const { data } = await db.auth.getSession();
+    if (!data.session) { $("content").innerHTML = "<h1>Open this window from the teacher console.</h1>"; return; }
+    await refresh();
+    refreshAttendanceCode();
+    setInterval(refresh, 1000);
+    setInterval(updateTimer, 250);
+  })();
+</script>
+</body>
+</html>
