@@ -431,6 +431,7 @@ function autoMode() {
 // ------------------------------------------------------------------ quiz controls
 async function loadQuizzes() {
   const quizzes = await rpc("t_list_quizzes", { p_session: sessionId });
+  quizList = quizzes;
   const modeLabel = { each: "answers after each question", end: "answers at the end", never: "answers never shown" };
   $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">[${KIND_LABEL[q.kind] || "Quiz"}${q.graded ? "" : ", not graded"}] ${esc(q.title)} (${q.per_student ? q.count + " q. per student from " + q.pool : q.count + " q."}, /${Number(q.total_points)}, ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
     `<option value="">- create a quiz below -</option>`;
@@ -553,11 +554,21 @@ $("createQuizBtn").onclick = async () => {
   } catch (e) { toast(e.message, "error"); }
 };
 
+let quizList = [];
 const currentQuiz = () => (live && live.quiz ? live.quiz.id : $("quizSelect").value);
-$("openBtn").onclick = () => {
+$("openBtn").onclick = async () => {
   if (!$("quizSelect").value) { toast("Create or choose a quiz first.", "error"); return; }
+  try { quizList = await rpc("t_list_quizzes", { p_session: sessionId }); } catch (e) { /* keep the last list */ }
+  const chosen = quizList.find((x) => x.id === $("quizSelect").value);
+  const inLobby = live && live.quiz && live.quiz.id === $("quizSelect").value && live.quiz.phase === "lobby";
+  if (chosen && chosen.status === "finished") { toast("This quiz is finished: its rules cannot be shown again. Create a new quiz.", "error"); return; }
+  if (chosen && chosen.status === "running" && !inLobby) {
+    toast("This quiz has already started: the rules step is over. Use 'Show the quiz' to bring the phones back, or create a new quiz.", "error");
+    return;
+  }
   if (questionRunning() && !confirm("A question is running. Leave it and show the rules of the selected quiz?")) return;
-  act("t_quiz_open", { p_quiz: $("quizSelect").value }, "The phones show the rules. No timer runs yet.");
+  act("t_quiz_open", { p_quiz: $("quizSelect").value },
+    "Rules shown: phones update within 3 seconds. Wait until most students are ready (count below), then click 2. Start question 1.");
 };
 $("startBtn").onclick = () => {
   const q = live && live.quiz;

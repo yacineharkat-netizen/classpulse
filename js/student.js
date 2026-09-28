@@ -102,7 +102,9 @@ function showCheckinResult(result) {
 }
 
 function pollLoop() {
-  const delay = channel && channel.connected ? CONFIG.studentSafetyPollMs : CONFIG.studentPollMs;
+  // Always poll every few seconds: the live channel (instant update) is not reliable on every network,
+  // and a phone that misses "show the rules" would only see the quiz once the timer is already running.
+  const delay = Math.min(CONFIG.studentPollMs || 4000, 3000);
   setTimeout(async () => { await fetchState(); pollLoop(); }, delay);
 }
 
@@ -259,6 +261,7 @@ function renderQuiz(live, who) {
     // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
     live.innerHTML = who + head + `<div class="card">
       <div style="font-size:42px;text-align:center">📝</div><h2 style="text-align:center">Read the rules</h2>
+      ${q.phase === "question" || q.phase === "reveal" ? `<p class="far" style="text-align:center">The quiz has already started: tap the button below now to join the current question.</p>` : ""}
       <ol class="rules">${rulesFor(q)}
         <li>You can change your answer until the time of the question is over.</li>
         <li><strong>Do not leave this screen</strong> (no other app, no other tab, no notification opened). If you leave, you are locked and only the teacher can unlock you.</li>
