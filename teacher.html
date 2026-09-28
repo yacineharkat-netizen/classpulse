@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="5">
+<html lang="en" data-version="6">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=5">
+<link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
 
@@ -27,7 +27,8 @@
     <button data-tab="sessions">📅 Sessions</button>
     <button data-tab="students">👥 Students</button>
     <button data-tab="questions">❓ Questions</button>
-    <button data-tab="resources">🎬 Demos &amp; resources</button>
+    <button data-tab="demos">🎬 Demos</button>
+    <button data-tab="resources">📎 Resources</button>
     <button data-tab="export">⬇ Export results</button>
     <button data-tab="classes">＋ Classes</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
@@ -267,13 +268,41 @@
     </section>
 
     <!-- ===================== RESOURCES ===================== -->
-    <section id="tab-resources" class="hidden">
+    <section id="tab-demos" class="hidden">
       <div class="card">
-        <h2>Demos of the site</h2>
-        <p class="muted">Programmed demos stored on the site (folder <code>demos/</code>, declared in <code>config.js</code>). Everybody can use them.
-          To send one to the phones, a session must be chosen in the Live session tab.</p>
-        <div id="demosTable"></div>
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+          <h2 style="margin:0;margin-right:auto">Demos</h2>
+          <select id="demoModule" style="width:auto"></select>
+          <input id="demoSearch" placeholder="🔍 Search a demo" style="max-width:260px">
+          <button id="demoPublishToggle" class="orange">＋ Publish a demo</button>
+        </div>
+        <p class="muted">Demos of the site, yours, and those your colleagues share. To send one to the phones, choose a session in the Live session tab first.</p>
+        <div id="demoPublish" class="card hidden" style="background:#FFF8F1;border:2px solid #E8741E">
+          <h3>Publish a demo (a folder of web pages: HTML, JavaScript, CSS, images)</h3>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <input id="dpTitle" placeholder="Title" style="max-width:280px">
+            <input id="dpModule" list="demoModuleList" placeholder="Module (e.g. IoT, Edge & Cloud)" style="max-width:220px">
+            <datalist id="demoModuleList"></datalist>
+          </div>
+          <input id="dpDescription" placeholder="What the demo shows (optional)" style="margin-top:8px">
+          <label>Folder of the demo</label>
+          <input type="file" id="dpFolder" webkitdirectory directory multiple style="max-width:420px">
+          <div id="dpFolderInfo" class="muted"></div>
+          <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:8px;align-items:center">
+            <label style="margin:0">Page for the phones <select id="dpEntry" style="width:auto"></select></label>
+            <label style="margin:0">Big-screen page <select id="dpScreen" style="width:auto"></select></label>
+            <label style="margin:0"><input type="checkbox" id="dpShared" checked style="width:auto"> Share with the other teachers</label>
+          </div>
+          <div class="row" style="gap:8px;margin-top:10px;align-items:center">
+            <button id="dpPublish" class="green">Publish</button> <span id="dpProgress" class="muted"></span>
+          </div>
+          <p class="muted">The demo is online at once, at an address of this site: no GitHub needed. Only web pages (they run in the browser); no server code (Python, PHP).</p>
+        </div>
+        <div id="demosList"></div>
       </div>
+    </section>
+
+    <section id="tab-resources" class="hidden">
       <div class="card">
         <h2>My resources</h2>
         <p class="muted">Links and files you can push to the phones from the Live session tab. They belong to you and are not shown to other teachers.
@@ -337,9 +366,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=5"></script>
-<script src="js/excel.js?v=5"></script>
-<script src="js/teacher.js?v=5"></script>
+<script src="js/common.js?v=6"></script>
+<script src="js/excel.js?v=6"></script>
+<script src="js/teacher.js?v=6"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

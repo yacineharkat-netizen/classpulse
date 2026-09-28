@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "5"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "6"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -62,6 +62,7 @@ async function showApp() {
   $("whoAmI").textContent = data && data.user ? data.user.email : "";
   await loadClasses();
   await loadResources();
+  await loadDemos();
 }
 
 // ------------------------------------------------------------------ navigation
@@ -71,7 +72,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     document.querySelectorAll("main section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab));
     activeTab = b.dataset.tab;
     updateBanner();
-    const loaders = { students: loadStudents, questions: loadQuestions, classes: loadClasses, resources: loadResources, sessions: loadSessions };
+    const loaders = { students: loadStudents, questions: loadQuestions, classes: loadClasses, resources: loadResources, sessions: loadSessions, demos: loadDemos };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
 });
@@ -228,7 +229,7 @@ $("optLocation").onchange = saveSessionOptions;
 $("projectorBtn").onclick = () => window.open("projector.html?session=" + sessionId, "classpulse_projector");
 // The push list: demos of the site (config.js) + the teacher's own resources + a free address.
 function pushChoices() {
-  const site = CONFIG.links.map((l) => ({ label: l.label, url: l.url, screen: l.screen, group: "Demos of the site" }));
+  const site = allDemos.map((d) => ({ label: d.title, url: d.url, screen: d.screen, group: "Demos" + (d.module ? " - " + d.module : "") }));
   const mine = myResources.map((r) => ({ label: r.title, url: r.url, path: r.storage_path, group: r.module ? "My resources - " + r.module : "My resources" }));
   return site.concat(mine);
 }
@@ -769,7 +770,6 @@ let myResources = [];
 async function loadResources() {
   try { myResources = await rpc("t_list_resources"); } catch (e) { myResources = []; }
   fillPushList();
-  renderDemos();
   if (!$("resourcesTable")) return;
   const f = norm($("resourceSearch").value);
   const shown = myResources.filter((r) => !f || norm(`${r.title} ${r.module} ${r.url || ""} ${r.mime || ""}`).includes(f));
@@ -793,18 +793,111 @@ async function loadResources() {
   });
 }
 
+// ------------------------------------------------------------------ demos
+// Two kinds: demos of the site (config.js, folder demos/) and demos published from this page
+// (files in the public Storage bucket "demos", served by the service worker at <site>/d/<prefix>/...).
+const DEMO_BUCKET = "demos";
+let allDemos = [];
+const siteBase = () => new URL("./", location.href).href;
+const demoPage = (prefix, page) => new URL(`d/${prefix}/${page}`, siteBase()).href;
+
+// The teacher's browser installs the service worker at once (the phones do it on their first visit).
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw-demos.js", { scope: "./d/" }).catch(() => {});
+
+async function loadDemos() {
+  let published = [];
+  try { published = await rpc("t_list_demos"); } catch (e) { published = []; }
+  allDemos = CONFIG.links.map((l) => ({ kind: "site", title: l.label, module: l.module || guessModule(l.label), description: l.description || "",
+      url: new URL(l.url, siteBase()).href, screen: l.screen ? new URL(l.screen, siteBase()).href : null }))
+    .concat(published.map((d) => ({ kind: d.mine ? "mine" : "colleague", id: d.id, title: d.title, module: d.module, description: d.description,
+      url: demoPage(d.prefix, d.entry), screen: d.screen ? demoPage(d.prefix, d.screen) : null, shared: d.shared, files: d.files })));
+  const modules = [...new Set(allDemos.map((d) => d.module || "Other"))].sort();
+  const keep = $("demoModule").value || localStorage.getItem("cp_demo_module") || "";
+  $("demoModule").innerHTML = `<option value="">All modules</option>` + modules.map((m) => `<option ${m === keep ? "selected" : ""}>${esc(m)}</option>`).join("");
+  $("demoModuleList").innerHTML = modules.map((m) => `<option value="${esc(m)}">`).join("");
+  renderDemos();
+  fillPushList();
+}
+function guessModule(label) { return /^IoT/i.test(label) ? "IoT" : /^Edge/i.test(label) ? "Edge & Cloud" : "Other"; }
+
 function renderDemos() {
-  if (!$("demosTable")) return;
-  const full = (u) => new URL(u, location.href).href;
-  $("demosTable").innerHTML = CONFIG.links.length === 0 ? `<p class="muted">No demo declared in config.js.</p>` :
-    `<table><tr><th>Demo</th><th></th></tr>` + CONFIG.links.map((l, i) => `<tr><td><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.url)}</span></td>
-      <td style="white-space:nowrap">${l.screen ? `<a href="${esc(full(l.screen))}" target="classpulse_demo_screen"><button class="small orange">Open the big screen</button></a> ` : ""}
-        <a href="${esc(full(l.url))}" target="_blank" rel="noopener"><button class="small secondary">Open the phone page</button></a>
-        <button class="small green" data-push-demo="${i}">Push to phones</button></td></tr>`).join("") + `</table>`;
-  $("demosTable").querySelectorAll("[data-push-demo]").forEach((b) => b.onclick = () => {
-    const l = CONFIG.links[Number(b.dataset.pushDemo)];
-    pushLink({ label: l.label, url: l.url });
-  });
+  const m = $("demoModule").value, f = norm($("demoSearch").value);
+  const list = allDemos.filter((d) => (!m || (d.module || "Other") === m) && (!f || norm(`${d.title} ${d.description} ${d.module}`).includes(f)));
+  const groups = [...new Set(list.map((d) => d.module || "Other"))].sort();
+  const badge = { site: '<span class="badge site">site</span>', mine: '<span class="badge mine">mine</span>', colleague: '<span class="badge colleague">colleague</span>' };
+  $("demosList").innerHTML = list.length === 0 ? `<p class="muted">No demo${f || m ? " for this search" : ""}.</p>` : groups.map((g) => `<div class="demo-group"><h3>${esc(g)}</h3><div class="demo-grid">` +
+    list.filter((d) => (d.module || "Other") === g).map((d) => `<div class="demo-card">
+      <div><strong>${esc(d.title)}</strong> ${badge[d.kind]}${d.kind === "mine" && !d.shared ? ' <span class="badge closed">private</span>' : ""}</div>
+      <div class="desc">${esc(d.description || "")}</div>
+      <div class="actions">
+        ${d.screen ? `<a href="${esc(d.screen)}" target="classpulse_demo_screen"><button class="orange">Big screen</button></a>` : ""}
+        <a href="${esc(d.url)}" target="_blank" rel="noopener"><button class="secondary">Phone page</button></a>
+        <button class="green" data-push-url="${esc(d.url)}" data-push-label="${esc(d.title)}">Push to phones</button>
+        ${d.kind === "mine" ? `<button class="red" data-demo-del="${d.id}">Delete</button>` : ""}
+      </div></div>`).join("") + `</div></div>`).join("");
+  $("demosList").querySelectorAll("[data-push-url]").forEach((b) => b.onclick = () => pushLink({ label: b.dataset.pushLabel, url: b.dataset.pushUrl }));
+  $("demosList").querySelectorAll("[data-demo-del]").forEach((b) => b.onclick = () => deleteDemo(b.dataset.demoDel));
+}
+$("demoModule").onchange = () => { localStorage.setItem("cp_demo_module", $("demoModule").value); renderDemos(); };
+$("demoSearch").oninput = renderDemos;
+$("demoPublishToggle").onclick = () => $("demoPublish").classList.toggle("hidden");
+
+// ----- publishing a folder
+let publishFiles = [];   // [{rel, file}]
+$("dpFolder").onchange = () => {
+  const files = [...$("dpFolder").files];
+  // "myDemo/js/app.js" -> "js/app.js" (the chosen folder itself is not part of the address)
+  publishFiles = files.map((f) => ({ rel: (f.webkitRelativePath || f.name).split("/").slice(1).join("/") || f.name, file: f }))
+    .filter((x) => !x.rel.split("/").some((part) => part.startsWith(".")));   // no hidden files (.git, .DS_Store)
+  const html = publishFiles.map((x) => x.rel).filter((r) => /\.html?$/i.test(r)).sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+  const total = publishFiles.reduce((t, x) => t + x.file.size, 0);
+  $("dpFolderInfo").textContent = `${publishFiles.length} file(s), ${(total / 1048576).toFixed(1)} MB, ${html.length} page(s)`;
+  $("dpEntry").innerHTML = html.map((h) => `<option ${h === "index.html" ? "selected" : ""}>${esc(h)}</option>`).join("");
+  $("dpScreen").innerHTML = `<option value="">(none)</option>` + html.map((h) => `<option ${h === "dashboard.html" ? "selected" : ""}>${esc(h)}</option>`).join("");
+  if (!$("dpTitle").value && files[0]) $("dpTitle").value = (files[0].webkitRelativePath || "").split("/")[0];
+};
+
+$("dpPublish").onclick = async () => {
+  const title = $("dpTitle").value.trim();
+  if (!title) { toast("Give a title.", "error"); return; }
+  if (publishFiles.length === 0) { toast("Choose the folder of the demo.", "error"); return; }
+  if (!$("dpEntry").value) { toast("The folder has no HTML page.", "error"); return; }
+  const bad = publishFiles.filter((x) => !/^[\w\-. ()/]+$/.test(x.rel)).map((x) => x.rel);
+  if (bad.length) { toast("Rename these files (letters, digits, - _ . only): " + bad.slice(0, 4).join(", "), "error"); return; }
+  const tooBig = publishFiles.filter((x) => x.file.size > CONFIG.maxFileMb * 1048576).map((x) => x.rel);
+  if (tooBig.length) { toast(`Files above ${CONFIG.maxFileMb} MB: ` + tooBig.join(", "), "error"); return; }
+  const total = publishFiles.reduce((t, x) => t + x.file.size, 0);
+  if (total > 200 * 1048576) { toast("The demo is above 200 MB: too big.", "error"); return; }
+  const btn = $("dpPublish"); btn.disabled = true;
+  try {
+    const { data: u } = await db.auth.getUser();
+    const prefix = `${u.user.id}/${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+    let done = 0;
+    for (const x of publishFiles) {
+      $("dpProgress").textContent = `Uploading ${++done} / ${publishFiles.length}: ${x.rel}`;
+      const { error } = await db.storage.from(DEMO_BUCKET).upload(`${prefix}/${x.rel}`, x.file, { contentType: x.file.type || "application/octet-stream", upsert: true });
+      if (error) throw new Error(`${x.rel}: ${error.message}`);
+    }
+    await rpc("t_add_demo", { p_title: title, p_module: $("dpModule").value.trim(), p_description: $("dpDescription").value.trim(), p_prefix: prefix,
+      p_entry: $("dpEntry").value, p_screen: $("dpScreen").value || null, p_files: publishFiles.map((x) => x.rel), p_shared: $("dpShared").checked });
+    toast(`"${title}" is online.`, "ok");
+    $("dpProgress").textContent = ""; $("dpTitle").value = ""; $("dpDescription").value = ""; $("dpFolder").value = ""; publishFiles = [];
+    $("dpFolderInfo").textContent = ""; $("demoPublish").classList.add("hidden");
+    await loadDemos();
+  } catch (e) { toast("Publishing failed: " + e.message, "error"); $("dpProgress").textContent = ""; }
+  finally { btn.disabled = false; }
+};
+
+async function deleteDemo(id) {
+  const d = allDemos.find((x) => x.id === id);
+  if (!confirm(`Delete the demo "${d.title}"? Its address will stop working for everybody.`)) return;
+  try {
+    const r = await rpc("t_delete_demo", { p_id: id });
+    const paths = r.files.map((f) => `${r.prefix}/${f}`);
+    for (let i = 0; i < paths.length; i += 100) await db.storage.from(DEMO_BUCKET).remove(paths.slice(i, i + 100));
+    toast("Demo deleted.", "ok");
+    loadDemos();
+  } catch (e) { toast(e.message, "error"); }
 }
 
 $("resLinkBtn").onclick = async () => {

@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "5";
+:root { --cp-version: "6";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -130,3 +130,14 @@ button:disabled { opacity: .45; cursor: default; }
 .linklike { background: none; color: var(--teal); padding: 0; text-decoration: underline; font-weight: 600; }
 .modal { position: fixed; inset: 0; background: rgba(11, 37, 69, .55); z-index: 50; display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 4vh 12px; }
 .modal-content { max-width: 900px; width: 100%; }
+
+/* ---------- v6: demos ---------- */
+.demo-group h3 { margin: 18px 0 8px; }
+.demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.demo-card { border: 1px solid var(--ice2); border-radius: 12px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 6px; }
+.demo-card .desc { color: var(--muted); font-size: 14px; flex: 1; }
+.demo-card .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.demo-card .actions button { padding: 5px 10px; font-size: 13px; }
+.badge.site { background: var(--ice); color: var(--navy); }
+.badge.mine { background: #FFE6D2; color: #A34A0B; }
+.badge.colleague { background: #EDE3F7; color: #5B3A8C; }
