@@ -1,22 +1,24 @@
 <!DOCTYPE html>
-<html lang="en" data-version="6">
+<html lang="en" data-version="7">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
     <div class="sub" id="topLeft"></div>
-    <div class="sub" id="topRight">Press F for full screen</div>
+    <div class="sub" id="topRight">F: full screen · J: join QR code</div>
   </div>
   <div id="content" class="center"></div>
+  <div id="overlay" class="proj-overlay hidden" title="Click to close"></div>
+  <div class="proj-hint">J: join QR code · Esc: close</div>
 
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=6"></script>
+<script src="js/common.js?v=7"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -30,6 +32,14 @@
     qr.addData(text);
     qr.make();
     return qr.createSvgTag({ cellSize: cell || 8, margin: 0 });
+  }
+
+  // Small QR code in the corner during a quiz. Attendance open: check-in for late students.
+  // Attendance closed: a way back for students who closed the page (their phone is already registered).
+  function cornerQr(s, joinUrl) {
+    if (s.attendance_open && att && att.open)
+      return `<div class="late-qr"><div class="qrbox">${qrSvg(joinUrl + "&a=" + att.code, 3)}</div><div>Late? Scan to check in<br><strong>${att.code}</strong></div></div>`;
+    return `<div class="late-qr"><div class="qrbox">${qrSvg(joinUrl, 3)}</div><div>Closed the page? Scan to come back<br>or type the code <strong>${esc(s.code)}</strong></div></div>`;
   }
 
   async function refresh() {
@@ -67,8 +77,7 @@
     }
     if (showQuiz && (q.phase === "question" || q.phase === "reveal") && !q.show_on_projector) {
       // questions not shown on the big screen (teacher's choice, or different questions for each student)
-      const lateQr0 = s.attendance_open && att && att.open
-        ? `<div class="late-qr"><div class="qrbox">${qrSvg(joinUrl + "&a=" + att.code, 3)}</div><div>Late? Scan to check in<br><strong>${att.code}</strong></div></div>` : "";
+      const lateQr0 = cornerQr(s, joinUrl);
       $("content").className = "center";
       $("content").innerHTML = `<div style="text-align:center"><div class="sub">${esc(q.title)}</div>
         <h1>Question ${q.index + 1} / ${q.count}</h1>
@@ -81,8 +90,7 @@
       const max = Math.max(1, ...q.distribution);
       const showCorrect = q.phase === "reveal" && q.reveal_mode === "each";
       // late students can still check in during the quiz: small QR code in the corner
-      const lateQr = s.attendance_open && att && att.open
-        ? `<div class="late-qr"><div class="qrbox">${qrSvg(joinUrl + "&a=" + att.code, 3)}</div><div>Late? Scan to check in<br><strong>${att.code}</strong></div></div>` : "";
+      const lateQr = cornerQr(s, joinUrl);
       $("content").className = "";
       $("content").innerHTML = `<div class="row" style="justify-content:space-between;margin-top:2vh">
           <div class="sub">${esc(q.title)} · question ${q.index + 1} / ${q.count}</div>
@@ -98,20 +106,21 @@
     $("content").className = "center";
     if (showQuiz && q.phase === "lobby") {
       $("content").innerHTML = `<div style="text-align:center"><h1>${esc(q.title)}</h1><div class="sub">Read the rules on your phone, then tap "I am ready".</div>
-        <div class="huge" style="margin-top:4vh">${q.ready}<span class="sub"> / ${live.present} ready</span></div></div>`;
+        <div class="huge" style="margin-top:4vh">${q.ready}<span class="sub"> / ${live.present} ready</span></div></div>` + cornerQr(s, joinUrl);
       return;
     }
     if (showQuiz && q.phase === "finished") {
-      $("content").innerHTML = `<div style="text-align:center"><h1>Quiz finished</h1><div class="sub">Your mark is on your phone.</div></div>`;
+      $("content").innerHTML = `<div style="text-align:center"><h1>Quiz finished</h1><div class="sub">Your mark is on your phone.</div></div>` + cornerQr(s, joinUrl);
       return;
     }
     if (s.activity === "link" && s.link_url) {
       $("content").innerHTML = `<div class="qr">${qrSvg(s.link_url, 8)}</div><div><h1>${esc(s.link_label || "")}</h1>
-        <div class="sub">The link is on your phone, or scan this code.</div></div>`;
+        <div class="sub">The link is on your phone, or scan this code.</div></div>` + cornerQr(s, joinUrl);
       return;
     }
     $("content").innerHTML = `<div class="qr">${qrSvg(joinUrl, 8)}</div><div><h1>${esc(live.session.title)}</h1>
       <div class="sub">Join: <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong></div>
+      <div class="sub">or open <strong>${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</strong> and type the code <strong style="color:#E8741E;letter-spacing:.3vw">${esc(s.code)}</strong></div>
       <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
   }
 
@@ -120,8 +129,55 @@
     if (t) t.textContent = formatSeconds(localDeadline - Date.now());
   }
 
+  // ---------------------------------------------------------------- overlay: join QR code, random draw
+  let overlayMode = "";    // "", "join" or "draw"
+  let spinTimer = null;
+  function hideOverlay() { overlayMode = ""; clearInterval(spinTimer); $("overlay").classList.add("hidden"); }
+  function showJoin() {
+    if (!live) return;
+    const code = live.session.code, joinUrl = siteUrl("student.html") + "?s=" + code;
+    overlayMode = "join";
+    $("overlay").innerHTML = `<div class="qr">${qrSvg(joinUrl, 10)}</div>
+      <div><h1 style="font-size:6vh">Scan to join the session</h1>
+      <div class="sub" style="margin:2vh 0 4vh">Already registered? You go straight back to the session.</div>
+      <div class="sub">No camera? Open</div><div class="addr">${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</div>
+      <div class="sub" style="margin-top:3vh">and type the session code</div><div class="code">${esc(code)}</div></div>`;
+    $("overlay").classList.remove("hidden");
+  }
+  // Random draw: the teacher console sends the pool of names and the winners; the animation runs here.
+  function showDraw(msg) {
+    overlayMode = "draw";
+    clearInterval(spinTimer);
+    const title = msg.winners.length > 1 ? `${msg.winners.length} students drawn` : "Random student";
+    $("overlay").innerHTML = `<div class="draw-box"><div class="sub">🎲 ${title}</div><div id="drawNames"></div></div>`;
+    $("overlay").classList.remove("hidden");
+    const pool = msg.pool.length ? msg.pool : msg.winners;
+    const started = Date.now();
+    spinTimer = setInterval(() => {
+      if (Date.now() - started < (msg.spinMs || 2200)) {
+        $("drawNames").innerHTML = msg.winners.map(() => `<div class="draw-name spinning">${esc(pool[Math.floor(Math.random() * pool.length)])}</div>`).join("");
+      } else {
+        clearInterval(spinTimer);
+        $("drawNames").innerHTML = msg.winners.map((w) => `<div class="draw-name winner">${esc(w)}</div>`).join("");
+      }
+    }, 80);
+  }
+  $("overlay").onclick = hideOverlay;
+  if (window.BroadcastChannel) {
+    const bc = new BroadcastChannel("classpulse_projector_" + sessionId);
+    bc.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.type === "join") { if (m.show === false || (m.show === "toggle" && overlayMode === "join")) hideOverlay(); else showJoin(); }
+      if (m.type === "draw") showDraw(m);
+      if (m.type === "hide") hideOverlay();
+    };
+  }
+
   document.addEventListener("keydown", (e) => {
-    if (e.key.toLowerCase() === "f" && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    const k = e.key.toLowerCase();
+    if (k === "f" && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    if (k === "j" || k === "q") { if (overlayMode === "join") hideOverlay(); else showJoin(); }
+    if (k === "escape") hideOverlay();
   });
 
   (async () => {

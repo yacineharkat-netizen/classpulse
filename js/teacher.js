@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "6"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "7"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -196,6 +196,7 @@ async function selectSession(id) {
   await loadQuizzes();
   await refreshLive();
   await refreshAttendance();
+  renderDrawn();
   pollTimer = setInterval(refreshLive, CONFIG.teacherPollMs);
   attendanceTimer = setInterval(refreshAttendance, 5000);
 }
@@ -227,6 +228,85 @@ async function saveSessionOptions() {
 $("optWindow").onchange = saveSessionOptions;
 $("optLocation").onchange = saveSessionOptions;
 $("projectorBtn").onclick = () => window.open("projector.html?session=" + sessionId, "classpulse_projector");
+
+// ------------------------------------------------------------------ projector messages (same browser)
+// The projector window listens on a BroadcastChannel: join QR code overlay and random draw animation.
+function projectorSend(msg) {
+  if (!window.BroadcastChannel || !sessionId) return;
+  const bc = new BroadcastChannel("classpulse_projector_" + sessionId);
+  bc.postMessage(msg);
+  bc.close();
+}
+$("joinQrBtn").onclick = () => {
+  projectorSend({ type: "join", show: "toggle" });
+  toast("Join QR code shown on the projector (click again, or click on the projector, to hide it). Keyboard on the projector: J.", "ok");
+};
+
+// ------------------------------------------------------------------ random student
+let lastAttendance = [];
+function drawKey() { return "cp_drawn_" + sessionId; }
+function loadDrawn() { try { return JSON.parse(localStorage.getItem(drawKey()) || "[]"); } catch (e) { return []; } }
+function saveDrawn(list) { try { localStorage.setItem(drawKey(), JSON.stringify(list)); } catch (e) { /* ignore */ } }
+function drawPool() {
+  const drawn = new Set(loadDrawn().map((d) => d.id));
+  return lastAttendance.filter((r) => (r.status === "present" || r.status === "late") && !drawn.has(r.student_id));
+}
+function updateDrawInfo() {
+  if (!$("drawPoolInfo")) return;
+  const present = lastAttendance.filter((r) => r.status === "present" || r.status === "late").length;
+  $("drawPoolInfo").textContent = `${drawPool().length} can be drawn out of ${present} checked in`;
+}
+function renderDrawn() {
+  const list = loadDrawn();
+  const label = { bonus: '<span class="badge open">+0.25 given</span>', passed: '<span class="badge closed">passed</span>' };
+  $("drawList").innerHTML = list.slice().reverse().map((d) => `<tr><td class="name">${esc(d.name)}</td>
+    <td class="muted">${new Date(d.at).toLocaleTimeString()}</td>
+    <td>${d.result ? label[d.result] : `<button class="small green" data-draw-bonus="${d.id}">✓ +0.25</button>
+      <button class="small secondary" data-draw-pass="${d.id}">Pass</button>`}</td></tr>`).join("");
+  $("drawList").querySelectorAll("[data-draw-bonus]").forEach((b) => b.onclick = async () => {
+    try {
+      await rpc("t_add_bonus", { p_session: sessionId, p_student: b.dataset.drawBonus, p_points: 0.25 });
+      setDrawResult(b.dataset.drawBonus, "bonus");
+      toast("Bonus +0.25 recorded.", "ok");
+      refreshAttendance();
+    } catch (e) { toast(e.message, "error"); }
+  });
+  $("drawList").querySelectorAll("[data-draw-pass]").forEach((b) => b.onclick = () => setDrawResult(b.dataset.drawPass, "passed"));
+  updateDrawInfo();
+}
+function setDrawResult(id, result) {
+  const list = loadDrawn();
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].id === id && !list[i].result) { list[i].result = result; break; }
+  saveDrawn(list);
+  renderDrawn();
+}
+async function drawStudents(n) {
+  if (!sessionId) return;
+  await refreshAttendance();
+  const pool = drawPool();
+  if (!pool.length) { toast("Nobody left to draw: every checked-in student has been drawn. Click Reset.", "error"); return; }
+  const winners = [];
+  const bag = pool.slice();
+  for (let i = 0; i < n && bag.length; i++) winners.push(bag.splice(Math.floor(Math.random() * bag.length), 1)[0]);
+  const spinMs = 2200;
+  if ($("drawOnProjector").checked) {
+    projectorSend({ type: "draw", pool: pool.map((r) => r.name), winners: winners.map((r) => r.name), spinMs });
+  }
+  const list = loadDrawn();
+  winners.forEach((w) => list.push({ id: w.student_id, name: w.name, at: Date.now(), result: "" }));
+  saveDrawn(list);
+  // show the result on the console after the projector animation, so the teacher does not spoil it
+  setTimeout(renderDrawn, $("drawOnProjector").checked ? spinMs : 0);
+  if (winners.length < n) toast(`Only ${winners.length} student(s) left to draw.`, "error");
+}
+$("draw1Btn").onclick = () => drawStudents(1);
+$("draw3Btn").onclick = () => drawStudents(3);
+$("drawHideBtn").onclick = () => projectorSend({ type: "hide" });
+$("drawResetBtn").onclick = () => {
+  if (!confirm("Forget who has been drawn in this session? Everyone can be drawn again (bonuses already given are kept).")) return;
+  saveDrawn([]);
+  renderDrawn();
+};
 // The push list: demos of the site (config.js) + the teacher's own resources + a free address.
 function pushChoices() {
   const site = allDemos.map((d) => ({ label: d.title, url: d.url, screen: d.screen, group: "Demos" + (d.module ? " - " + d.module : "") }));
@@ -499,6 +579,8 @@ async function refreshAttendance() {
   if (!sessionId) return;
   let list;
   try { list = await rpc("t_attendance_list", { p_session: sessionId }); } catch (e) { return; }
+  lastAttendance = list;
+  updateDrawInfo();
   if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.student) return; // user is editing
   const opts = ["", "present", "late", "absent", "excused"];
   // the distance is measured to the median of the class: it only means something with at least 3 positions

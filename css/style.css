@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "6";
+:root { --cp-version: "7";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -141,3 +141,21 @@ button:disabled { opacity: .45; cursor: default; }
 .badge.site { background: var(--ice); color: var(--navy); }
 .badge.mine { background: #FFE6D2; color: #A34A0B; }
 .badge.colleague { background: #EDE3F7; color: #5B3A8C; }
+
+/* ---------- v7: join overlay and random student draw on the projector ---------- */
+.proj-overlay { position: fixed; inset: 0; background: var(--navy); z-index: 50; display: flex; align-items: center;
+  justify-content: center; gap: 5vw; padding: 4vh 4vw; cursor: pointer; text-align: left; }
+.proj-overlay.hidden { display: none; }
+.proj-overlay .qr { flex-shrink: 0; }
+.proj-overlay .qr svg { width: min(58vh, 40vw); height: min(58vh, 40vw); }
+.proj-overlay > div:last-child { min-width: 0; max-width: 48vw; }
+.proj-overlay .code { font-size: min(14vh, 8vw); font-weight: 800; color: var(--orange); letter-spacing: 1.2vw; line-height: 1.1; }
+.proj-overlay .addr { font-size: min(3.4vh, 2vw); font-weight: 700; color: #fff; word-break: break-all; }
+.draw-box { text-align: center; }
+.draw-name { font-size: 11vh; font-weight: 800; color: #fff; line-height: 1.15; margin: 1vh 0; }
+.draw-name.spinning { color: var(--ice2); opacity: .8; }
+.draw-name.winner { color: var(--orange); animation: pop .5s ease-out; }
+@keyframes pop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+.proj-hint { position: fixed; left: 2vw; bottom: 1.5vh; font-size: 1.6vh; color: var(--ice2); opacity: .6; }
+.draw-list td { padding: 6px 8px; vertical-align: middle; }
+.draw-list .name { font-weight: 700; font-size: 16px; }

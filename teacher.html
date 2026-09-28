@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="6">
+<html lang="en" data-version="7">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
 
@@ -75,6 +75,7 @@
               <button id="attOnBtn" class="green">Open attendance</button>
               <button id="attOffBtn" class="secondary">Close attendance</button>
               <button id="projectorBtn" class="orange">Open projector window</button>
+              <button id="joinQrBtn" class="secondary" title="Big QR code and session code on the projector, for students who closed the page">📱 Join QR on projector</button>
             </div>
             <p class="muted">Attendance does not change what the phones show: a student who is not checked in sees the check-in screen first,
               then the current activity. You can leave attendance open during a quiz for late students.</p>
@@ -96,6 +97,21 @@
               <div><div class="stat" id="attState">-</div><div class="muted">attendance</div></div>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <h3>🎲 Random student</h3>
+          <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+            <button id="draw1Btn" class="orange">Draw 1 student</button>
+            <button id="draw3Btn" class="secondary">Draw 3</button>
+            <label style="margin:0"><input type="checkbox" id="drawOnProjector" checked style="width:auto"> Show on the projector</label>
+            <button id="drawHideBtn" class="secondary small">Hide from projector</button>
+            <button id="drawResetBtn" class="secondary small">Reset (everyone can be drawn again)</button>
+            <span class="muted" id="drawPoolInfo"></span>
+          </div>
+          <p class="muted">Draws among the students checked in (present or late). A student already drawn in this session is not drawn again until you reset.
+            <strong>+0.25</strong> adds the usual bonus of this session.</p>
+          <table class="draw-list" id="drawList"></table>
         </div>
 
         <div class="card">
@@ -366,9 +382,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=6"></script>
-<script src="js/excel.js?v=6"></script>
-<script src="js/teacher.js?v=6"></script>
+<script src="js/common.js?v=7"></script>
+<script src="js/excel.js?v=7"></script>
+<script src="js/teacher.js?v=7"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
