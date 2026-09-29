@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "7"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "8"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -207,6 +207,7 @@ async function act(fn, args, okMessage) {
     await rpc(fn, args);
     if (channel) channel.ping();
     if (okMessage) toast(okMessage, "ok");
+    if (fn.startsWith("t_quiz_")) { const keep = $("quizSelect").value; await loadQuizzes(); if (keep) $("quizSelect").value = keep; }
     await refreshLive();
   } catch (e) { toast(e.message, "error"); }
 }
@@ -561,9 +562,9 @@ $("openBtn").onclick = async () => {
   try { quizList = await rpc("t_list_quizzes", { p_session: sessionId }); } catch (e) { /* keep the last list */ }
   const chosen = quizList.find((x) => x.id === $("quizSelect").value);
   const inLobby = live && live.quiz && live.quiz.id === $("quizSelect").value && live.quiz.phase === "lobby";
-  if (chosen && chosen.status === "finished") { toast("This quiz is finished: its rules cannot be shown again. Create a new quiz.", "error"); return; }
+  if (chosen && chosen.status === "finished") { toast("This quiz is finished. To run it again: ↺ Reset (answers erased) or ⧉ Duplicate (new quiz), below.", "error"); return; }
   if (chosen && chosen.status === "running" && !inLobby) {
-    toast("This quiz has already started: the rules step is over. Use 'Show the quiz' to bring the phones back, or create a new quiz.", "error");
+    toast("This quiz has already started: the rules step is over. Use 'Show the quiz' to bring the phones back, or ↺ Reset it to start again.", "error");
     return;
   }
   if (questionRunning() && !confirm("A question is running. Leave it and show the rules of the selected quiz?")) return;
@@ -578,6 +579,47 @@ $("startBtn").onclick = () => {
     : "Start this quiz now WITHOUT showing the rules first?";
   if (!confirm(msg)) return;
   act("t_quiz_start", { p_quiz: id });
+};
+// ----- manage the selected quiz: rename, duplicate, reset, delete
+function selectedQuiz() {
+  const id = $("quizSelect").value;
+  if (!id) { toast("Create or choose a quiz first.", "error"); return null; }
+  return quizList.find((x) => x.id === id) || { id, title: $("quizSelect").selectedOptions[0].textContent };
+}
+async function afterQuizChange(message, selectId) {
+  if (channel) channel.ping();
+  await loadQuizzes();
+  if (selectId && [...$("quizSelect").options].some((o) => o.value === selectId)) $("quizSelect").value = selectId;
+  await refreshLive();
+  toast(message, "ok");
+}
+$("quizRenameBtn").onclick = async () => {
+  const q = selectedQuiz(); if (!q) return;
+  const title = prompt("New title of the quiz:", q.title || "");
+  if (title === null || !title.trim()) return;
+  try { await rpc("t_quiz_rename", { p_quiz: q.id, p_title: title.trim() }); await afterQuizChange("Quiz renamed.", q.id); }
+  catch (e) { toast(e.message, "error"); }
+};
+$("quizDupBtn").onclick = async () => {
+  const q = selectedQuiz(); if (!q) return;
+  const title = prompt("Title of the copy (same questions and settings, never run):", (q.title || "Quiz") + " (2)");
+  if (title === null) return;
+  try {
+    const id = await rpc("t_quiz_duplicate", { p_quiz: q.id, p_title: title.trim() });
+    await afterQuizChange("Copy created and selected. Click 1. Show the rules to run it.", id);
+  } catch (e) { toast(e.message, "error"); }
+};
+$("quizResetBtn").onclick = async () => {
+  const q = selectedQuiz(); if (!q) return;
+  if (!confirm(`Reset "${q.title}"?\nAll its answers and marks are ERASED and the quiz goes back to the start (never run).`)) return;
+  try { await rpc("t_quiz_reset", { p_quiz: q.id }); await afterQuizChange("Quiz reset: you can run it again from the rules.", q.id); }
+  catch (e) { toast(e.message, "error"); }
+};
+$("quizDeleteBtn").onclick = async () => {
+  const q = selectedQuiz(); if (!q) return;
+  if (!confirm(`DELETE "${q.title}"?\nThe quiz and all its answers and marks are deleted for good.`)) return;
+  try { await rpc("t_quiz_delete", { p_quiz: q.id }); await afterQuizChange("Quiz deleted."); }
+  catch (e) { toast(e.message, "error"); }
 };
 $("revealBtn").onclick = () => act("t_quiz_reveal", { p_quiz: currentQuiz() });
 $("nextBtn").onclick = () => act("t_quiz_next", { p_quiz: currentQuiz() });

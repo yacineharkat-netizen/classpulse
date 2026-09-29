@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "7";
+:root { --cp-version: "8";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -117,6 +117,9 @@ button:disabled { opacity: .45; cursor: default; }
   padding: 10px 14px; border-radius: 12px; font-size: 2vh; color: #fff; }
 .late-qr .qrbox { background: #fff; padding: 6px; border-radius: 6px; line-height: 0; }
 .late-qr strong { color: #E8741E; letter-spacing: .2vw; font-size: 2.6vh; }
+.late-qr { font-size: 2.6vh; padding: 1.4vh 1.4vw; gap: 1.4vw; max-width: 46vw; }
+.late-qr .qrbox svg { width: 24vh; height: 24vh; display: block; }
+.late-qr strong { font-size: 3.4vh; }
 
 .rules { padding-left: 20px; line-height: 1.45; }
 .rules li { margin: 6px 0; }

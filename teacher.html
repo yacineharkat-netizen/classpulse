@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="7">
+<html lang="en" data-version="8">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 
@@ -126,6 +126,13 @@
               <select id="addTimeSel" style="width:auto"><option>15</option><option>30</option><option>60</option></select>
               <span class="muted">s to this question</span></span>
             <button id="finishBtn" class="red">Finish quiz</button>
+          </div>
+          <div class="row" style="margin-top:8px;gap:6px;align-items:center">
+            <span class="muted">Selected quiz:</span>
+            <button id="quizRenameBtn" class="small secondary">✏ Rename</button>
+            <button id="quizDupBtn" class="small secondary" title="New quiz with the same questions and settings">⧉ Duplicate</button>
+            <button id="quizResetBtn" class="small secondary" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
+            <button id="quizDeleteBtn" class="small red">🗑 Delete</button>
           </div>
           <div class="row" style="margin-top:8px">
             <label style="margin:0"><input type="checkbox" id="autoMode" style="width:auto"> Automatic mode: close each question when the time is over, then go to the next one after <span id="autoDelay"></span> s</label>
@@ -382,9 +389,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=7"></script>
-<script src="js/excel.js?v=7"></script>
-<script src="js/teacher.js?v=7"></script>
+<script src="js/common.js?v=8"></script>
+<script src="js/excel.js?v=8"></script>
+<script src="js/teacher.js?v=8"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

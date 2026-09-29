@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "7"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "8"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -376,6 +376,7 @@ async function keepScreenOn() {
 function disarm(q) {
   if (armedQuiz && (!q || q.phase === "finished" || q.quiz_id !== armedQuiz)) {
     armedQuiz = null;
+    selectionKey = ""; selection = [];   // a reset quiz keeps its id: start again with nothing ticked
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
   }

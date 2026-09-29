@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "7"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "8"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -24,6 +24,8 @@ const ERROR_MESSAGES = {
   NOT_LOGGED_IN: "Please log in again.",
   CLASS_NOT_FOUND: "Class not found.",
   QUIZ_NOT_FOUND: "Quiz not found.",
+  QUIZ_FINISHED: "This quiz is finished. To run it again: Reset it (answers erased) or Duplicate it (new quiz).",
+  TITLE_REQUIRED: "Type a title.",
   BAD_QUESTIONS: "Select at least one question.",
 };
 
