@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="9">
+<html lang="en" data-version="10">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,10 +18,12 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=9"></script>
+<script src="js/common.js?v=10"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
+  const mini = new URLSearchParams(location.search).get("mini") === "1";   // small preview inside the teacher console
+  if (mini) { document.body.classList.add("mini"); document.getElementById("topRight").textContent = ""; }
   let live = null;
   let att = null;          // current attendance code
   let lastKey = "";
@@ -60,11 +62,17 @@
     if (!live) return;
     const s = live.session, q = live.quiz;
     const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
-    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector, q.started, q.done]]);
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector, q.started, q.done, q.results_on_projector, q.results && q.results.count], s.ended_at]);
     if (key === lastKey && !force) { updateTimer(); return; }
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
 
+    if (s.ended_at) {
+      $("content").className = "center";
+      $("content").innerHTML = `<div style="text-align:center"><h1 style="font-size:7vh">Session ended</h1><div class="sub">${esc(s.title)}${s.end_time ? " · " + s.end_time : ""}</div>
+        <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
+      return;
+    }
     if (s.attendance_open && !showQuiz && s.activity !== "link") {
       const url = att && att.open ? joinUrl + "&a=" + att.code : joinUrl;
       $("content").innerHTML = `<div class="qr">${qrSvg(url, 8)}</div>
@@ -117,6 +125,11 @@
         <div class="huge" style="margin-top:4vh">${q.ready}<span class="sub"> / ${live.present} ready</span></div></div>` + cornerQr(s, joinUrl);
       return;
     }
+    if (showQuiz && q.phase === "finished" && q.results_on_projector && q.results) {
+      $("content").className = "";
+      $("content").innerHTML = resultsView(q);   // no corner QR code: it would hide the chart
+      return;
+    }
     if (showQuiz && q.phase === "finished") {
       $("content").innerHTML = `<div style="text-align:center"><h1>Quiz finished</h1><div class="sub">Your mark is on your phone.</div></div>` + cornerQr(s, joinUrl);
       return;
@@ -130,6 +143,17 @@
       <div class="sub">Join: <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong></div>
       <div class="sub">or open <strong>${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</strong> and type the code <strong style="color:#E8741E;letter-spacing:.3vw">${esc(s.code)}</strong></div>
       <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
+  }
+
+  // Marks of the class for a finished quiz: no question, no name.
+  function resultsView(q) {
+    const r = q.results, tot = Number(r.total_points), max = Math.max(1, ...r.histogram);
+    const fig = (v, l, unit) => `<div class="fig"><div class="v">${v == null ? "-" : v}${unit || ""}</div><div class="l">${l}</div></div>`;
+    return `<div class="pres"><div><div class="sub">${esc(q.title)} · ${r.count} students</div><h1>Results of the class</h1></div>
+      <div class="figs">${fig(r.mean == null ? null : Number(r.mean), "mean", `<small>/${tot}</small>`)}${fig(r.median == null ? null : Number(r.median), "median", `<small>/${tot}</small>`)}
+        ${fig(r.success_pct, "at least " + tot / 2 + "/" + tot, "%")}</div>
+      <div><div class="phist">${r.histogram.map((n) => `<div class="c"><div class="n">${n || ""}</div><div class="b" style="height:${(100 * n) / max}%"></div></div>`).join("")}</div>
+        <div class="axis">${r.histogram.map((n, i) => `<span>${+(i * tot / 10).toFixed(1)}-${+((i + 1) * tot / 10).toFixed(1)}</span>`).join("")}</div></div></div>`;
   }
 
   function updateTimer() {
@@ -182,6 +206,7 @@
   }
 
   document.addEventListener("keydown", (e) => {
+    if (mini) return;
     const k = e.key.toLowerCase();
     if (k === "f" && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     if (k === "j" || k === "q") { if (overlayMode === "join") hideOverlay(); else showJoin(); }
@@ -193,7 +218,7 @@
     if (!data.session) { $("content").innerHTML = "<h1>Open this window from the teacher console.</h1>"; return; }
     await refresh();
     refreshAttendanceCode();
-    setInterval(refresh, 1000);
+    setInterval(refresh, mini ? 2000 : 1000);
     setInterval(updateTimer, 250);
   })();
 </script>

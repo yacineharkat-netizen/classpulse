@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="9">
+<html lang="en" data-version="10">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body>
 
@@ -37,8 +37,9 @@
 
   <main>
     <div id="classBanner" class="class-banner">
-      <span class="dot"></span><span>Class: <strong id="bannerName">-</strong></span>
+      <span class="dot"></span><span>Class: <a href="#" id="bannerName" title="Open the classes tab">-</a></span>
       <span id="bannerNote" class="note"></span>
+      <span id="nowPill" class="now-pill hidden"></span>
     </div>
     <!-- ===================== LIVE ===================== -->
     <section id="tab-live">
@@ -49,7 +50,8 @@
           <span class="muted">or create:</span>
           <input id="newSessionTitle" placeholder="Title, e.g. S1 - Discover IoT" style="max-width:260px">
           <input id="newSessionDate" type="date" style="max-width:170px">
-          <input id="newSessionTime" type="time" style="max-width:120px">
+          <input id="newSessionTime" type="time" style="max-width:120px" title="Start">
+          <input id="newSessionEnd" type="time" style="max-width:120px" title="End">
           <select id="newSessionKind" style="width:auto"><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select>
           <button id="createSessionBtn" class="secondary">Create</button>
         </div>
@@ -67,34 +69,42 @@
       </div>
 
       <div id="liveArea" class="hidden">
-        <div class="grid2">
-          <div class="card">
-            <h3>Attendance</h3>
-            <div class="row" style="gap:8px;align-items:center">
-              <span class="badge" id="attBadge">closed</span>
-              <button id="attOnBtn" class="green">Open attendance</button>
-              <button id="attOffBtn" class="secondary">Close attendance</button>
-              <button id="projectorBtn" class="orange">Open projector window</button>
-              <button id="joinQrBtn" class="secondary" title="Big QR code and session code on the projector, for students who closed the page">📱 Join QR on projector</button>
-            </div>
-            <p class="muted">Attendance does not change what the phones show: a student who is not checked in sees the check-in screen first,
-              then the current activity. You can leave attendance open during a quiz for late students.</p>
-            <h3 style="margin-top:14px">What the phones show</h3>
-            <p>Now: <span class="badge info" id="activityBadge">-</span></p>
-            <div class="row">
-              <button id="idleBtn" class="secondary">Waiting screen</button>
-              <button id="showQuizBtn" class="secondary">Show the quiz</button>
-            </div>
-            <label for="linkSelect">Push a demo, a link or a file (manage them in the Resources tab)</label>
-            <div class="row"><select id="linkSelect" style="max-width:320px"></select><button id="linkBtn" class="secondary">Push to phones</button>
-              <button id="screenBtn" class="secondary hidden">Open its big-screen page</button></div>
+        <div class="card monitor nocollapse">
+          <div id="endedBox" class="ended-box hidden">
+            <strong>⏹ Session ended <span id="endedAt"></span></strong>: attendance and quizzes are closed.
+            <button id="reopenBtn" class="small secondary">Reopen the session</button>
           </div>
-          <div class="card">
-            <h3>Figures</h3>
-            <div class="row" style="gap:30px">
-              <div><div class="stat" id="presentCount">0</div><div class="muted">present</div></div>
-              <div><div class="stat" id="classSize">0</div><div class="muted">in the class list</div></div>
-              <div><div class="stat" id="attState">-</div><div class="muted">attendance</div></div>
+          <div class="monitor-grid">
+            <div>
+              <h4>📱 What the students' phones show</h4>
+              <div id="phoneMock" class="phone-mock"></div>
+            </div>
+            <div>
+              <h4>🖥 Projector</h4>
+              <div class="proj-mini"><iframe id="projMini" title="Projector preview" tabindex="-1"></iframe></div>
+              <div class="row" style="gap:6px;margin-top:8px">
+                <button id="projectorBtn" class="orange small">Open projector window</button>
+                <button id="joinQrBtn" class="secondary small" title="Big QR code and session code on the projector, for students who closed the page">📱 Join QR on projector</button>
+              </div>
+            </div>
+            <div>
+              <h4>Controls</h4>
+              <div class="muted" style="margin-bottom:4px">Phones show <span class="badge info" id="activityBadge">-</span></div>
+              <div class="seg">
+                <button id="idleBtn">⏸ Waiting screen</button>
+                <button id="showQuizBtn">📝 Quiz</button>
+              </div>
+              <div class="row" style="gap:6px;align-items:center;margin-top:10px">
+                <span class="badge" id="attBadge">closed</span>
+                <button id="attOnBtn" class="green small">Open attendance</button>
+                <button id="attOffBtn" class="secondary small">Close attendance</button>
+              </div>
+              <div class="mini-figures"><span><strong id="presentCount">0</strong> present</span> · <span><strong id="classSize">0</strong> in the class</span>
+                <span class="hidden" id="attState">-</span></div>
+              <label for="linkSelect" style="margin-top:10px">Push a demo, a link or a file</label>
+              <div class="row" style="gap:6px"><select id="linkSelect" style="max-width:240px"></select><button id="linkBtn" class="secondary small">Push to phones</button>
+                <button id="screenBtn" class="secondary small hidden">Open its big-screen page</button></div>
+              <button id="endSessionBtn" class="red small" style="margin-top:12px">⏹ End the session</button>
             </div>
           </div>
         </div>
@@ -204,6 +214,7 @@
 
         <div class="card">
           <h3>Attendance list</h3>
+          <input id="attSearch" placeholder="Search by name or student number" style="max-width:320px;margin-bottom:8px">
           <div id="attendanceTable"></div>
         </div>
       </div>
@@ -395,9 +406,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=9"></script>
-<script src="js/excel.js?v=9"></script>
-<script src="js/teacher.js?v=9"></script>
+<script src="js/common.js?v=10"></script>
+<script src="js/excel.js?v=10"></script>
+<script src="js/teacher.js?v=10"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

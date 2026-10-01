@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "9"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "10"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -94,11 +94,12 @@ async function loadClasses() {
 $("classSelect").onchange = () => selectClass($("classSelect").value);
 
 async function selectClass(id) {
-  const changed = id !== classId;
+  const changed = id !== classId, previous = classId;
   classId = id;
   if (id) localStorage.setItem("cp_class", id);
   updateBanner();
-  if (changed) { sessionId = null; localStorage.removeItem("cp_session"); }
+  // Forget the session only when the teacher switches to another class (not on a page reload, where classId starts empty).
+  if (changed && previous) { sessionId = null; localStorage.removeItem("cp_session"); }
   await loadSessions();
   // refresh the tab currently shown, so that it always matches the selected class
   if (changed && activeTab === "students") await loadStudents();
@@ -121,16 +122,19 @@ async function loadSessions() {
   allSessions = await rpc("t_list_sessions", { p_class: classId });
   const keep = sessionId || localStorage.getItem("cp_session");
   $("sessionSelect").innerHTML = `<option value="">- choose a session -</option>` +
-    allSessions.map((s) => `<option value="${s.id}" data-code="${s.code}">${esc(s.date)} ${s.time || ""} · ${SESSION_KIND[s.kind] || ""} · ${esc(s.title)} · code ${s.code} · ${s.present} present</option>`).join("");
+    allSessions.map((s) => `<option value="${s.id}" data-code="${s.code}">${esc(s.date)} ${timeRange(s)} · ${SESSION_KIND[s.kind] || ""} · ${esc(s.title)} · code ${s.code} · ${s.present} present</option>`).join("");
   if (keep && allSessions.some((s) => s.id === keep)) $("sessionSelect").value = keep;
   renderSessionsTable();
   await selectSession($("sessionSelect").value || null);
 }
 
+// "09:40-11:10", or only the start time when no end time is set.
+function timeRange(s) { return (s.time || "") + (s.end_time ? "-" + s.end_time : ""); }
+
 function renderSessionsTable() {
   $("sessionsTable").innerHTML = allSessions.length === 0 ? `<p class="muted">No session yet. Create one in the Live session tab.</p>` :
     `<table><tr><th>Date</th><th>Time</th><th>Type</th><th>Title</th><th>Code</th><th>Present</th><th>Quizzes</th><th></th></tr>` +
-    allSessions.map((s) => `<tr data-id="${s.id}"><td class="c-date">${esc(s.date)}</td><td class="c-time">${s.time || ""}</td>
+    allSessions.map((s) => `<tr data-id="${s.id}"><td class="c-date">${esc(s.date)}</td><td class="c-time">${timeRange(s)}${s.ended_at ? ' <span class="badge closed">ended</span>' : ""}</td>
       <td class="c-kind"><span class="kind ${s.kind}">${SESSION_KIND[s.kind] || s.kind}</span></td><td class="c-title">${esc(s.title)}</td>
       <td>${s.code}</td><td>${s.present}</td><td>${s.quizzes}</td>
       <td style="white-space:nowrap"><button class="small green" data-open="${s.id}">Open</button>
@@ -152,7 +156,8 @@ function renderSessionsTable() {
   $("sessionsTable").querySelectorAll("[data-sedit]").forEach((b) => b.onclick = () => {
     const tr = b.closest("tr"), s = allSessions.find((x) => x.id === b.dataset.sedit);
     tr.querySelector(".c-date").innerHTML = `<input type="date" class="e-date" value="${s.date}" style="width:150px">`;
-    tr.querySelector(".c-time").innerHTML = `<input type="time" class="e-time" value="${s.time || ""}" style="width:110px">`;
+    tr.querySelector(".c-time").innerHTML = `<input type="time" class="e-time" value="${s.time || ""}" style="width:110px" title="Start">
+      <input type="time" class="e-end" value="${s.end_time || ""}" style="width:110px" title="End">`;
     tr.querySelector(".c-kind").innerHTML = `<select class="e-kind" style="width:auto">${Object.entries(SESSION_KIND).map(([k, v]) => `<option value="${k}" ${k === s.kind ? "selected" : ""}>${v}</option>`).join("")}</select>`;
     tr.querySelector(".c-title").innerHTML = `<input class="e-title" value="${esc(s.title)}">`;
     b.textContent = "Save"; b.className = "small green";
@@ -160,6 +165,7 @@ function renderSessionsTable() {
       try {
         await rpc("t_update_session", { p_session: s.id, p_title: tr.querySelector(".e-title").value, p_date: tr.querySelector(".e-date").value,
           p_time: tr.querySelector(".e-time").value || null, p_kind: tr.querySelector(".e-kind").value });
+        await rpc("t_set_session_end_time", { p_session: s.id, p_end_time: tr.querySelector(".e-end").value || null });
         toast("Session updated.", "ok"); loadSessions();
       } catch (e) { toast(e.message, "error"); }
     };
@@ -173,6 +179,7 @@ $("createSessionBtn").onclick = async () => {
     const s = await rpc("t_create_session", { p_class: classId, p_title: $("newSessionTitle").value || "Session", p_date: $("newSessionDate").value,
       p_time: $("newSessionTime").value || null, p_kind: $("newSessionKind").value });
     sessionId = s.id;
+    if ($("newSessionEnd").value) await rpc("t_set_session_end_time", { p_session: s.id, p_end_time: $("newSessionEnd").value });
     toast("Session created, code " + s.code, "ok");
     await loadSessions();
   } catch (e) { toast(e.message, "error"); }
@@ -185,7 +192,9 @@ async function selectSession(id) {
   $("sessionCodeBox").classList.toggle("hidden", !sessionId);
   $("sessionOptions").classList.toggle("hidden", !sessionId);
   $("noSessionHelp").classList.toggle("hidden", !!sessionId);
-  if (!sessionId) { $("sessionUrl").textContent = ""; return; }
+  if (!sessionId) { $("sessionUrl").textContent = ""; $("projMini").removeAttribute("src"); $("nowPill").classList.add("hidden"); return; }
+  const miniSrc = "projector.html?session=" + sessionId + "&mini=1";
+  if ($("projMini").getAttribute("src") !== miniSrc) $("projMini").setAttribute("src", miniSrc);
   localStorage.setItem("cp_session", sessionId);
   sessionCode = $("sessionSelect").selectedOptions[0].dataset.code;
   const url = siteUrl("student.html") + "?s=" + sessionCode;
@@ -378,13 +387,93 @@ async function refreshLive() {
   $("attBadge").className = "badge " + (s.attendance_open ? "open" : "closed");
   $("attOnBtn").disabled = s.attendance_open;
   $("attOffBtn").disabled = !s.attendance_open;
-  $("showQuizBtn").disabled = !s.active_quiz_id || s.activity === "quiz";
+  $("showQuizBtn").disabled = !s.active_quiz_id;
+  $("idleBtn").classList.toggle("on", s.activity === "idle" || s.activity === "attendance");
+  $("showQuizBtn").classList.toggle("on", s.activity === "quiz");
   if (document.activeElement !== $("optWindow")) $("optWindow").value = String(s.att_window_s || 15);
   $("optLocation").checked = !!s.check_location;
   checkLocation = !!s.check_location;
   renderQuizLive();
+  renderMonitor();
   autoMode();
 }
+
+// ------------------------------------------------------------------ v10: what is happening now
+// Status pill of the class banner: what the students are doing right now.
+function nowStatus() {
+  const s = live.session, q = live.quiz;
+  if (s.ended_at) return { cls: "ended", text: "⏹ Session ended" };
+  if (s.activity === "quiz" && q) {
+    if (q.phase === "question") return { cls: "live", text: `● Question ${q.index + 1}/${q.count} running` };
+    if (q.phase === "self") return { cls: "live", text: `● Test open: ${q.done || 0}/${live.present} finished` };
+    if (q.phase === "lobby") return { cls: "warn", text: "Rules on the phones" };
+    if (q.phase === "reveal") return { cls: "warn", text: `Answers of question ${q.index + 1} shown` };
+    if (q.phase === "finished") return { cls: "info", text: "Quiz finished" };
+  }
+  if (s.activity === "link") return { cls: "info", text: "📎 " + (s.link_label || "Link") + " on the phones" };
+  if (s.attendance_open) return { cls: "att", text: `● Attendance open: ${live.present} present` };
+  return { cls: "idle", text: "Waiting screen" };
+}
+
+// Small phone: a text version of the screen the students see.
+function phoneScreen() {
+  const s = live.session, q = live.quiz;
+  if (s.ended_at) return `<div class="pm-icon">⏹</div><div class="pm-title">Session ended</div><div>See you next time.</div>`;
+  if (s.activity === "link") return `<div class="pm-icon">📎</div><div class="pm-title">${esc(s.link_label || "Link")}</div><div class="pm-btn">Open</div>`;
+  if (s.activity === "quiz" && q) {
+    if (q.phase === "lobby") return `<div class="pm-icon">📋</div><div class="pm-title">${esc(q.title)}</div><div>Rules of the quiz</div><div class="pm-btn">I am ready</div>`;
+    if (q.phase === "self") return `<div class="pm-title">${esc(q.title)}</div><div>${q.count} questions, at their own pace</div>` +
+      Array.from({ length: Math.min(q.count, 4) }, (_, i) => `<div class="pm-opt">Q${i + 1} …</div>`).join("") + (q.count > 4 ? "<div>…</div>" : "");
+    if (q.phase === "question" || q.phase === "reveal") {
+      const head = `<div class="pm-small">Question ${q.index + 1}/${q.count}${q.phase === "question" ? " · " + formatSeconds(q.remaining_ms) + " s" : " · closed"}</div>`;
+      if (q.per_student) return head + `<div class="pm-title">Each student has his own question</div>`;
+      return head + `<div class="pm-q">${esc(q.question || "")}</div>` + (q.options || []).map((o, i) =>
+        `<div class="pm-opt ${q.phase === "reveal" && q.reveal_mode === "each" && q.correct.includes(i) ? "ok" : ""}">${LETTERS[i]}. ${esc(o)}</div>`).join("");
+    }
+    if (q.phase === "finished") return `<div class="pm-icon">✅</div><div class="pm-title">Quiz finished</div><div>${q.reveal_mode === "never" ? "Thank you" : "Their answers and mark"}</div>`;
+  }
+  if (s.attendance_open) return `<div class="pm-icon">📷</div><div class="pm-title">Check in</div><div>Scan the QR code of the projector</div>`;
+  return `<div class="pm-icon">⏸</div><div class="pm-title">Waiting</div><div>The phone waits for your next step.</div>`;
+}
+
+function renderMonitor() {
+  const s = live.session;
+  const st = nowStatus();
+  $("nowPill").className = "now-pill " + st.cls;
+  $("nowPill").textContent = st.text;
+  $("phoneMock").innerHTML = `<div class="pm-screen">${phoneScreen()}</div>`;
+  const ended = !!s.ended_at;
+  $("endedBox").classList.toggle("hidden", !ended);
+  $("endedAt").textContent = ended ? "at " + new Date(s.ended_at).toLocaleTimeString().slice(0, 5) : "";
+  $("endSessionBtn").classList.toggle("hidden", ended);
+  if (ended) { $("attOnBtn").disabled = true; $("showQuizBtn").disabled = true; }
+}
+
+$("endSessionBtn").onclick = () => {
+  if (!confirm("End the session?\nAttendance is closed, a running quiz is finished, and the phones show 'Session ended'.\nYou can reopen it later.")) return;
+  act("t_end_session", { p_session: sessionId }, "Session ended.").then(loadSessionsQuiet);
+};
+$("reopenBtn").onclick = () => {
+  if (!confirm("Reopen the session? (Attendance stays closed until you open it.)")) return;
+  act("t_reopen_session", { p_session: sessionId }, "Session reopened.").then(loadSessionsQuiet);
+};
+// Refresh the session list (labels, "ended") without re-selecting the session.
+async function loadSessionsQuiet() {
+  try {
+    allSessions = await rpc("t_list_sessions", { p_class: classId });
+    renderSessionsTable();
+  } catch (e) { /* ignore */ }
+}
+
+// The mini projector is a 1280x720 page scaled down to the width of its box.
+function scaleMini() {
+  const box = document.querySelector(".proj-mini");
+  if (box && box.clientWidth) $("projMini").style.transform = "scale(" + (box.clientWidth / 1280) + ")";
+}
+if (window.ResizeObserver) new ResizeObserver(scaleMini).observe(document.querySelector(".proj-mini"));
+window.addEventListener("resize", scaleMini);
+
+$("bannerName").onclick = (e) => { e.preventDefault(); document.querySelector("nav button[data-tab=classes]").click(); };
 
 function renderQuizLive() {
   const q = live.quiz;
@@ -393,6 +482,7 @@ function renderQuizLive() {
   let left = "";
   const self = q.pace === "self";
   ["startBtn", "revealBtn", "nextBtn", "addTimeBtn"].forEach((id) => { $(id).disabled = self; });
+  $("nextBtn").textContent = !self && q.is_last && (q.phase === "question" || q.phase === "reveal") ? "Finish quiz?" : "Next question";
   if (self) {
     const perQ = q.per_question || [];
     box.innerHTML = `<div><p><strong>${esc(q.title)}</strong> · self-paced${q.ask_variant ? " · board number asked" : ""}</p>
@@ -401,6 +491,7 @@ function renderQuizLive() {
       <table>${perQ.map((n, i) => `<tr><td>Q${i + 1}</td><td><div class="b" style="display:inline-block;height:10px;background:#1B7F8C;border-radius:4px;width:${Math.max(3, (160 * n) / Math.max(1, live.present))}px"></div></td><td>${n}</td></tr>`).join("")}</table></div>
       <div><div class="stat">${q.started == null ? 0 : q.started} / ${live.present}</div><div class="muted">students started</div>
       <div class="stat" style="margin-top:10px">${q.done == null ? 0 : q.done}</div><div class="muted">answered every question</div></div>`;
+    if (q.phase === "finished" && q.results) { box.innerHTML = resultsPanel(q); bindResultsToggle(q); }
     $("lockedBox").classList.add("hidden");
     return;
   }
@@ -418,6 +509,7 @@ function renderQuizLive() {
       <p><span class="stat">${q.ready}</span> / ${live.present} ready</p><p class="muted">When enough students are ready, click <strong>2. Start question 1</strong>.</p></div>`;
   } else {
     left = `<div><p><strong>${esc(q.title)}</strong></p><p>${q.phase === "finished" ? "Finished." : "Not started."}</p></div>`;
+    if (q.phase === "finished" && q.results) { box.innerHTML = resultsPanel(q); bindResultsToggle(q); $("lockedBox").classList.add("hidden"); return; }
   }
   const right = `<div><div class="stat">${q.answers} / ${live.present}</div><div class="muted">answers to this question</div>
     ${q.survey ? `<div class="muted" style="margin-top:10px">survey: no right answer</div>` : `<div class="stat" style="margin-top:10px">${q.success_rate == null ? "-" : q.success_rate + " %"}</div><div class="muted">full marks</div>`}</div>`;
@@ -428,6 +520,25 @@ function renderQuizLive() {
     `<tr><td>${esc(l.name)}</td><td>left ${l.leaves} time(s)</td><td><button class="small green" data-unlock="${l.student_id}">Unlock</button></td></tr>`).join("") + `</table>`;
   $("lockedList").querySelectorAll("[data-unlock]").forEach((b) => b.onclick = () =>
     act("t_unlock", { p_quiz: q.id, p_student: b.dataset.unlock }, "Student unlocked."));
+}
+
+// Marks of a finished quiz: mean, median, success rate, distribution. The questions are never shown.
+function resultsPanel(q) {
+  const r = q.results, max = Math.max(1, ...(r.histogram || [0]));
+  const tot = Number(r.total_points);
+  const bars = (r.histogram || []).map((n, i) => `<div class="hbar" title="${(i * tot / 10).toFixed(1)}-${((i + 1) * tot / 10).toFixed(1)}: ${n}">
+    <div style="height:${Math.round((70 * n) / max)}px"></div><span>${n || ""}</span></div>`).join("");
+  return `<div><p><strong>${esc(q.title)}</strong> · finished · ${r.count} student(s)</p>
+      <div class="row" style="gap:22px"><div><div class="stat">${r.mean == null ? "-" : Number(r.mean)}<small>/${tot}</small></div><div class="muted">mean</div></div>
+        <div><div class="stat">${r.median == null ? "-" : Number(r.median)}</div><div class="muted">median</div></div>
+        <div><div class="stat">${r.success_pct == null ? "-" : r.success_pct + " %"}</div><div class="muted">at least ${tot / 2}/${tot}</div></div></div>
+      <label style="margin-top:12px"><input type="checkbox" id="resultsOnProj" style="width:auto" ${q.results_on_projector ? "checked" : ""}> Show these results on the projector (no question, no name)</label></div>
+    <div><div class="muted">Distribution of the marks (0 → ${tot})</div><div class="hist">${bars}</div></div>`;
+}
+function bindResultsToggle(q) {
+  const box = $("resultsOnProj");
+  if (box) box.onchange = () => act("t_quiz_show_results", { p_quiz: q.id, p_show: box.checked },
+    box.checked ? "Results shown on the projector." : "Results hidden from the projector.");
 }
 
 // Automatic mode: close at the end of the timer, then next question after a pause.
@@ -649,7 +760,15 @@ $("quizDeleteBtn").onclick = async () => {
   catch (e) { toast(e.message, "error"); }
 };
 $("revealBtn").onclick = () => act("t_quiz_reveal", { p_quiz: currentQuiz() });
-$("nextBtn").onclick = () => act("t_quiz_next", { p_quiz: currentQuiz() });
+$("nextBtn").onclick = () => {
+  const q = live && live.quiz;
+  if (q && q.is_last && q.pace !== "self") {
+    if (!confirm("This was the last question. Finish the quiz?")) return;
+    act("t_quiz_finish", { p_quiz: q.id }, "Quiz finished.");
+    return;
+  }
+  act("t_quiz_next", { p_quiz: currentQuiz() });
+};
 $("addTimeBtn").onclick = () => act("t_quiz_add_time", { p_quiz: currentQuiz(), p_seconds: Number($("addTimeSel").value) },
   `+${$("addTimeSel").value} s added to the current question.`);
 $("finishBtn").onclick = () => { if (confirm("Finish the quiz now?")) act("t_quiz_finish", { p_quiz: currentQuiz() }); };
@@ -672,9 +791,11 @@ async function refreshAttendance() {
     const d = r.distance >= 1000 ? (r.distance / 1000).toFixed(1) + " km" : r.distance + " m";
     return enoughPositions && r.distance > (CONFIG.farFromRoomM || 300) ? `<span class="far">📍 ${d} away</span>` : `<span class="muted">📍 ${d}</span>`;
   };
+  const term = norm($("attSearch").value);
+  const shown = term ? list.filter((r) => norm(r.name + " " + r.matricule).includes(term)) : list;
   const far = enoughPositions ? list.filter((r) => checkLocation && r.distance > (CONFIG.farFromRoomM || 300)).length : 0;
   $("attendanceTable").innerHTML = (far ? `<p class="far">⚠ ${far} student(s) checked in far from the rest of the class.</p>` : "") +
-    `<table><tr><th>Name</th><th>Matricule</th><th>Status</th><th></th>${checkLocation ? "<th>Position</th>" : ""}<th>Bonus ${SESSION_KIND[live && live.session.kind] || ""}</th></tr>` + list.map((r) =>
+    `<table><tr><th>Name</th><th>Matricule</th><th>Status</th><th></th>${checkLocation ? "<th>Position</th>" : ""}<th>Bonus ${SESSION_KIND[live && live.session.kind] || ""}</th></tr>` + shown.map((r) =>
     `<tr><td><button class="linklike" data-profile="${r.student_id}">${esc(r.name)}</button> ${r.official ? "" : '<span class="badge no">not in official list</span>'}</td><td>${esc(r.matricule)}</td>
      <td><select data-student="${r.student_id}" style="width:auto">${opts.map((o) => `<option value="${o || "none"}" ${(r.status || "") === o ? "selected" : ""}>${o || "-"}</option>`).join("")}</select></td>
      <td class="muted">${r.method === "manual" ? "manual" : r.at ? new Date(r.at).toLocaleTimeString() : ""}</td>${checkLocation ? `<td>${place(r)}</td>` : ""}
@@ -694,6 +815,31 @@ async function refreshAttendance() {
     refreshAttendance();
   });
 }
+
+$("attSearch").oninput = () => refreshAttendance();
+
+// ------------------------------------------------------------------ collapsible cards (remembered in this browser)
+function collapseKey() { return "cp_collapsed"; }
+function collapsedSet() { try { return new Set(JSON.parse(localStorage.getItem(collapseKey()) || "[]")); } catch (e) { return new Set(); } }
+function setupCollapsible() {
+  const closed = collapsedSet();
+  document.querySelectorAll("main .card:not(.nocollapse)").forEach((card) => {
+    const head = card.firstElementChild;
+    if (!head || !/^H[23]$/.test(head.tagName)) return;
+    const section = card.closest("section");
+    const key = (section ? section.id : "") + "|" + head.textContent.trim();
+    card.classList.add("collapsible");
+    card.classList.toggle("collapsed", closed.has(key));
+    head.title = "Click to fold / unfold";
+    head.onclick = () => {
+      const set = collapsedSet();
+      const now = card.classList.toggle("collapsed");
+      if (now) set.add(key); else set.delete(key);
+      try { localStorage.setItem(collapseKey(), JSON.stringify([...set])); } catch (e) { /* ignore */ }
+    };
+  });
+}
+setupCollapsible();
 
 // ------------------------------------------------------------------ students
 async function loadStudents() {
