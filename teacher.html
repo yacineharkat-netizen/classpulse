@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="8">
+<html lang="en" data-version="9">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
 
@@ -153,6 +153,12 @@
                   <option value="tp">Lab (TP) test</option>
                   <option value="survey">Survey (opinions, not graded)</option>
                 </select></label>
+              <label style="margin:0">Pace
+                <select id="quizPace" style="width:auto">
+                  <option value="live">Live: one question at a time, with a timer</option>
+                  <option value="self">Self-paced: all questions at once (lab test, numeric answers)</option>
+                </select></label>
+              <label style="margin:0"><input type="checkbox" id="quizVariant" style="width:auto"> Students type their board / variant number (lab parameters)</label>
               <label style="margin:0"><input type="checkbox" id="quizGraded" checked style="width:auto"> Graded (counted in the marks)</label>
               <label style="margin:0">Marked out of <input id="quizTotal" type="number" min="1" max="100" step="0.5" value="20" style="width:70px"></label>
               <label style="margin:0">Scoring
@@ -389,9 +395,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=8"></script>
-<script src="js/excel.js?v=8"></script>
-<script src="js/teacher.js?v=8"></script>
+<script src="js/common.js?v=9"></script>
+<script src="js/excel.js?v=9"></script>
+<script src="js/teacher.js?v=9"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "8"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "9"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -391,6 +391,19 @@ function renderQuizLive() {
   const box = $("quizLive");
   if (!q) { box.innerHTML = `<p class="muted">No quiz running.</p>`; $("lockedBox").classList.add("hidden"); return; }
   let left = "";
+  const self = q.pace === "self";
+  ["startBtn", "revealBtn", "nextBtn", "addTimeBtn"].forEach((id) => { $(id).disabled = self; });
+  if (self) {
+    const perQ = q.per_question || [];
+    box.innerHTML = `<div><p><strong>${esc(q.title)}</strong> · self-paced${q.ask_variant ? " · board number asked" : ""}</p>
+      <p>${q.phase === "self" ? "OPEN: students answer at their own pace, and can change an answer until you click <strong>Finish quiz</strong>."
+        : q.phase === "finished" ? "Finished." : "Not open yet: click <strong>1. Open</strong>."}</p>
+      <table>${perQ.map((n, i) => `<tr><td>Q${i + 1}</td><td><div class="b" style="display:inline-block;height:10px;background:#1B7F8C;border-radius:4px;width:${Math.max(3, (160 * n) / Math.max(1, live.present))}px"></div></td><td>${n}</td></tr>`).join("")}</table></div>
+      <div><div class="stat">${q.started == null ? 0 : q.started} / ${live.present}</div><div class="muted">students started</div>
+      <div class="stat" style="margin-top:10px">${q.done == null ? 0 : q.done}</div><div class="muted">answered every question</div></div>`;
+    $("lockedBox").classList.add("hidden");
+    return;
+  }
   if ((q.phase === "question" || q.phase === "reveal") && q.per_student) {
     left = `<div><p><strong>Question ${q.index + 1} / ${q.count}</strong> · ${q.phase === "question" ? `<span class="timer">${formatSeconds(q.remaining_ms)} s</span>` : "closed"}</p>
       <p>Each student has <strong>his own questions</strong> (random draw): nothing to show here or on the projector.</p></div>`;
@@ -434,12 +447,20 @@ async function loadQuizzes() {
   const quizzes = await rpc("t_list_quizzes", { p_session: sessionId });
   quizList = quizzes;
   const modeLabel = { each: "answers after each question", end: "answers at the end", never: "answers never shown" };
-  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">[${KIND_LABEL[q.kind] || "Quiz"}${q.graded ? "" : ", not graded"}] ${esc(q.title)} (${q.per_student ? q.count + " q. per student from " + q.pool : q.count + " q."}, /${Number(q.total_points)}, ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
+  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">[${KIND_LABEL[q.kind] || "Quiz"}${q.graded ? "" : ", not graded"}] ${esc(q.title)} (${q.pace === "self" ? "self-paced, " : ""}${q.per_student ? q.count + " q. per student from " + q.pool : q.count + " q."}, /${Number(q.total_points)}, ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
     `<option value="">- create a quiz below -</option>`;
   allQuestions = await rpc("t_list_questions", { p_module: null });
   fillPickFilters();
   renderQuestionPicker();
   if ($("drawRules").children.length === 0) addDrawRule();
+}
+
+// Accepted answer of a numeric question, as text: "3 (±5 %)", "10..40", "1:2; 2:2.24".
+function numSpecText(q, forFile) {
+  const sp = q.num_spec || {};
+  if (sp.min !== undefined) return `${sp.min}..${sp.max}`;
+  if (sp.variants) return Object.entries(sp.variants).map(([k, v]) => `${k}:${v}`).join("; ") + (forFile ? "" : ` (±${Number(q.tolerance)} %)`);
+  return `${sp.value}` + (forFile ? "" : ` (±${Number(q.tolerance)} %)`);
 }
 
 const KIND_LABEL = { quiz: "Course quiz", test: "Test", tp: "TP test", survey: "Survey" };
@@ -462,7 +483,7 @@ function renderQuestionPicker() {
   $("pickCount").textContent = picked.length;
   $("quizQuestionList").innerHTML = list.length === 0 ? `<p class="muted">No question. Import questions in the Questions tab.</p>` :
     `<table>` + list.map((q) => `<tr><td><input type="checkbox" value="${q.id}" ${picked.includes(q.id) ? "checked" : ""} style="width:auto"></td>
-      <td>${esc(q.module)} · ${esc(q.chapter)} · ${esc(q.ref)}</td><td>${esc(q.text)}</td><td>${q.correct.length > 1 ? "several" : "one"}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
+      <td>${esc(q.module)} · ${esc(q.chapter)} · ${esc(q.ref)}</td><td>${esc(q.text)}</td><td>${q.qtype === "number" ? "🔢 number" : q.correct.length > 1 ? "several" : "one"}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
   $("quizQuestionList").querySelectorAll("input[type=checkbox]").forEach((cb) => cb.onchange = () => {
     picked = cb.checked ? picked.concat(cb.value) : picked.filter((id) => id !== cb.value);
     $("pickCount").textContent = picked.length;
@@ -528,12 +549,16 @@ function defaultQuizTitle(ids) {
 function syncQuizOptions() {
   const survey = $("quizKind").value === "survey";
   const perStudent = $("quizPerStudent").checked;
+  const selfPaced = $("quizPace").value === "self";
+  $("quizTime").disabled = selfPaced;
+  if (selfPaced && $("quizReveal").value === "each") $("quizReveal").value = "end";   // no "after each question" without a timer
+  if (selfPaced) $("quizProjector").checked = false;
   $("quizGraded").disabled = survey; if (survey) $("quizGraded").checked = false;
-  $("quizProjector").disabled = perStudent;
+  $("quizProjector").disabled = perStudent || selfPaced;
   if (perStudent) $("quizProjector").checked = false;
   if (survey && !perStudent) $("quizProjector").checked = true;
 }
-["quizKind", "quizPerStudent"].forEach((id) => { $(id).onchange = syncQuizOptions; });
+["quizKind", "quizPerStudent", "quizPace"].forEach((id) => { $(id).onchange = syncQuizOptions; });
 
 $("createQuizBtn").onclick = async () => {
   if (picked.length === 0) { toast("Tick questions or use the random draw first.", "error"); return; }
@@ -546,7 +571,8 @@ $("createQuizBtn").onclick = async () => {
       p_reveal_mode: $("quizReveal").value, p_time_override: $("quizTime").value ? Number($("quizTime").value) : null,
       p_kind: $("quizKind").value, p_show_answer_count: $("quizShowCount").checked,
       p_graded: $("quizGraded").checked, p_scoring: $("quizScoring").value, p_total_points: Number($("quizTotal").value) || 20,
-      p_per_student_count: perStudent, p_show_on_projector: $("quizProjector").checked });
+      p_per_student_count: perStudent, p_show_on_projector: $("quizProjector").checked,
+      p_pace: $("quizPace").value, p_ask_variant: $("quizVariant").checked });
     toast(perStudent ? `Quiz created: ${perStudent} question(s) per student, drawn from ${ids.length}.` : `Quiz created with ${ids.length} question(s).`, "ok");
     $("quizTitle").value = "";
     picked = [];
@@ -568,8 +594,9 @@ $("openBtn").onclick = async () => {
     return;
   }
   if (questionRunning() && !confirm("A question is running. Leave it and show the rules of the selected quiz?")) return;
-  act("t_quiz_open", { p_quiz: $("quizSelect").value },
-    "Rules shown: phones update within 3 seconds. Wait until most students are ready (count below), then click 2. Start question 1.");
+  act("t_quiz_open", { p_quiz: $("quizSelect").value }, chosen && chosen.pace === "self"
+    ? "Self-paced test OPEN: students see every question and answer at their own pace. Click Finish quiz to close it."
+    : "Rules shown: phones update within 3 seconds. Wait until most students are ready (count below), then click 2. Start question 1.");
 };
 $("startBtn").onclick = () => {
   const q = live && live.quiz;
@@ -806,8 +833,8 @@ function renderQuestionsTable() {
   const f = norm($("questionSearch").value);
   const list = allQuestions.filter((q) => (!m || q.module === m) && (!f || norm(`${q.text} ${q.ref} ${q.chapter} ${q.options.join(" ")}`).includes(f)));
   $("questionsTable").innerHTML = `<p class="muted">${list.length} questions shown</p><table><tr><th></th><th>Module</th><th>Chapter</th><th>Ref</th><th>Question</th><th>Correct</th><th>Pts</th><th>Time</th></tr>` +
-    list.map((q) => `<tr><td><input type="checkbox" class="qdel" value="${q.id}" style="width:auto"><br><button class="small secondary" data-qedit="${q.id}">Edit</button></td><td>${esc(q.module)}</td><td>${esc(q.chapter)}</td><td>${esc(q.ref)}</td><td>${esc(q.text)}<br><span class="muted">${q.options.map((o, i) => LETTERS[i] + ". " + esc(o)).join(" · ")}</span></td>
-      <td>${q.correct.length ? q.correct.map((c) => LETTERS[c]).join(",") : '<span class="kind">survey</span>'}</td><td>${q.points}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
+    list.map((q) => `<tr><td><input type="checkbox" class="qdel" value="${q.id}" style="width:auto"><br><button class="small secondary" data-qedit="${q.id}">Edit</button></td><td>${esc(q.module)}</td><td>${esc(q.chapter)}</td><td>${esc(q.ref)}</td><td>${esc(q.text)}<br><span class="muted">${q.qtype === "number" ? "numeric answer" + (q.unit ? " (" + esc(q.unit) + ")" : "") : q.options.map((o, i) => LETTERS[i] + ". " + esc(o)).join(" · ")}</span></td>
+      <td>${q.qtype === "number" ? `<span class="kind">🔢 ${esc(numSpecText(q))}</span>` : q.correct.length ? q.correct.map((c) => LETTERS[c]).join(",") : '<span class="kind">survey</span>'}</td><td>${q.points}</td><td>${q.time_limit} s</td></tr>`).join("") + `</table>`;
 }
 $("questionSearch").oninput = renderQuestionsTable;
 
@@ -819,11 +846,12 @@ $("exportBankBtn").onclick = async () => {
   if (all.length === 0) { toast("The bank is empty.", "error"); return; }
   const wb = XLSX.utils.book_new();
   [...new Set(all.map((q) => q.module))].sort().forEach((m) => {
-    const rows = [["ref", "chapter", "question", "A", "B", "C", "D", "E", "correct", "points", "time_s"]];
+    const rows = [["ref", "chapter", "question", "A", "B", "C", "D", "E", "F", "G", "H", "correct", "points", "time_s", "type", "answer", "tolerance", "unit"]];
     all.filter((q) => q.module === m).forEach((q) => rows.push([q.ref, q.chapter, q.text,
-      ...[0, 1, 2, 3, 4].map((i) => q.options[i] || ""), q.correct.map((c) => LETTERS[c]).join(","), Number(q.points), q.time_limit]));
+      ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => q.options[i] || ""), q.correct.map((c) => LETTERS[c]).join(","), Number(q.points), q.time_limit,
+      q.qtype === "number" ? "number" : "", q.qtype === "number" ? numSpecText(q, true) : "", q.qtype === "number" ? Number(q.tolerance) : "", q.unit || ""]));
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [8, 10, 60, 28, 28, 28, 28, 28, 8, 7, 7].map((w) => ({ wch: w }));
+    ws["!cols"] = [8, 10, 60, 20, 20, 20, 20, 20, 20, 20, 20, 8, 7, 7, 8, 30, 9, 8].map((w) => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, (m || "no module").replace(/[\\/?*\[\]:]/g, "_").slice(0, 31));
   });
   XLSX.writeFile(wb, `ClassPulse_question_bank_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -836,6 +864,7 @@ $("questionsTable").addEventListener("click", (ev) => {
   if (b) openQuestionEditor(allQuestions.find((q) => q.id === b.dataset.qedit));
 });
 function openQuestionEditor(q) {
+  if (q.qtype === "number") { toast("Numeric questions are edited in the Excel file, then imported again (same ref = replaced).", "error"); return; }
   editingQuestion = q;
   $("qeRef").textContent = `${q.module} · ${q.ref}`;
   $("qeChapter").value = q.chapter; $("qeText").value = q.text;

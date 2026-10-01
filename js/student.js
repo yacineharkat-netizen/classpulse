@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "8"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "9"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -168,6 +168,8 @@ async function fetchState() {
 }
 
 function render() {
+  const typing = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("numAnswer");
+  if (typing && state && state.quiz && state.quiz.pace === "self" && state.quiz.phase === "self") return;
   const snapshot = JSON.stringify([state, selection, armedQuiz]).replace(/"remaining_ms":\d+/, "");
   if (snapshot === lastRendered) return;
   lastRendered = snapshot;
@@ -232,6 +234,11 @@ function sharedLinksHtml() {
   return `<div class="card"><strong>Documents of this session</strong>` +
     list.map((l) => `<p><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label || l.url)}</a></p>`).join("") + `</div>`;
 }
+// "3 (±2 %)" + "V" -> "3 V (±2 %)"
+function withUnit(expected, unit) {
+  if (!unit) return expected;
+  return expected.includes(" (±") ? expected.replace(" (±", " " + unit + " (±") : expected + " " + unit;
+}
 function renderQuiz(live, who) {
   const q = state.quiz;
   const head = `<div class="row" style="justify-content:space-between"><strong>${esc(q.title)}</strong>` +
@@ -243,7 +250,10 @@ function renderQuiz(live, who) {
     let html = who + head + bigStatus("🏁", q.kind === "survey" ? "Survey finished" : "Quiz finished", markText) + sharedLinksHtml();
     if (q.review) {
       html += `<div class="protected">` + q.review.map((r, i) => `<div class="card"><div class="muted">Question ${i + 1} · ${r.score == null ? "no answer" : Number(r.score) + " / " + Number(r.points)}</div>
-        <div class="question-text">${esc(r.question)}</div>` + r.options.map((o, pos) => {
+        <div class="question-text">${esc(r.question)}</div>` + (r.qtype === "number"
+          ? `<div class="option ${Number(r.score) > 0 ? "correct" : "wrong"}">Your answer: <strong>${r.my_number == null ? "-" : Number(r.my_number)} ${esc(r.unit || "")}</strong></div>
+             <div class="muted">Accepted: ${esc(withUnit(r.expected || "", r.unit || ""))}</div>`
+          : "") + (r.options || []).map((o, pos) => {
           let cls = "option";
           if (r.correct && r.correct.includes(pos)) cls += " correct"; else if (r.mine && r.mine.includes(pos)) cls += " wrong";
           return `<div class="${cls}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`;
@@ -257,6 +267,7 @@ function renderQuiz(live, who) {
       <p>You left the quiz screen. Your answers are frozen.</p><p><strong>Raise your hand: only the teacher can unlock you.</strong></p></div>`;
     return;
   }
+  if (q.pace === "self") { renderSelfPaced(live, who, head, q); return; }
   if (armedQuiz !== q.quiz_id) {
     // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
     live.innerHTML = who + head + `<div class="card">
@@ -312,6 +323,77 @@ function renderQuiz(live, who) {
     $("sendBtn").onclick = sendAnswer;
     tick();
   }
+}
+
+// ------------------------------------------------------------------ self-paced quiz (lab test)
+// Every question at once; each answer is saved on its own and can be changed until the teacher closes the test.
+// No full screen and no lock: during a lab, students go back and forth between the phone and their tools.
+const drafts = {};            // quiz id + index -> unsaved value typed or ticked by the student
+function renderSelfPaced(live, who, head, q) {
+  const key = (i) => q.quiz_id + ":" + i;
+  const intro = `<div class="card"><strong>${q.kind === "tp" ? "Lab test" : "Test"} · at your own pace</strong>
+    <div class="muted">Answer in any order. Each answer is saved when you tap <em>Save</em> and can be changed until the teacher closes the test.
+    ${q.graded ? "Marked out of " + Number(q.total_points) + "." : "Not graded."} Numbers: use a dot or a comma (2.5 or 2,5).</div></div>`;
+  if (q.ask_variant && q.variant == null) {
+    live.innerHTML = who + head + intro + `<div class="card"><strong>Number of your board</strong>
+      <p class="muted">It is written on your ESP32 / your kit. It sets the values expected for your group.</p>
+      <input id="variantInput" type="number" min="1" max="99" inputmode="numeric" style="font-size:22px">
+      <button id="variantBtn" class="orange" style="width:100%;margin-top:10px">Confirm</button></div>`;
+    $("variantBtn").onclick = async () => {
+      const v = Number($("variantInput").value);
+      try { await rpc("s_set_variant", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_variant: v }); await fetchState(); }
+      catch (e) { toast(e.message, "error"); }
+    };
+    return;
+  }
+  const items = q.items || [];
+  const done = items.filter((it) => it.answered).length;
+  let html = who + head + intro + (q.ask_variant ? `<p class="muted">Board number: <strong>${q.variant}</strong></p>` : "") +
+    `<p><strong>${done} / ${items.length}</strong> answers saved</p><div class="protected">`;
+  items.forEach((it) => {
+    const k = key(it.index);
+    html += `<div class="card" id="item${it.index}"><div class="muted">Question ${it.index + 1}${it.answered ? " · <span style='color:#2E7D4F;font-weight:700'>✔ saved</span>" : ""}</div>
+      <div class="question-text">${esc(it.text)}</div>`;
+    if (it.qtype === "number") {
+      const val = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(Number(it.my_number)));
+      html += `<div class="row" style="gap:8px;align-items:center"><input class="numAnswer" data-index="${it.index}" inputmode="decimal" value="${esc(val)}" style="font-size:20px;max-width:180px">
+        <span style="font-size:18px">${esc(it.unit || "")}</span></div>`;
+    } else {
+      const sel = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
+      if (!it.survey) html += `<div class="answer-kind ${it.multiple === false ? "single" : "multi"}" style="display:inline-block;margin-bottom:6px">${it.multiple === false ? "Only one correct answer" : "One or more answers may be correct"}</div>`;
+      html += (it.options || []).map((o, pos) => `<div class="option ${sel.includes(pos) ? "selected" : ""}" data-index="${it.index}" data-pos="${pos}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`).join("");
+    }
+    html += `<button class="saveBtn orange" data-index="${it.index}" style="width:100%;margin-top:8px">${it.answered ? "Save my new answer" : "Save"}</button></div>`;
+  });
+  live.innerHTML = html + watermark() + `</div>`;
+  live.querySelectorAll(".numAnswer").forEach((inp) => inp.oninput = () => { drafts[key(inp.dataset.index)] = inp.value; });
+  live.querySelectorAll(".option[data-pos]").forEach((b) => b.onclick = () => {
+    const it = items[Number(b.dataset.index)], k = key(it.index), pos = Number(b.dataset.pos);
+    const cur = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []).slice();
+    drafts[k] = it.multiple === false ? [pos] : (cur.includes(pos) ? cur.filter((p) => p !== pos) : cur.concat(pos));
+    b.parentElement.querySelectorAll(".option").forEach((o) => o.classList.toggle("selected", drafts[k].includes(Number(o.dataset.pos))));
+  });
+  live.querySelectorAll(".saveBtn").forEach((b) => b.onclick = async () => {
+    const it = items[Number(b.dataset.index)], k = key(it.index);
+    const args = { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_index: it.index, p_positions: null, p_number: null };
+    if (it.qtype === "number") {
+      const raw = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(it.my_number));
+      const v = parseFloat(String(raw).trim().replace(",", "."));
+      if (raw === "" || isNaN(v)) { toast("Type a number (for example 2.5).", "error"); return; }
+      args.p_number = v;
+    } else {
+      args.p_positions = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
+      if (!args.p_positions.length) { toast("Choose an answer first.", "error"); return; }
+    }
+    b.disabled = true;
+    try {
+      await rpc("s_answer_self", args);
+      delete drafts[k];
+      toast(`Answer ${it.index + 1} saved.`, "ok");
+      lastRendered = "";
+      await fetchState();
+    } catch (e) { toast(e.message, "error"); b.disabled = false; }
+  });
 }
 
 function toggleOption(pos, multiple) {

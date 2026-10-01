@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="8">
+<html lang="en" data-version="9">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,7 +18,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=8"></script>
+<script src="js/common.js?v=9"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -60,7 +60,7 @@
     if (!live) return;
     const s = live.session, q = live.quiz;
     const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
-    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector]]);
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector, q.started, q.done]]);
     if (key === lastKey && !force) { updateTimer(); return; }
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
@@ -73,6 +73,14 @@
         <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> / ${live.class_size || "?"} present</span></div>
         <p class="sub" style="margin-top:4vh">No camera? Open <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong><br>
         and type the code <strong style="font-size:5vh;color:#E8741E;letter-spacing:.3vw">${att && att.open ? att.code : "-"}</strong></p></div>`;
+      return;
+    }
+    if (showQuiz && q.pace === "self" && q.phase === "self") {
+      $("content").className = "center";
+      $("content").innerHTML = `<div style="text-align:center"><div class="sub">${esc(q.title)}</div>
+        <h1>Test open: answer at your own pace on your phone</h1>
+        <div class="huge" style="margin-top:4vh">${q.started || 0}<span class="sub"> / ${live.present} started</span></div>
+        <div class="sub" style="margin-top:2vh">${q.done || 0} finished · ${q.count} questions${q.ask_variant ? " · type the number of your board first" : ""}</div></div>` + cornerQr(s, joinUrl);
       return;
     }
     if (showQuiz && (q.phase === "question" || q.phase === "reveal") && !q.show_on_projector) {

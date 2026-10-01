@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "8";
+:root { --cp-version: "9";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -107,7 +107,7 @@ button:disabled { opacity: .45; cursor: default; }
 .answer-kind { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
 .answer-kind.single { background: var(--ice); color: var(--navy); }
 .answer-kind.multi { background: #FFE6D2; color: #A34A0B; }
-.protected { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.protected { position: relative; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .watermark { position: absolute; inset: 0; overflow: hidden; pointer-events: none; display: flex; flex-wrap: wrap;
   align-content: space-around; justify-content: space-around; transform: rotate(-24deg); opacity: .13; z-index: 2; }
 .watermark span { font-size: 14px; font-weight: 800; color: var(--navy); white-space: nowrap; padding: 6px 10px; }
