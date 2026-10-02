@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "14";
+:root { --cp-version: "16";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -278,3 +278,77 @@ label.tick input[type=checkbox] { position: absolute; left: 0; top: 1px; width: 
 .doc-parts { display: flex; gap: 6px; flex-wrap: wrap; }
 .doc-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 14px; align-items: end; }
 .doc-form label { margin: 0; color: var(--ink); font-weight: 600; }
+
+/* ---------- v15: registration settings, documents of the session, home page ---------- */
+.reg-row { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--ice); }
+.reg-row > button { min-width: 92px; flex-shrink: 0; }
+.reg-qr { background: #fff; padding: 6px; border: 1px solid var(--ice2); border-radius: 8px; line-height: 0; }
+.session-links .sl { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.session-links .sl span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-links .sl button { padding: 2px 8px; }
+.joinpage { background: var(--navy); color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 5vw; padding: 4vh 5vw; }
+.joinpage .qr { background: #fff; padding: 2vh; border-radius: 2vh; line-height: 0; }
+.joinpage .qr { flex-shrink: 0; }
+.joinpage .qr svg { width: min(56vh, 38vw); height: min(56vh, 38vw); display: block; }
+.joinpage h1 { color: #fff; font-size: min(6vh, 4vw); margin: 0 0 2vh; }
+.joinpage .sub { color: var(--ice2); font-size: min(3vh, 2vw); line-height: 1.5; }
+.joinpage .addr { font-size: min(3.2vh, 2vw); font-weight: 700; word-break: break-all; margin-top: 2vh; }
+.joinpage .state { display: inline-block; margin-top: 3vh; padding: 1vh 2vw; border-radius: 4vh; font-weight: 800; font-size: min(3vh, 2vw); }
+.joinpage .state.open { background: var(--green); } .joinpage .state.closed { background: var(--red); }
+.home-tip { background: #FFF3EA; border-left: 6px solid var(--orange); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.home-tip summary { font-weight: 700; color: var(--navy); cursor: pointer; }
+
+/* ---------- v16: phones and tablets (teacher console and student pages) ---------- */
+img, svg, video, iframe { max-width: 100%; }
+@media (max-width: 900px) {
+  /* the side menu becomes a bar at the top: class on the first line, tabs on a line that scrolls sideways */
+  .teacher { display: block; }
+  .teacher nav { position: sticky; top: 0; z-index: 40; height: auto; overflow: visible; padding: 8px 10px 6px;
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .teacher nav::-webkit-scrollbar { display: none; }
+  .teacher nav .brand { display: none; }
+  .teacher nav label { display: none; }
+  .teacher nav select { margin: 0; width: auto; min-width: 130px; max-width: 40vw; flex-shrink: 0; padding: 8px 10px;
+    position: sticky; left: 0; z-index: 1; box-shadow: 6px 0 8px var(--navy); }   /* the class stays visible while the tabs scroll */
+  .teacher nav button { display: inline-block; width: auto; margin: 0; white-space: nowrap; flex-shrink: 0; padding: 8px 10px; font-size: 14px; }
+  .teacher nav #logoutBtn { margin-top: 0 !important; }
+  .teacher nav #whoAmI { display: none; }
+  .teacher main { padding: 10px; }
+  .class-banner { position: static; font-size: 15px; padding: 8px 12px; margin-bottom: 10px; }
+  .now-pill { margin-left: 0; white-space: normal; }
+  .card { padding: 14px 12px; overflow-x: auto; }
+  h2 { font-size: 20px; } h3 { font-size: 17px; }
+  .monitor-grid { grid-template-columns: 1fr; }
+  .monitor-grid > div:last-child { grid-column: auto; }
+  .phone-mock { margin: 0 auto; }
+  .session-code .code { font-size: 30px; letter-spacing: 4px; }
+  .row input, .row select { max-width: 100% !important; }
+  .row > input:not([type=checkbox]):not([type=file]), .row > select { flex: 1 1 140px; min-width: 0; }
+  button { padding: 10px 12px; }
+  table { font-size: 13px; }
+  th, td { padding: 6px 6px; }
+  .qopts { grid-template-columns: 1fr; }
+  .doc-form { grid-template-columns: 1fr; }
+  .reg-row { flex-direction: column; gap: 8px; }
+  .modal { padding: 0; } .modal-content { border-radius: 0; min-height: 100vh; }
+  .demo-grid { grid-template-columns: 1fr; }
+  #quizSelect, #sessionSelect, #linkSelect { max-width: 100% !important; width: 100%; }
+  .hist { min-width: 240px; }
+  /* registration page shown from a phone */
+  .joinpage { flex-direction: column; text-align: center; gap: 3vh; }
+  .joinpage .qr svg { width: min(70vw, 50vh); height: min(70vw, 50vh); }
+  .joinpage h1 { font-size: 26px; } .joinpage .sub, .joinpage .addr, .joinpage .state { font-size: 16px; }
+  .docbar { flex-wrap: wrap; }
+}
+@media (max-width: 480px) {
+  .student { padding: 12px; }
+  .question-text { font-size: 18px; }
+  .big-status { padding: 22px 6px; }
+  .seg button { font-size: 12px; }
+}
+/* tablets in portrait: narrower side menu */
+@media (min-width: 901px) and (max-width: 1150px) {
+  .teacher { grid-template-columns: 200px 1fr; }
+  .teacher nav { padding: 14px 10px; }
+  .teacher main { padding: 14px; }
+}

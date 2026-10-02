@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "14"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "16"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -14,6 +14,7 @@ let activeTab = "live";
 let checkLocation = false;    // this session asks the phone position at check-in
 let classNames = {};          // class id -> "name year"
 let classRoles = {};          // class id -> "teacher" | "assistant"
+let classInfo = {};           // class id -> row of t_list_classes (registration settings...)
 function isAssistant() { return classId && classRoles[classId] === "assistant"; }
 
 // Each class gets its own colour, always the same, so that the current class is obvious on every tab.
@@ -84,7 +85,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
 async function loadClasses() {
   const classes = await rpc("t_list_classes");
   classNames = {};
-  classes.forEach((c) => { classNames[c.id] = `${c.name} ${c.year}`; classRoles[c.id] = c.role || "teacher"; });
+  classes.forEach((c) => { classNames[c.id] = `${c.name} ${c.year}`; classRoles[c.id] = c.role || "teacher"; classInfo[c.id] = c; });
   const keep = classId || localStorage.getItem("cp_class");
   $("classSelect").innerHTML = classes.map((c) => `<option value="${c.id}">${esc(c.name)} ${esc(c.year)}</option>`).join("") ||
     `<option value="">- create a class first -</option>`;
@@ -490,6 +491,7 @@ async function refreshLive() {
   checkLocation = !!s.check_location;
   renderQuizLive();
   renderMonitor();
+  renderSessionLinks();
   autoMode();
 }
 
@@ -542,6 +544,17 @@ function renderMonitor() {
   $("endedAt").textContent = ended ? "at " + new Date(s.ended_at).toLocaleTimeString().slice(0, 5) : "";
   $("endSessionBtn").classList.toggle("hidden", ended);
   if (ended) { $("attOnBtn").disabled = true; $("showQuizBtn").disabled = true; $("linkModeBtn").disabled = true; }
+}
+
+// Links and files kept on the phones for this session ("Documents of this session"): the teacher can remove them.
+function renderSessionLinks() {
+  const links = (live.session.links || []);
+  $("sessionLinks").innerHTML = links.length === 0 ? "" : `<div class="muted" style="margin-top:10px">Kept on the phones for this session:</div>` +
+    links.map((l) => `<div class="sl"><span title="${esc(l.url)}">${esc(l.label || l.url)}</span><button class="small secondary" data-slink="${l.id}" title="Remove from the phones">✕</button></div>`).join("");
+  $("sessionLinks").querySelectorAll("[data-slink]").forEach((b) => b.onclick = () => {
+    if (!confirm("Remove this document from the phones for this session?")) return;
+    act("t_remove_session_link", { p_session: sessionId, p_id: Number(b.dataset.slink) }, "Removed from the phones.");
+  });
 }
 
 $("endSessionBtn").onclick = () => {
@@ -856,6 +869,14 @@ $("quizResetBtn").onclick = async () => {
   try { await rpc("t_quiz_reset", { p_quiz: q.id }); await afterQuizChange("Quiz reset: you can run it again from the rules.", q.id); }
   catch (e) { toast(e.message, "error"); }
 };
+// Results of the selected quiz on the projector (any finished quiz of the session, even an old one).
+$("quizResultsBtn").onclick = async () => {
+  const q = selectedQuiz(); if (!q) return;
+  if (q.status !== "finished") { toast("This quiz is not finished: its results do not exist yet.", "error"); return; }
+  const showing = live && live.quiz && live.quiz.id === q.id && live.quiz.results_on_projector;
+  if (!showing && !projectorAlive()) openProjector(true);
+  await act("t_quiz_show_results", { p_quiz: q.id, p_show: !showing }, showing ? "Results hidden from the projector." : "Results shown on the projector.");
+};
 $("quizDeleteBtn").onclick = async () => {
   const q = selectedQuiz(); if (!q) return;
   if (!confirm(`DELETE "${q.title}"?\nThe quiz and all its answers and marks are deleted for good.`)) return;
@@ -944,8 +965,42 @@ function setupCollapsible() {
 }
 setupCollapsible();
 
+// ------------------------------------------------------------------ registration settings of the class
+function renderRegistration() {
+  const c = classInfo[classId];
+  if (!c || isAssistant()) return;
+  $("regSessionBtn").textContent = c.reg_session ? "✓ Open" : "✕ Closed";
+  $("regSessionBtn").className = "small " + (c.reg_session ? "green" : "red");
+  $("regOpenBtn").textContent = c.reg_open ? "✓ Open" : "✕ Closed";
+  $("regOpenBtn").className = "small " + (c.reg_open ? "green" : "secondary");
+  const show = c.reg_open && c.reg_code;
+  $("regLinkBox").classList.toggle("hidden", !show);
+  if (show) {
+    const url = siteUrl("student.html") + "?reg=" + c.reg_code;
+    $("regLink").textContent = url; $("regLink").href = url;
+    const qr = qrcode(0, "M"); qr.addData(url); qr.make();
+    $("regQr").innerHTML = qr.createSvgTag({ cellSize: 3, margin: 0 });
+  }
+}
+async function setRegistration(session, open) {
+  try {
+    const r = await rpc("t_set_registration", { p_class: classId, p_session: session, p_open: open });
+    Object.assign(classInfo[classId], r);
+    renderRegistration();
+    toast("Registration settings saved.", "ok");
+  } catch (e) { toast(e.message, "error"); }
+}
+$("regSessionBtn").onclick = () => {
+  const c = classInfo[classId];
+  if (c.reg_session && !confirm("Stop the registration of new phones during the sessions?\nStudents already registered are not affected.")) return;
+  setRegistration(!c.reg_session, null);
+};
+$("regOpenBtn").onclick = () => setRegistration(null, !classInfo[classId].reg_open);
+$("regPageBtn").onclick = () => window.open("join.html?reg=" + classInfo[classId].reg_code, "classpulse_registration");
+
 // ------------------------------------------------------------------ students
 async function loadStudents() {
+  renderRegistration();
   if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const all = await rpc("t_list_students", { p_class: classId });
   const f = norm($("studentSearch").value);

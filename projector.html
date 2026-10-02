@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="14">
+<html lang="en" data-version="16">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,7 +18,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=14"></script>
+<script src="js/common.js?v=16"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -68,6 +68,12 @@
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
 
+    // The teacher asked for the results of a finished quiz: shown whatever the phones display (even after the end of the session).
+    if (q && q.phase === "finished" && q.results_on_projector && q.results) {
+      $("content").className = "";
+      $("content").innerHTML = resultsView(q);   // no corner QR code: it would hide the chart
+      return;
+    }
     if (s.ended_at) {
       $("content").className = "center";
       $("content").innerHTML = `<div style="text-align:center"><h1 style="font-size:7vh">Session ended</h1><div class="sub">${esc(s.title)}${s.end_time ? " · " + s.end_time : ""}</div>
@@ -124,11 +130,6 @@
     if (showQuiz && q.phase === "lobby") {
       $("content").innerHTML = `<div style="text-align:center"><h1>${esc(q.title)}</h1><div class="sub">Read the rules on your phone, then tap "I am ready".</div>
         <div class="huge" style="margin-top:4vh">${q.ready}<span class="sub"> / ${live.present} ready</span></div></div>` + cornerQr(s, joinUrl);
-      return;
-    }
-    if (showQuiz && q.phase === "finished" && q.results_on_projector && q.results) {
-      $("content").className = "";
-      $("content").innerHTML = resultsView(q);   // no corner QR code: it would hide the chart
       return;
     }
     if (showQuiz && q.phase === "finished") {

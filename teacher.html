@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="14">
+<html lang="en" data-version="16">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body>
 
@@ -109,6 +109,7 @@
               <select id="linkSelect" style="max-width:100%"></select>
               <div class="row" style="gap:6px;margin-top:6px"><button id="linkBtn" class="secondary small">📲 Push to phones</button>
                 <button id="screenBtn" class="secondary small hidden">🖥 Big screen on projector</button></div>
+              <div id="sessionLinks" class="session-links"></div>
               <button id="endSessionBtn" class="red small" style="margin-top:12px">⏹ End the session</button>
             </div>
           </div>
@@ -146,6 +147,7 @@
             <span class="muted">Selected quiz:</span>
             <button id="quizRenameBtn" class="small secondary">✏ Rename</button>
             <button id="quizDupBtn" class="small secondary" title="New quiz with the same questions and settings">⧉ Duplicate</button>
+            <button id="quizResultsBtn" class="small secondary" title="Marks of the class for the selected finished quiz, on the projector (no question, no name)">📊 Results on projector</button>
             <button id="quizResetBtn" class="small secondary teacher-only" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
             <button id="quizDeleteBtn" class="small red teacher-only">🗑 Delete</button>
           </div>
@@ -249,6 +251,28 @@
 
     <!-- ===================== STUDENTS ===================== -->
     <section id="tab-students" class="hidden">
+      <div class="card teacher-only">
+        <h2>Registration of the students</h2>
+        <p class="muted">A student registers his phone once (student number, name, PIN). You decide when new phones can register.</p>
+        <div class="reg-row">
+          <button id="regSessionBtn" class="small"></button>
+          <div><strong>During a session.</strong> Students of the official list register with the session QR code. A student who is
+            <em>not</em> in the official list can register only while the attendance is open (he is in the room with you); you correct mistakes afterwards.</div>
+        </div>
+        <div class="reg-row">
+          <button id="regOpenBtn" class="small"></button>
+          <div><strong>Outside the sessions, with a registration QR code.</strong> Only students of the official list (student number and last name must match).
+            Nobody else can register this way.
+            <div id="regLinkBox" class="hidden" style="margin-top:8px">
+              <div class="row" style="gap:14px;align-items:center">
+                <div id="regQr" class="reg-qr"></div>
+                <div><div class="muted">Registration address</div><a id="regLink" target="_blank"></a>
+                  <div style="margin-top:8px"><button id="regPageBtn" class="orange small">🖥 Open the registration page (to project)</button></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="card teacher-only">
         <h2>Official student list</h2>
         <p class="muted">Any Excel, OpenOffice/LibreOffice (.ods) or CSV file. Choose the file, then the sheet (one sheet per section),
@@ -478,10 +502,11 @@
 
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
+<script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=14"></script>
-<script src="js/excel.js?v=14"></script>
-<script src="js/teacher.js?v=14"></script>
+<script src="js/common.js?v=16"></script>
+<script src="js/excel.js?v=16"></script>
+<script src="js/teacher.js?v=16"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

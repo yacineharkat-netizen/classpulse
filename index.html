@@ -1,15 +1,19 @@
 <!DOCTYPE html>
-<html lang="en" data-version="14">
+<html lang="en" data-version="16">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#0B2545">
 </head>
 <body>
 <div class="student" style="margin-top:6vh">
   <h1 id="appName">ClassPulse</h1>
   <p class="muted" id="institution"></p>
+  <a id="backToSession" class="hidden" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:14px">↩ Back to my session</button></a>
   <div class="card">
     <h2>Join a session</h2>
     <label for="code">Session code (shown on the screen)</label>
@@ -17,6 +21,12 @@
     <button id="go" style="margin-top:14px;width:100%">Join</button>
   </div>
   <a href="student.html?space=1" style="text-decoration:none"><button class="secondary" style="width:100%;margin-bottom:14px">📚 My documents (course notes, lab sheets, code)</button></a>
+  <details class="home-tip">
+    <summary>📲 Put ClassPulse on your home screen (no more address to remember)</summary>
+    <p><strong>Android (Chrome):</strong> menu <strong>⋮</strong> at the top right › <strong>Add to Home screen</strong> › Add.</p>
+    <p><strong>iPhone (Safari):</strong> the <strong>Share</strong> button (square with an arrow) › <strong>Add to Home Screen</strong> › Add.</p>
+    <p class="muted">An icon "ClassPulse" appears with your other apps. Use the same browser as the one you registered with: your phone stays recognised.</p>
+  </details>
   <p class="muted">In class, simply scan the QR code shown on the screen: you do not need to type anything.
     Demos and documents are sent to your phone by the teacher during the session.</p>
   <p class="muted" style="text-align:right"><a href="teacher.html">Teacher</a></p>
@@ -25,6 +35,11 @@
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = CONFIG.institution;
+  // a phone that already joined a session gets a direct way back
+  try {
+    var last = localStorage.getItem("cp_last_session");
+    if (last) { var back = document.getElementById("backToSession"); back.href = "student.html?s=" + encodeURIComponent(last); back.classList.remove("hidden"); }
+  } catch (e) { /* private mode */ }
   document.getElementById("go").onclick = () => {
     const code = document.getElementById("code").value.trim().toUpperCase();
     if (code.length === 6) location.href = "student.html?s=" + encodeURIComponent(code);

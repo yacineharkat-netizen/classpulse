@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="en" data-version="14">
+<html lang="en" data-version="16">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#0B2545">
 </head>
 <body>
 <div class="student">
@@ -51,6 +54,9 @@
     <p class="muted" style="margin-top:14px"><a href="#" id="toRegister">Back to registration</a></p>
   </div>
 
+  <!-- 2c. Registration outside a session (link or QR code of the class, official list only) -->
+  <div id="viewClassReg" class="card hidden"></div>
+
   <!-- 3. Live content pushed by the teacher -->
   <div id="viewLive" class="hidden"></div>
 
@@ -63,8 +69,8 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=14"></script>
-<script src="js/student.js?v=14"></script>
+<script src="js/common.js?v=16"></script>
+<script src="js/student.js?v=16"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

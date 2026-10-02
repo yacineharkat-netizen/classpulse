@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "14"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "16"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -35,6 +35,11 @@ const ERROR_MESSAGES = {
   DOC_NOT_AVAILABLE: "This document is not available for your class.",
   PDF_NOT_ALLOWED: "The teacher did not allow the PDF download of this document.",
   EMPTY_DOCUMENT: "Choose at least one file: the page (HTML), the PDF or an attached file.",
+  REGISTRATION_CLOSED: "The registration of new phones is closed for this class. Ask the teacher.",
+  NOT_IN_OFFICIAL_LIST: "You are not in the official list of this class (check your student number and last name). You can register in class, when the teacher opens the attendance.",
+  UNKNOWN_CLASS: "This registration link is not valid.",
+  QUIZ_NOT_FINISHED: "This quiz is not finished: its results do not exist yet.",
+  ANOTHER_QUIZ_RUNNING: "Another quiz is running in this session: finish it before showing these results.",
   TEACHER_ONLY: "Only the teacher of the class can do this (lab assistants cannot).",
   ASSISTANT_TP_ONLY: "A lab assistant can only work on lab (TP) sessions and lab tests.",
   NO_SUCH_ACCOUNT: "No ClassPulse account with this e-mail. Create it first in Supabase (Authentication > Users > Add user).",

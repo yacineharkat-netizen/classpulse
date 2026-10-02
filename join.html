@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" data-version="16">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassPulse - registration</title>
+<link rel="stylesheet" href="css/style.css?v=16">
+</head>
+<body class="joinpage">
+  <div class="qr" id="qr"></div>
+  <div style="flex:1;min-width:0;max-width:46vw">
+    <div class="sub" id="className"></div>
+    <h1>Register your phone</h1>
+    <div class="sub">Scan the QR code, then type your student number, your last name and a 4-digit PIN.<br>
+      Only the students of the official list can register here.</div>
+    <div class="sub" style="margin-top:3vh">No camera? Open</div>
+    <div class="addr" id="addr"></div>
+    <div class="state" id="state"></div>
+  </div>
+<script src="lib/supabase.js"></script>
+<script src="lib/qrcode.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=16"></script>
+<script>
+  // Registration page of a class, to show on the projector outside any session.
+  const reg = (new URLSearchParams(location.search).get("reg") || "").toUpperCase();
+  const url = siteUrl("student.html") + "?reg=" + reg;
+  const qr = qrcode(0, "M"); qr.addData(url); qr.make();
+  $("qr").innerHTML = qr.createSvgTag({ cellSize: 8, margin: 0 });
+  $("addr").textContent = url.replace(/^https?:\/\//, "");
+  async function refresh() {
+    try {
+      const info = await rpc("s_class_reg_info", { p_reg: reg });
+      $("className").textContent = info.class_name;
+      $("state").textContent = info.open ? "● Registration open" : "Registration closed";
+      $("state").className = "state " + (info.open ? "open" : "closed");
+    } catch (e) { $("state").textContent = e.message; $("state").className = "state closed"; }
+  }
+  refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>
