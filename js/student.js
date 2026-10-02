@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "8"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "13"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -34,7 +34,39 @@ function dropAttendanceCodeFromUrl() {
 }
 
 // ------------------------------------------------------------------ start
+// ------------------------------------------------------------------ student space (documents, outside the sessions)
+// Every class this phone is registered in keeps a token in localStorage ("cp_device_<class id>").
+const DOC_KIND = { course: "Course", tp: "Lab", code: "Code", other: "Document" };
+async function renderSpace() {
+  const tokens = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf("cp_device_") === 0) tokens.push(localStorage.getItem(k));
+    }
+  } catch (e) { /* private mode */ }
+  const box = $("spaceBox");
+  if (!tokens.length) {
+    box.classList.toggle("hidden", !params.has("space"));
+    $("spaceList").innerHTML = `<p class="muted">This phone is not registered yet. Join a session once in class (scan the QR code): your documents will then appear here.</p>`;
+    return;
+  }
+  const blocks = [];
+  for (const token of tokens) {
+    try {
+      const sp = await rpc("s_space", { p_device: token });
+      blocks.push(`<div class="space-class"><h3>${esc(sp.class_name)}</h3>` + (sp.docs.length === 0 ? `<p class="muted">No document yet.</p>` :
+        sp.docs.map((d) => `<a class="space-doc" href="${esc(d.stored ? "doc.html?d=" + d.id + "&c=" + sp.class_id : new URL(d.url, location.href).href)}" ${d.stored ? "" : 'target="_blank" rel="noopener"'}>
+          <span class="k ${esc(d.kind)}">${DOC_KIND[d.kind] || "Document"}</span><span>${esc(d.title)}</span></a>`).join("")) + `</div>`);
+    } catch (e) { /* token of a deleted class: ignore */ }
+  }
+  $("spaceList").innerHTML = blocks.join("") || `<p class="muted">No document yet.</p>`;
+  box.classList.remove("hidden");
+}
+
 async function start() {
+  if (params.has("space")) $("spaceBox").open = true;
+  renderSpace();
   if (!sessionCode) { show("viewCode"); return; }
   try {
     sessionInfo = await rpc("s_session_info", { p_code: sessionCode });
@@ -168,6 +200,11 @@ async function fetchState() {
 }
 
 function render() {
+  if (scanning) return;   // do not destroy the camera view
+  const typingCode = document.activeElement && document.activeElement.id === "attInput";
+  if (typingCode && state && !state.present && state.attendance_open) return;
+  const typing = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("numAnswer");
+  if (typing && state && state.quiz && state.quiz.pace === "self" && state.quiz.phase === "self") return;
   const snapshot = JSON.stringify([state, selection, armedQuiz]).replace(/"remaining_ms":\d+/, "");
   if (snapshot === lastRendered) return;
   lastRendered = snapshot;
@@ -176,16 +213,24 @@ function render() {
   const who = `<p class="muted">${esc(state.student.first_name)} ${esc(state.student.last_name)} · ${esc(state.student.matricule)}</p>`;
   const live = $("viewLive");
 
+  if (state.ended) {
+    live.innerHTML = who + bigStatus("⏹", "The session is over", "Thank you. Attendance and quizzes are closed.") + sharedLinksHtml();
+    return;
+  }
+
   if (!state.present && state.attendance_open) {
-    live.innerHTML = who + bigStatus("📷", "Scan the QR code on the screen", `It changes every ${state.att_window_s || 15} seconds. You can also type the code shown under it:`) +
-      `<div class="card"><input id="attInput" maxlength="6" style="text-transform:uppercase;font-size:22px;letter-spacing:4px"><button id="attBtn" style="margin-top:10px;width:100%">Check in</button></div>`;
-    $("attBtn").onclick = async () => {
-      try {
-        const r = await rpc("s_checkin", { p_device: deviceToken, p_code: sessionCode, p_att_code: $("attInput").value.trim().toUpperCase() });
-        showCheckinResult(r);
-        await fetchState();
-      } catch (e) { toast(e.message, "error"); }
-    };
+    live.innerHTML = who + bigStatus("📷", "Check in", `The code on the screen changes every ${state.att_window_s || 15} seconds.`) +
+      `<div class="checkin-choice"><button id="scanBtn" class="orange">📷 Scan the QR code</button>
+        <button id="typeBtn" class="secondary">⌨ Type the code</button></div>
+      <div id="scanBox" class="card scanner hidden"><video id="scanVideo" playsinline muted></video>
+        <p class="muted" id="scanMsg">Point the camera at the QR code of the screen.</p><button id="scanStop" class="secondary" style="width:100%">Cancel</button></div>
+      <div id="typeBox" class="card hidden"><label for="attInput">Code shown under the QR code</label>
+        <input id="attInput" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:22px;letter-spacing:4px">
+        <button id="attBtn" style="margin-top:10px;width:100%">Check in</button></div>`;
+    $("scanBtn").onclick = startScan;
+    $("scanStop").onclick = () => { stopScan(); lastRendered = ""; render(); };
+    $("typeBtn").onclick = () => { $("typeBox").classList.remove("hidden"); $("attInput").focus(); };
+    $("attBtn").onclick = () => checkinWith($("attInput").value);
     return;
   }
 
@@ -210,6 +255,82 @@ function bigStatus(icon, title, text) {
   return `<div class="big-status"><div class="icon">${icon}</div><div class="title">${title}</div><div class="muted">${text}</div></div>`;
 }
 
+// ------------------------------------------------------------------ check-in: in-page QR scanner or typed code
+let scanning = false, scanStream = null;
+
+async function checkinWith(text) {
+  // Accepts the scanned address (".../student.html?s=ABC123&a=XYZ789") or the code alone.
+  let code = String(text || "").trim();
+  const m = code.match(/[?&]a=([A-Za-z0-9]+)/);
+  if (m) code = m[1];
+  code = code.toUpperCase();
+  if (!/^[A-Z0-9]{4,8}$/.test(code)) { toast("This is not a ClassPulse attendance code.", "error"); return false; }
+  try {
+    const r = await rpc("s_checkin", { p_device: deviceToken, p_code: sessionCode, p_att_code: code });
+    showCheckinResult(r);
+    if (document.activeElement) document.activeElement.blur();
+    lastRendered = "";
+    await fetchState();
+    return r === "PRESENT" || r === "ALREADY_PRESENT";
+  } catch (e) { toast(e.message, "error"); return false; }
+}
+
+// jsQR (Apache-2.0) is only downloaded when the phone has no built-in QR decoder.
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve();
+  return new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "lib/jsQR.js"; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
+}
+
+async function startScan() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("No camera access in this browser: use 'Type the code'.", "error"); return;
+  }
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+  } catch (e) { toast("Camera refused: use 'Type the code', or allow the camera for this site.", "error"); return; }
+  scanning = true;
+  $("scanBox").classList.remove("hidden");
+  $("scanBtn").classList.add("hidden");
+  const video = $("scanVideo");
+  video.srcObject = scanStream;
+  await video.play().catch(() => {});
+  let detector = null;
+  if ("BarcodeDetector" in window) { try { detector = new BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { detector = null; } }
+  if (!detector) { try { await loadJsQR(); } catch (e) { stopScan(); toast("Scanner not available: use 'Type the code'.", "error"); return; } }
+  const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const loop = async () => {
+    if (!scanning) return;
+    let text = null;
+    try {
+      if (video.readyState >= 2) {
+        if (detector) {
+          const found = await detector.detect(video);
+          if (found.length) text = found[0].rawValue;
+        } else {
+          canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const found = window.jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+          if (found) text = found.data;
+        }
+      }
+    } catch (e) { /* next frame */ }
+    if (text) {
+      stopScan();
+      const ok = await checkinWith(text);
+      if (!ok) { lastRendered = ""; render(); }
+      return;
+    }
+    setTimeout(loop, 200);
+  };
+  loop();
+}
+
+function stopScan() {
+  scanning = false;
+  if (scanStream) { scanStream.getTracks().forEach((t) => t.stop()); scanStream = null; }
+}
+
 // ------------------------------------------------------------------ quiz
 function rulesFor(q) {
   if (q.kind === "survey") {
@@ -232,6 +353,11 @@ function sharedLinksHtml() {
   return `<div class="card"><strong>Documents of this session</strong>` +
     list.map((l) => `<p><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label || l.url)}</a></p>`).join("") + `</div>`;
 }
+// "3 (±2 %)" + "V" -> "3 V (±2 %)"
+function withUnit(expected, unit) {
+  if (!unit) return expected;
+  return expected.includes(" (±") ? expected.replace(" (±", " " + unit + " (±") : expected + " " + unit;
+}
 function renderQuiz(live, who) {
   const q = state.quiz;
   const head = `<div class="row" style="justify-content:space-between"><strong>${esc(q.title)}</strong>` +
@@ -243,7 +369,10 @@ function renderQuiz(live, who) {
     let html = who + head + bigStatus("🏁", q.kind === "survey" ? "Survey finished" : "Quiz finished", markText) + sharedLinksHtml();
     if (q.review) {
       html += `<div class="protected">` + q.review.map((r, i) => `<div class="card"><div class="muted">Question ${i + 1} · ${r.score == null ? "no answer" : Number(r.score) + " / " + Number(r.points)}</div>
-        <div class="question-text">${esc(r.question)}</div>` + r.options.map((o, pos) => {
+        <div class="question-text">${esc(r.question)}</div>` + (r.qtype === "number"
+          ? `<div class="option ${Number(r.score) > 0 ? "correct" : "wrong"}">Your answer: <strong>${r.my_number == null ? "-" : Number(r.my_number)} ${esc(r.unit || "")}</strong></div>
+             <div class="muted">Accepted: ${esc(withUnit(r.expected || "", r.unit || ""))}</div>`
+          : "") + (r.options || []).map((o, pos) => {
           let cls = "option";
           if (r.correct && r.correct.includes(pos)) cls += " correct"; else if (r.mine && r.mine.includes(pos)) cls += " wrong";
           return `<div class="${cls}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`;
@@ -257,6 +386,7 @@ function renderQuiz(live, who) {
       <p>You left the quiz screen. Your answers are frozen.</p><p><strong>Raise your hand: only the teacher can unlock you.</strong></p></div>`;
     return;
   }
+  if (q.pace === "self") { renderSelfPaced(live, who, head, q); return; }
   if (armedQuiz !== q.quiz_id) {
     // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
     live.innerHTML = who + head + `<div class="card">
@@ -312,6 +442,77 @@ function renderQuiz(live, who) {
     $("sendBtn").onclick = sendAnswer;
     tick();
   }
+}
+
+// ------------------------------------------------------------------ self-paced quiz (lab test)
+// Every question at once; each answer is saved on its own and can be changed until the teacher closes the test.
+// No full screen and no lock: during a lab, students go back and forth between the phone and their tools.
+const drafts = {};            // quiz id + index -> unsaved value typed or ticked by the student
+function renderSelfPaced(live, who, head, q) {
+  const key = (i) => q.quiz_id + ":" + i;
+  const intro = `<div class="card"><strong>${q.kind === "tp" ? "Lab test" : "Test"} · at your own pace</strong>
+    <div class="muted">Answer in any order. Each answer is saved when you tap <em>Save</em> and can be changed until the teacher closes the test.
+    ${q.graded ? "Marked out of " + Number(q.total_points) + "." : "Not graded."} Numbers: use a dot or a comma (2.5 or 2,5).</div></div>`;
+  if (q.ask_variant && q.variant == null) {
+    live.innerHTML = who + head + intro + `<div class="card"><strong>Number of your board</strong>
+      <p class="muted">It is written on your ESP32 / your kit. It sets the values expected for your group.</p>
+      <input id="variantInput" type="number" min="1" max="99" inputmode="numeric" style="font-size:22px">
+      <button id="variantBtn" class="orange" style="width:100%;margin-top:10px">Confirm</button></div>`;
+    $("variantBtn").onclick = async () => {
+      const v = Number($("variantInput").value);
+      try { await rpc("s_set_variant", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_variant: v }); await fetchState(); }
+      catch (e) { toast(e.message, "error"); }
+    };
+    return;
+  }
+  const items = q.items || [];
+  const done = items.filter((it) => it.answered).length;
+  let html = who + head + intro + (q.ask_variant ? `<p class="muted">Board number: <strong>${q.variant}</strong></p>` : "") +
+    `<p><strong>${done} / ${items.length}</strong> answers saved</p><div class="protected">`;
+  items.forEach((it) => {
+    const k = key(it.index);
+    html += `<div class="card" id="item${it.index}"><div class="muted">Question ${it.index + 1}${it.answered ? " · <span style='color:#2E7D4F;font-weight:700'>✔ saved</span>" : ""}</div>
+      <div class="question-text">${esc(it.text)}</div>`;
+    if (it.qtype === "number") {
+      const val = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(Number(it.my_number)));
+      html += `<div class="row" style="gap:8px;align-items:center"><input class="numAnswer" data-index="${it.index}" inputmode="decimal" value="${esc(val)}" style="font-size:20px;max-width:180px">
+        <span style="font-size:18px">${esc(it.unit || "")}</span></div>`;
+    } else {
+      const sel = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
+      if (!it.survey) html += `<div class="answer-kind ${it.multiple === false ? "single" : "multi"}" style="display:inline-block;margin-bottom:6px">${it.multiple === false ? "Only one correct answer" : "One or more answers may be correct"}</div>`;
+      html += (it.options || []).map((o, pos) => `<div class="option ${sel.includes(pos) ? "selected" : ""}" data-index="${it.index}" data-pos="${pos}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`).join("");
+    }
+    html += `<button class="saveBtn orange" data-index="${it.index}" style="width:100%;margin-top:8px">${it.answered ? "Save my new answer" : "Save"}</button></div>`;
+  });
+  live.innerHTML = html + watermark() + `</div>`;
+  live.querySelectorAll(".numAnswer").forEach((inp) => inp.oninput = () => { drafts[key(inp.dataset.index)] = inp.value; });
+  live.querySelectorAll(".option[data-pos]").forEach((b) => b.onclick = () => {
+    const it = items[Number(b.dataset.index)], k = key(it.index), pos = Number(b.dataset.pos);
+    const cur = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []).slice();
+    drafts[k] = it.multiple === false ? [pos] : (cur.includes(pos) ? cur.filter((p) => p !== pos) : cur.concat(pos));
+    b.parentElement.querySelectorAll(".option").forEach((o) => o.classList.toggle("selected", drafts[k].includes(Number(o.dataset.pos))));
+  });
+  live.querySelectorAll(".saveBtn").forEach((b) => b.onclick = async () => {
+    const it = items[Number(b.dataset.index)], k = key(it.index);
+    const args = { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_index: it.index, p_positions: null, p_number: null };
+    if (it.qtype === "number") {
+      const raw = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(it.my_number));
+      const v = parseFloat(String(raw).trim().replace(",", "."));
+      if (raw === "" || isNaN(v)) { toast("Type a number (for example 2.5).", "error"); return; }
+      args.p_number = v;
+    } else {
+      args.p_positions = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
+      if (!args.p_positions.length) { toast("Choose an answer first.", "error"); return; }
+    }
+    b.disabled = true;
+    try {
+      await rpc("s_answer_self", args);
+      delete drafts[k];
+      toast(`Answer ${it.index + 1} saved.`, "ok");
+      lastRendered = "";
+      await fetchState();
+    } catch (e) { toast(e.message, "error"); b.disabled = false; }
+  });
 }
 
 function toggleOption(pos, multiple) {
@@ -405,6 +606,10 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && guardActive()) reportLeave("left_screen");
   if (document.visibilityState === "visible") { if (armedQuiz) keepScreenOn(); fetchState(); }
 });
+// Computer keyboards: the PrintScreen key counts as leaving the quiz (a phone screenshot cannot be detected by a web page).
+function onPrintScreen(e) { if (e.key === "PrintScreen" && guardActive()) reportLeave("printscreen"); }
+document.addEventListener("keyup", onPrintScreen);
+document.addEventListener("keydown", onPrintScreen);
 document.addEventListener("fullscreenchange", () => {
   if (!document.fullscreenElement && guardActive()) reportLeave("exit_fullscreen");
 });

@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "8"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "13"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -92,6 +92,28 @@ function parseStudents(rows) {
 }
 
 // Template columns: ref | chapter | question | A | B | C | D | E | correct | points | time_s
+// Numbers typed in French or English: "2,24" or "2.24".
+function num(x) { return typeof x === "number" ? x : parseFloat(String(x).trim().replace(",", ".")); }
+
+// "3" -> {value: 3}; "10..40" or "10 to 40" -> {min: 10, max: 40}; "1:2; 2:2,24" -> {variants: {"1": 2, "2": 2.24}}
+function parseNumericAnswer(answer) {
+  if (answer === undefined || answer === null || answer === "") return null;
+  if (typeof answer === "number") return { value: answer };
+  const t = String(answer).trim();
+  if (t.includes(":")) {
+    const variants = {};
+    for (const part of t.split(/[;\n]+/).map((x) => x.trim()).filter(Boolean)) {
+      const [k, v] = part.split(":").map((x) => x.trim());
+      if (!/^\d+$/.test(k) || isNaN(num(v))) return null;
+      variants[k] = num(v);
+    }
+    return Object.keys(variants).length ? { variants } : null;
+  }
+  const m = t.match(/^(-?[\d.,]+)\s*(?:\.\.|to|à|a)\s*(-?[\d.,]+)$/i);
+  if (m) { const lo = num(m[1]), hi = num(m[2]); return isNaN(lo) || isNaN(hi) ? null : { min: Math.min(lo, hi), max: Math.max(lo, hi) }; }
+  return isNaN(num(t)) ? null : { value: num(t) };
+}
+
 function parseQuestions(rows) {
   const problems = [];
   const out = [];
@@ -100,6 +122,14 @@ function parseQuestions(rows) {
     const line = i + 2; // Excel line number (line 1 = headers)
     const text = r.question || r.text || "";
     if (!text) return;
+    if (/^(number|numeric|nombre)$/i.test(String(r.type || "").trim())) {
+      const spec = parseNumericAnswer(r.answer);
+      if (!spec) { problems.push(`line ${line}: numeric question: "answer" must be a value (3.0), a range (10..40) or one value per board (1:2; 2:2.24)`); return; }
+      out.push({ ref: r.ref || `Q${line}`, chapter: r.chapter || "", text, qtype: "number", num_spec: spec,
+        tolerance: r.tolerance === undefined || r.tolerance === "" ? 5 : num(r.tolerance), unit: String(r.unit || ""),
+        points: Number(r.points) || 1, time_limit: Number(r.time_s || r.time_limit) || 30 });
+      return;
+    }
     const options = ["a", "b", "c", "d", "e", "f", "g", "h"].map((k) => r[k]).filter((v) => v !== undefined && v !== "");
     const correct = String(r.correct || "").toUpperCase().split(/[^A-H]+/).filter(Boolean).map((l) => "ABCDEFGH".indexOf(l));
     if (options.length < 2) problems.push(`line ${line}: at least 2 options needed`);

@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "8"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "13"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -26,6 +26,18 @@ const ERROR_MESSAGES = {
   QUIZ_NOT_FOUND: "Quiz not found.",
   QUIZ_FINISHED: "This quiz is finished. To run it again: Reset it (answers erased) or Duplicate it (new quiz).",
   TITLE_REQUIRED: "Type a title.",
+  QUIZ_CLOSED: "This test is not open (not started yet, or already finished).",
+  VARIANT_REQUIRED: "Type the number of your board first (top of the page).",
+  VARIANT_LOCKED: "The board number cannot change once you have saved answers. Ask the teacher.",
+  BAD_VARIANT: "Type the number written on your board (1 to 99).",
+  NUMBER_NEEDS_SELF_PACE: "Numeric questions only work in a self-paced quiz (choose 'Self-paced' when you create it).",
+  EDIT_BY_IMPORT: "Numeric questions are edited in the Excel file, then imported again.",
+  DOC_NOT_AVAILABLE: "This document is not available for your class.",
+  PDF_NOT_ALLOWED: "The teacher did not allow the PDF download of this document.",
+  EMPTY_DOCUMENT: "Choose at least one file: the page (HTML), the PDF or an attached file.",
+  TEACHER_ONLY: "Only the teacher of the class can do this (lab assistants cannot).",
+  ASSISTANT_TP_ONLY: "A lab assistant can only work on lab (TP) sessions and lab tests.",
+  NO_SUCH_ACCOUNT: "No ClassPulse account with this e-mail. Create it first in Supabase (Authentication > Users > Add user).",
   BAD_QUESTIONS: "Select at least one question.",
 };
 

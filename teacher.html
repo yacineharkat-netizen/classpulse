@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="8">
+<html lang="en" data-version="13">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 
@@ -26,10 +26,11 @@
     <button data-tab="live" class="active">▶ Live session</button>
     <button data-tab="sessions">📅 Sessions</button>
     <button data-tab="students">👥 Students</button>
-    <button data-tab="questions">❓ Questions</button>
-    <button data-tab="demos">🎬 Demos</button>
-    <button data-tab="resources">📎 Resources</button>
-    <button data-tab="export">⬇ Export results</button>
+    <button data-tab="questions" class="teacher-only">❓ Questions</button>
+    <button data-tab="space" class="teacher-only">📚 Student space</button>
+    <button data-tab="demos" class="teacher-only">🎬 Demos</button>
+    <button data-tab="resources" class="teacher-only">📎 Resources</button>
+    <button data-tab="export" class="teacher-only">⬇ Export results</button>
     <button data-tab="classes">＋ Classes</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
     <div id="whoAmI" style="color:#8FA9C8;font-size:12px;margin-top:8px;word-break:break-all"></div>
@@ -37,8 +38,10 @@
 
   <main>
     <div id="classBanner" class="class-banner">
-      <span class="dot"></span><span>Class: <strong id="bannerName">-</strong></span>
+      <span class="dot"></span><span>Class: <a href="#" id="bannerName" title="Open the classes tab">-</a></span>
       <span id="bannerNote" class="note"></span>
+      <span id="rolePill" class="badge info assistant-only">Lab assistant: lab (TP) sessions only</span>
+      <span id="nowPill" class="now-pill hidden"></span>
     </div>
     <!-- ===================== LIVE ===================== -->
     <section id="tab-live">
@@ -49,7 +52,8 @@
           <span class="muted">or create:</span>
           <input id="newSessionTitle" placeholder="Title, e.g. S1 - Discover IoT" style="max-width:260px">
           <input id="newSessionDate" type="date" style="max-width:170px">
-          <input id="newSessionTime" type="time" style="max-width:120px">
+          <input id="newSessionTime" type="time" style="max-width:120px" title="Start">
+          <input id="newSessionEnd" type="time" style="max-width:120px" title="End">
           <select id="newSessionKind" style="width:auto"><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select>
           <button id="createSessionBtn" class="secondary">Create</button>
         </div>
@@ -67,34 +71,45 @@
       </div>
 
       <div id="liveArea" class="hidden">
-        <div class="grid2">
-          <div class="card">
-            <h3>Attendance</h3>
-            <div class="row" style="gap:8px;align-items:center">
-              <span class="badge" id="attBadge">closed</span>
-              <button id="attOnBtn" class="green">Open attendance</button>
-              <button id="attOffBtn" class="secondary">Close attendance</button>
-              <button id="projectorBtn" class="orange">Open projector window</button>
-              <button id="joinQrBtn" class="secondary" title="Big QR code and session code on the projector, for students who closed the page">📱 Join QR on projector</button>
-            </div>
-            <p class="muted">Attendance does not change what the phones show: a student who is not checked in sees the check-in screen first,
-              then the current activity. You can leave attendance open during a quiz for late students.</p>
-            <h3 style="margin-top:14px">What the phones show</h3>
-            <p>Now: <span class="badge info" id="activityBadge">-</span></p>
-            <div class="row">
-              <button id="idleBtn" class="secondary">Waiting screen</button>
-              <button id="showQuizBtn" class="secondary">Show the quiz</button>
-            </div>
-            <label for="linkSelect">Push a demo, a link or a file (manage them in the Resources tab)</label>
-            <div class="row"><select id="linkSelect" style="max-width:320px"></select><button id="linkBtn" class="secondary">Push to phones</button>
-              <button id="screenBtn" class="secondary hidden">Open its big-screen page</button></div>
+        <div class="card monitor nocollapse">
+          <div id="endedBox" class="ended-box hidden">
+            <strong>⏹ Session ended <span id="endedAt"></span></strong>: attendance and quizzes are closed.
+            <button id="reopenBtn" class="small secondary">Reopen the session</button>
           </div>
-          <div class="card">
-            <h3>Figures</h3>
-            <div class="row" style="gap:30px">
-              <div><div class="stat" id="presentCount">0</div><div class="muted">present</div></div>
-              <div><div class="stat" id="classSize">0</div><div class="muted">in the class list</div></div>
-              <div><div class="stat" id="attState">-</div><div class="muted">attendance</div></div>
+          <div class="monitor-grid">
+            <div>
+              <h4>📱 Students' phones</h4>
+              <div id="phoneMock" class="phone-mock"></div>
+              <div class="muted" style="margin:8px 0 4px">Phones show <span class="hidden" id="activityBadge">-</span></div>
+              <div class="seg" title="Follows what you do; click to change it by hand">
+                <button id="idleBtn" title="Waiting screen">⏸ Wait</button>
+                <button id="showQuizBtn" title="Current quiz">📝 Quiz</button>
+                <button id="linkModeBtn" title="Last demo or link pushed">📎 Link</button>
+              </div>
+            </div>
+            <div>
+              <h4>🖥 Projector <span id="projState" class="proj-state off">not open</span></h4>
+              <div class="proj-mini"><iframe id="projMini" title="Projector preview" tabindex="-1"></iframe></div>
+              <div class="row" style="gap:6px;margin-top:8px">
+                <button id="projectorBtn" class="secondary small" title="Opens the projector window once; if it is open, brings it to the front">🖥 Open projector</button>
+                <button id="joinQrBtn" class="orange small" title="Big QR code and session code on the projector, for students who closed the page">📱 Show join QR</button>
+              </div>
+            </div>
+            <div>
+              <h4>Controls</h4>
+              <div class="row" style="gap:6px;align-items:center">
+                <span class="badge" id="attBadge">closed</span>
+                <button id="attOnBtn" class="green small">Open attendance</button>
+                <button id="attOffBtn" class="secondary small">Close attendance</button>
+              </div>
+              <div class="muted" style="font-size:12px;margin-top:4px">Only students not yet checked in see the check-in screen; the others keep what they are doing.</div>
+              <div class="mini-figures"><span><strong id="presentCount">0</strong> present</span> · <span><strong id="classSize">0</strong> in the class</span>
+                <span class="hidden" id="attState">-</span></div>
+              <label for="linkSelect" style="margin-top:10px">Demo, link or file</label>
+              <select id="linkSelect" style="max-width:100%"></select>
+              <div class="row" style="gap:6px;margin-top:6px"><button id="linkBtn" class="secondary small">📲 Push to phones</button>
+                <button id="screenBtn" class="secondary small hidden">🖥 Big screen on projector</button></div>
+              <button id="endSessionBtn" class="red small" style="margin-top:12px">⏹ End the session</button>
             </div>
           </div>
         </div>
@@ -131,8 +146,8 @@
             <span class="muted">Selected quiz:</span>
             <button id="quizRenameBtn" class="small secondary">✏ Rename</button>
             <button id="quizDupBtn" class="small secondary" title="New quiz with the same questions and settings">⧉ Duplicate</button>
-            <button id="quizResetBtn" class="small secondary" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
-            <button id="quizDeleteBtn" class="small red">🗑 Delete</button>
+            <button id="quizResetBtn" class="small secondary teacher-only" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
+            <button id="quizDeleteBtn" class="small red teacher-only">🗑 Delete</button>
           </div>
           <div class="row" style="margin-top:8px">
             <label style="margin:0"><input type="checkbox" id="autoMode" style="width:auto"> Automatic mode: close each question when the time is over, then go to the next one after <span id="autoDelay"></span> s</label>
@@ -144,37 +159,54 @@
           <div id="quizLive" class="grid2" style="margin-top:14px"></div>
           <details style="margin-top:14px" id="quizCreate">
             <summary><strong>Create a quiz for this session</strong></summary>
-            <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
-              <input id="quizTitle" placeholder="Title (empty = automatic title)" style="max-width:260px">
-              <label style="margin:0">Type
-                <select id="quizKind" style="width:auto">
+            <div class="qopts">
+              <fieldset>
+                <legend>1. The quiz</legend>
+                <label for="quizTitle">Title</label>
+                <input id="quizTitle" placeholder="empty = automatic title">
+                <label for="quizKind">Type</label>
+                <select id="quizKind">
                   <option value="quiz">Course quiz</option>
                   <option value="test">Continuous assessment test</option>
                   <option value="tp">Lab (TP) test</option>
                   <option value="survey">Survey (opinions, not graded)</option>
-                </select></label>
-              <label style="margin:0"><input type="checkbox" id="quizGraded" checked style="width:auto"> Graded (counted in the marks)</label>
-              <label style="margin:0">Marked out of <input id="quizTotal" type="number" min="1" max="100" step="0.5" value="20" style="width:70px"></label>
-              <label style="margin:0">Scoring
-                <select id="quizScoring" style="width:auto">
-                  <option value="partial">partial (1 correct of 3 = 1/3; a wrong tick cancels a correct one)</option>
-                  <option value="all">all or nothing</option>
-                </select></label>
-              <label style="margin:0">Answers shown to students
-                <select id="quizReveal" style="width:auto">
-                  <option value="each">after each question</option>
-                  <option value="end">only at the end (review)</option>
-                  <option value="never">never (only the mark)</option>
-                </select></label>
-              <label style="margin:0">Time per question
-                <select id="quizTime" style="width:auto"><option value="">as in the bank</option><option>10</option><option>15</option><option>20</option>
-                  <option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select></label>
-              <label style="margin:0"><input type="checkbox" id="quizShuffle" style="width:auto"> Mix the order of the questions</label>
-              <label style="margin:0"><input type="checkbox" id="quizPerStudent" style="width:auto"> Different questions for each student:
-                <input id="quizPerStudentN" type="number" min="1" value="5" style="width:60px"> drawn from the ticked ones</label>
-              <label style="margin:0"><input type="checkbox" id="quizProjector" style="width:auto"> Show the questions on the projector</label>
-              <label style="margin:0"><input type="checkbox" id="quizShowCount" style="width:auto"> Tell students when a question has only one correct answer
-                <span class="muted">(unticked: "one or more answers may be correct" on every question)</span></label>
+                </select>
+                <label for="quizPace">Pace</label>
+                <select id="quizPace">
+                  <option value="live">Live: one question at a time, with a timer</option>
+                  <option value="self">Self-paced: all questions at once (lab test, numeric answers)</option>
+                </select>
+                <label class="tick"><input type="checkbox" id="quizVariant"> Students type their board / variant number (lab parameters)</label>
+              </fieldset>
+              <fieldset>
+                <legend>2. Marks</legend>
+                <label class="tick"><input type="checkbox" id="quizGraded" checked> Graded (counted in the marks)</label>
+                <label for="quizTotal">Marked out of</label>
+                <input id="quizTotal" type="number" min="1" max="100" step="0.5" value="20" style="max-width:100px">
+                <label for="quizScoring">Scoring</label>
+                <select id="quizScoring">
+                  <option value="partial">Partial (1 correct of 3 = 1/3; a wrong tick cancels a correct one)</option>
+                  <option value="all">All or nothing</option>
+                </select>
+                <label for="quizReveal">Answers shown to students</label>
+                <select id="quizReveal">
+                  <option value="each">After each question</option>
+                  <option value="end">Only at the end (review)</option>
+                  <option value="never">Never (only the mark)</option>
+                </select>
+              </fieldset>
+              <fieldset>
+                <legend>3. Questions</legend>
+                <label for="quizTime">Time per question (s)</label>
+                <select id="quizTime" style="max-width:160px"><option value="">as in the bank</option><option>10</option><option>15</option><option>20</option>
+                  <option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select>
+                <label class="tick"><input type="checkbox" id="quizShuffle"> Mix the order of the questions</label>
+                <label class="tick"><input type="checkbox" id="quizPerStudent"> Different questions for each student:
+                  <input id="quizPerStudentN" type="number" min="1" value="5" style="width:64px;padding:4px 6px"> drawn from the ticked ones</label>
+                <label class="tick"><input type="checkbox" id="quizProjector"> Show the questions on the projector</label>
+                <label class="tick"><input type="checkbox" id="quizShowCount"> Tell students when a question has only one correct answer
+                  <span class="muted">(otherwise: "one or more answers may be correct")</span></label>
+              </fieldset>
             </div>
             <div class="card" style="margin-top:10px;background:#F5F8FB">
               <strong>Random draw</strong> <span class="muted">e.g. 2 questions from chapter S1, then 2 from S2...</span>
@@ -189,6 +221,7 @@
               <select id="pickChapter" style="width:auto"></select>
               <input id="quizFilter" placeholder="Search in the text" style="max-width:220px">
               <span class="muted"><strong id="pickCount">0</strong> question(s) ticked</span>
+              <button id="tickAllBtn" class="small secondary">Tick all shown</button>
               <button id="clearPickBtn" class="small secondary">Untick all</button>
               <button id="createQuizBtn" class="green">Create the quiz with the ticked questions</button>
             </div>
@@ -198,6 +231,7 @@
 
         <div class="card">
           <h3>Attendance list</h3>
+          <input id="attSearch" placeholder="Search by name or student number" style="max-width:320px;margin-bottom:8px">
           <div id="attendanceTable"></div>
         </div>
       </div>
@@ -215,7 +249,7 @@
 
     <!-- ===================== STUDENTS ===================== -->
     <section id="tab-students" class="hidden">
-      <div class="card">
+      <div class="card teacher-only">
         <h2>Official student list</h2>
         <p class="muted">Any Excel, OpenOffice/LibreOffice (.ods) or CSV file. Choose the file, then the sheet (one sheet per section),
           then check the three columns detected automatically. Other columns are ignored.
@@ -232,10 +266,11 @@
             <label style="margin:0">First name <select id="stColFirst" style="width:auto"></select></label>
           </div>
           <div id="stPreview" style="margin-top:10px"></div>
+          <label class="tick" style="margin-top:10px"><input type="checkbox" id="stReplace"> This list <strong>replaces</strong> the previous official list: students who are not in it lose the "official" mark (nobody is deleted, attendance and marks are kept)</label>
           <button id="importStudentsBtn" style="margin-top:10px">Import these students</button>
         </div>
       </div>
-      <div class="card">
+      <div class="card teacher-only">
         <h3>Add a student by hand</h3>
         <div class="row" style="gap:8px;flex-wrap:wrap">
           <input id="addMat" placeholder="Matricule" style="max-width:180px">
@@ -247,6 +282,42 @@
       <div class="card">
         <input id="studentSearch" placeholder="🔍 Search a student (name, first name, matricule)" style="max-width:420px">
         <div id="studentsTable" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <!-- ===================== STUDENT SPACE ===================== -->
+    <section id="tab-space" class="hidden">
+      <div class="card">
+        <h2>Student space of this class</h2>
+        <p class="muted">The students open ClassPulse on their registered phone (home page › <strong>My documents</strong>), even outside a session,
+          and see the documents you make <strong>visible</strong> here. A document is read on the site, with the name of the student printed over it.
+          The PDF can be downloaded only if you allow it, document by document.</p>
+        <div id="docsTable"></div>
+        <details style="margin-top:12px"><summary class="muted">Add a simple link (a public web address)</summary>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">
+            <label style="margin:0;min-width:200px">Title <input id="docTitle" placeholder="e.g. Datasheet DHT22"></label>
+            <label style="margin:0;flex:1;min-width:240px">Address <input id="docUrl" placeholder="https://..."></label>
+            <label style="margin:0">Type <select id="docKind" style="width:auto"><option value="course">Course</option><option value="tp">Lab (TP)</option><option value="code">Code</option><option value="other">Other</option></select></label>
+            <button id="docUrlAddBtn" class="secondary">Add</button>
+          </div></details>
+      </div>
+      <div class="card">
+        <h2>My documents (private)</h2>
+        <p class="muted">Your documents are stored in the ClassPulse database, <strong>not on the public site</strong>: nobody can read them without being
+          registered in a class where you made them visible. One document = a page (HTML file), and optionally its PDF and an attached file (code zip…).
+          The same document can be used in several classes.</p>
+        <div id="documentsTable"></div>
+        <h3 style="margin-top:18px">Add or replace a document</h3>
+        <div class="doc-form">
+          <label>Page to read (.html) <input type="file" id="mdHtml" accept=".html,.htm"></label>
+          <label>PDF version (optional) <input type="file" id="mdPdf" accept=".pdf"></label>
+          <label>Attached file (optional: zip, code…) <input type="file" id="mdFile"></label>
+          <label>Title <input id="mdTitle" placeholder="e.g. TP1 - Acquisition et énergie"></label>
+          <label>Module <input id="mdModule" placeholder="e.g. IoT" list="moduleList"></label>
+          <label>Type <select id="mdKind"><option value="course">Course</option><option value="tp">Lab (TP)</option><option value="code">Code</option><option value="other">Other</option></select></label>
+        </div>
+        <button id="mdSaveBtn" class="green" style="margin-top:12px">Save the document</button>
+        <span class="muted" id="mdInfo"></span>
       </div>
     </section>
 
@@ -373,6 +444,18 @@
         </div>
       </div>
       <div class="card"><div id="classesTable"></div></div>
+      <div class="card teacher-only">
+        <h2>Lab assistants of this class</h2>
+        <p class="muted">An assistant runs the <strong>lab (TP) sessions</strong> of this class with his own account: attendance, lab tests, random draw, bonus,
+          pushing demos, viewing the students. He cannot delete anything, import lists, edit students, see the course sessions,
+          the question bank, the exports or the student space. Everything he does is recorded below.</p>
+        <p class="muted">1. Create his account in Supabase (Authentication › Users › <strong>Add user</strong>, with his e-mail and a password).
+          2. Type the same e-mail here.</p>
+        <div class="row" style="gap:8px"><input id="assistantEmail" placeholder="assistant e-mail" style="max-width:300px"><button id="addAssistantBtn">Add assistant</button></div>
+        <div id="assistantsTable" style="margin-top:10px"></div>
+        <h3 style="margin-top:18px">What the assistants did <button id="logRefreshBtn" class="small secondary">↻ Refresh</button></h3>
+        <div id="activityLog" style="max-height:360px;overflow:auto"></div>
+      </div>
     </section>
   </main>
   <div id="profileBox" class="modal hidden">
@@ -389,9 +472,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=8"></script>
-<script src="js/excel.js?v=8"></script>
-<script src="js/teacher.js?v=8"></script>
+<script src="js/common.js?v=13"></script>
+<script src="js/excel.js?v=13"></script>
+<script src="js/teacher.js?v=13"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

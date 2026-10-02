@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="8">
+<html lang="en" data-version="13">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 <div class="student">
@@ -53,12 +53,18 @@
 
   <!-- 3. Live content pushed by the teacher -->
   <div id="viewLive" class="hidden"></div>
+
+  <!-- 4. Student space: documents of my classes, also outside the sessions -->
+  <details id="spaceBox" class="card hidden">
+    <summary><strong>📚 My documents</strong></summary>
+    <div id="spaceList"><p class="muted">Loading…</p></div>
+  </details>
 </div>
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=8"></script>
-<script src="js/student.js?v=8"></script>
+<script src="js/common.js?v=13"></script>
+<script src="js/student.js?v=13"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" data-version="13">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassPulse - document</title>
+<link rel="stylesheet" href="css/style.css?v=13">
+</head>
+<body class="docview">
+<div class="docbar no-print">
+  <a href="student.html?space=1" id="backLink" class="back">‹ My documents</a>
+  <span id="docTitle" class="t"></span>
+  <span class="actions">
+    <button id="pdfBtn" class="small orange hidden">⬇ PDF</button>
+    <button id="fileBtn" class="small secondary hidden"></button>
+  </span>
+</div>
+<div id="docMsg" class="card hidden" style="max-width:560px;margin:30px auto"></div>
+<iframe id="docFrame" class="hidden" sandbox="allow-same-origin" title="Document"></iframe>
+<div class="print-only">This document is read on ClassPulse. Printing and saving are disabled.</div>
+
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=13"></script>
+<script>
+  // Protected document viewer. The page, the PDF and the attached file come from the database:
+  // only a registered phone of a class where the document is visible receives them (or the teacher, in preview).
+  const q = new URLSearchParams(location.search);
+  const docId = q.get("d"), classId = q.get("c"), previewId = q.get("preview");
+  let token = null;
+
+  function message(html) { $("docMsg").innerHTML = html; $("docMsg").classList.remove("hidden"); $("docFrame").classList.add("hidden"); }
+
+  async function fetchPart(part) {
+    if (previewId) return rpc("t_document_content", { p_id: previewId, p_part: part });
+    return rpc("s_doc", { p_device: token, p_id: docId, p_part: part });
+  }
+
+  function download(b64, name, type) {
+    const bin = atob(String(b64).replace(/\s/g, ""));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  function safeName(text) { return String(text).replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "document"; }
+
+  // Extra rules added to the stored page: no selection, nothing printed, watermark with the reader's name.
+  function protection(mark) {
+    // one small tile with the name, repeated over the whole page (whatever its length)
+    const tile = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="170"><text x="12" y="120" transform="rotate(-24 12 120)"
+      font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#0B2545" fill-opacity="0.11">${esc(mark)}</text></svg>`;
+    return `<style>
+      html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      body { position: relative; }
+      .cp-mark { position: absolute; inset: 0; pointer-events: none; z-index: 9999; background-image: url("data:image/svg+xml,${encodeURIComponent(tile)}"); }
+      .cp-mark span { display: none; }
+      .downloads { display: none !important; }
+      @media print { body { display: none !important; } }
+    </style><div class="cp-mark" aria-hidden="true"><span>${esc(mark)}</span></div>`;
+  }
+
+  function showPage(html, mark) {
+    const frame = $("docFrame");
+    const withMark = html.includes("</body>") ? html.replace("</body>", protection(mark) + "</body>") : html + protection(mark);
+    frame.srcdoc = withMark;
+    frame.classList.remove("hidden");
+    frame.onload = () => {
+      const d = frame.contentDocument;
+      const fit = () => { frame.style.height = Math.max(400, d.documentElement.scrollHeight) + "px"; };
+      fit(); setTimeout(fit, 400); window.addEventListener("resize", fit);
+      d.querySelectorAll("details").forEach((x) => x.addEventListener("toggle", fit));
+      ["contextmenu", "copy", "cut", "dragstart", "selectstart"].forEach((ev) => d.addEventListener(ev, (e) => e.preventDefault()));
+      d.addEventListener("keydown", blockKeys);
+      // links inside the page ("#part-a"): scroll the whole window
+      d.querySelectorAll('a[href^="#"]').forEach((a) => a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const target = d.getElementById(a.getAttribute("href").slice(1));
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }));
+      d.querySelectorAll('a[href^="http"]').forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+    };
+  }
+
+  function blockKeys(e) {
+    const k = (e.key || "").toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && ["s", "p", "u", "c", "a"].includes(k)) e.preventDefault();
+  }
+  document.addEventListener("keydown", blockKeys);
+  ["contextmenu", "copy", "cut", "dragstart"].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault()));
+
+  (async () => {
+    if (previewId) {
+      $("backLink").textContent = "Teacher preview"; $("backLink").removeAttribute("href");
+    } else {
+      try { token = localStorage.getItem("cp_device_" + classId); } catch (e) { token = null; }
+      if (!docId || !token) {
+        message(`<h2>Document not available</h2><p class="muted">Open it from ClassPulse on the phone you registered in class: home page › <strong>My documents</strong>.</p>
+          <a href="student.html?space=1"><button style="width:100%">My documents</button></a>`);
+        return;
+      }
+    }
+    let doc;
+    try { doc = await fetchPart("html"); }
+    catch (e) {
+      message(`<h2>Document not available</h2><p class="muted">${esc(e.code === "DOC_NOT_AVAILABLE" ? "The teacher has not made this document visible for your class (or it was removed)." : e.message)}</p>`);
+      return;
+    }
+    document.title = doc.title;
+    $("docTitle").textContent = doc.title;
+    const st = doc.student;
+    const mark = previewId ? "TEACHER PREVIEW" : `${st.first_name} ${st.last_name} · ${st.matricule}`;
+    const hasPdf = previewId ? doc.has_pdf : doc.pdf;
+    if (hasPdf) {
+      $("pdfBtn").classList.remove("hidden");
+      $("pdfBtn").onclick = async () => {
+        try { const r = await fetchPart("pdf"); download(r.data, safeName(doc.title) + ".pdf", "application/pdf"); }
+        catch (e) { toast(e.message, "error"); }
+      };
+    }
+    if (doc.file_name) {
+      $("fileBtn").textContent = "⬇ " + doc.file_name;
+      $("fileBtn").classList.remove("hidden");
+      $("fileBtn").onclick = async () => {
+        try { const r = await fetchPart("file"); download(r.data, doc.file_name, "application/octet-stream"); }
+        catch (e) { toast(e.message, "error"); }
+      };
+    }
+    if (doc.html) showPage(doc.html, mark);
+    else message(`<h2>${esc(doc.title)}</h2><p class="muted">${doc.file_name || hasPdf ? "Use the download button at the top of the page." : "This document has no content yet."}</p>`);
+  })();
+</script>
+<div id="toast"></div>
+</body>
+</html>

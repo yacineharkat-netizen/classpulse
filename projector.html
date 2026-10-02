@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="8">
+<html lang="en" data-version="13">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,10 +18,12 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=8"></script>
+<script src="js/common.js?v=13"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
+  const mini = new URLSearchParams(location.search).get("mini") === "1";   // small preview inside the teacher console
+  if (mini) { document.body.classList.add("mini"); document.getElementById("topRight").textContent = ""; }
   let live = null;
   let att = null;          // current attendance code
   let lastKey = "";
@@ -46,6 +48,7 @@
     try { live = await rpc("t_live", { p_session: sessionId }); } catch (e) { $("content").innerHTML = `<h1>${esc(e.message)}</h1>`; return; }
     if (live.quiz && live.quiz.phase === "question") localDeadline = Date.now() + live.quiz.remaining_ms;
     $("topLeft").textContent = live.session.title;
+    followTeacher();
     render();
   }
 
@@ -60,11 +63,17 @@
     if (!live) return;
     const s = live.session, q = live.quiz;
     const showQuiz = s.activity === "quiz" && q && q.phase !== "waiting";
-    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector]]);
+    const key = JSON.stringify([s.activity, s.attendance_open, att && att.code, live.present, q && [q.phase, q.index, q.answers, q.distribution, q.reveal_mode, q.ready, q.show_on_projector, q.started, q.done, q.results_on_projector, q.results && q.results.count], s.ended_at]);
     if (key === lastKey && !force) { updateTimer(); return; }
     lastKey = key;
     const joinUrl = siteUrl("student.html") + "?s=" + s.code;
 
+    if (s.ended_at) {
+      $("content").className = "center";
+      $("content").innerHTML = `<div style="text-align:center"><h1 style="font-size:7vh">Session ended</h1><div class="sub">${esc(s.title)}${s.end_time ? " · " + s.end_time : ""}</div>
+        <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
+      return;
+    }
     if (s.attendance_open && !showQuiz && s.activity !== "link") {
       const url = att && att.open ? joinUrl + "&a=" + att.code : joinUrl;
       $("content").innerHTML = `<div class="qr">${qrSvg(url, 8)}</div>
@@ -73,6 +82,14 @@
         <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> / ${live.class_size || "?"} present</span></div>
         <p class="sub" style="margin-top:4vh">No camera? Open <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong><br>
         and type the code <strong style="font-size:5vh;color:#E8741E;letter-spacing:.3vw">${att && att.open ? att.code : "-"}</strong></p></div>`;
+      return;
+    }
+    if (showQuiz && q.pace === "self" && q.phase === "self") {
+      $("content").className = "center";
+      $("content").innerHTML = `<div style="text-align:center"><div class="sub">${esc(q.title)}</div>
+        <h1>Test open: answer at your own pace on your phone</h1>
+        <div class="huge" style="margin-top:4vh">${q.started || 0}<span class="sub"> / ${live.present} started</span></div>
+        <div class="sub" style="margin-top:2vh">${q.done || 0} finished · ${q.count} questions${q.ask_variant ? " · type the number of your board first" : ""}</div></div>` + cornerQr(s, joinUrl);
       return;
     }
     if (showQuiz && (q.phase === "question" || q.phase === "reveal") && !q.show_on_projector) {
@@ -109,6 +126,11 @@
         <div class="huge" style="margin-top:4vh">${q.ready}<span class="sub"> / ${live.present} ready</span></div></div>` + cornerQr(s, joinUrl);
       return;
     }
+    if (showQuiz && q.phase === "finished" && q.results_on_projector && q.results) {
+      $("content").className = "";
+      $("content").innerHTML = resultsView(q);   // no corner QR code: it would hide the chart
+      return;
+    }
     if (showQuiz && q.phase === "finished") {
       $("content").innerHTML = `<div style="text-align:center"><h1>Quiz finished</h1><div class="sub">Your mark is on your phone.</div></div>` + cornerQr(s, joinUrl);
       return;
@@ -124,37 +146,81 @@
       <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
   }
 
+  // Marks of the class for a finished quiz: no question, no name.
+  function resultsView(q) {
+    const r = q.results, tot = Number(r.total_points), max = Math.max(1, ...r.histogram);
+    const fig = (v, l, unit) => `<div class="fig"><div class="v">${v == null ? "-" : v}${unit || ""}</div><div class="l">${l}</div></div>`;
+    return `<div class="pres"><div><div class="sub">${esc(q.title)} · ${r.count} students</div><h1>Results of the class</h1></div>
+      <div class="figs">${fig(r.mean == null ? null : Number(r.mean), "mean", `<small>/${tot}</small>`)}${fig(r.median == null ? null : Number(r.median), "median", `<small>/${tot}</small>`)}
+        ${fig(r.success_pct, "at least " + tot / 2 + "/" + tot, "%")}</div>
+      <div><div class="phist">${r.histogram.map((n) => `<div class="c"><div class="n">${n || ""}</div><div class="b" style="height:${(100 * n) / max}%"></div></div>`).join("")}</div>
+        <div class="axis">${r.histogram.map((n, i) => `<span>${+(i * tot / 10).toFixed(1)}-${+((i + 1) * tot / 10).toFixed(1)}</span>`).join("")}</div></div></div>`;
+  }
+
+  // When the teacher does something else (quiz, push, attendance...), the projector follows:
+  // the join QR code and the random draw are closed. A big-screen page stays when a link is pushed
+  // to the phones (demo: phones + big screen together) and closes for anything else.
+  let lastState = null, lastActivity = null;
+  function followTeacher() {
+    const s = live.session, q = live.quiz;
+    const st = JSON.stringify([s.activity, s.active_quiz_id, q && q.phase, q && q.index, s.link_url, s.attendance_open, s.ended_at, q && q.results_on_projector]);
+    if (lastState !== null && st !== lastState && overlayMode) {
+      const keepScreen = overlayMode === "screen" && (s.activity === lastActivity || s.activity === "link") && !s.ended_at;
+      if (!keepScreen) hideOverlay();
+    }
+    lastState = st; lastActivity = s.activity;
+  }
+
   function updateTimer() {
     const t = $("ptimer");
     if (t) t.textContent = formatSeconds(localDeadline - Date.now());
   }
 
   // ---------------------------------------------------------------- overlay: join QR code, random draw
-  let overlayMode = "";    // "", "join" or "draw"
+  let overlayMode = "";    // "", "join", "draw" or "screen"
+  let screenUrl = null;
   let spinTimer = null;
-  function hideOverlay() { overlayMode = ""; clearInterval(spinTimer); $("overlay").classList.add("hidden"); }
+  function hideOverlay() {
+    overlayMode = ""; screenUrl = null; clearInterval(spinTimer);
+    $("overlay").classList.add("hidden"); $("overlay").classList.remove("screen"); $("overlay").innerHTML = "";
+    sendStatus();
+  }
+  // Big-screen page of a demo, inside this window (in the console preview: only its name).
+  function showScreen(url, label) {
+    overlayMode = "screen"; screenUrl = url; clearInterval(spinTimer);
+    $("overlay").classList.add("screen");
+    $("overlay").innerHTML = mini ? `<div style="text-align:center"><h1>🖥 ${esc(label || "Big-screen page")}</h1><div class="sub">Shown on the projector</div></div>`
+      : `<iframe src="${esc(url)}" title="${esc(label || "Big-screen page")}" allow="fullscreen; autoplay"></iframe>`;
+    $("overlay").classList.remove("hidden");
+    sendStatus();
+  }
   function showJoin() {
     if (!live) return;
     const code = live.session.code, joinUrl = siteUrl("student.html") + "?s=" + code;
-    overlayMode = "join";
+    overlayMode = "join"; screenUrl = null;
+    $("overlay").classList.remove("screen");
     $("overlay").innerHTML = `<div class="qr">${qrSvg(joinUrl, 10)}</div>
       <div><h1 style="font-size:6vh">Scan to join the session</h1>
       <div class="sub" style="margin:2vh 0 4vh">Already registered? You go straight back to the session.</div>
       <div class="sub">No camera? Open</div><div class="addr">${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</div>
       <div class="sub" style="margin-top:3vh">and type the session code</div><div class="code">${esc(code)}</div></div>`;
     $("overlay").classList.remove("hidden");
+    sendStatus();
   }
   // Random draw: the teacher console sends the pool of names and the winners; the animation runs here.
   function showDraw(msg) {
     overlayMode = "draw";
     clearInterval(spinTimer);
     const title = msg.winners.length > 1 ? `${msg.winners.length} students drawn` : "Random student";
+    $("overlay").classList.remove("screen");
     $("overlay").innerHTML = `<div class="draw-box"><div class="sub">🎲 ${title}</div><div id="drawNames"></div></div>`;
     $("overlay").classList.remove("hidden");
+    sendStatus();
     const pool = msg.pool.length ? msg.pool : msg.winners;
     const started = Date.now();
+    const spin = msg.spinMs == null ? 2200 : msg.spinMs;
     spinTimer = setInterval(() => {
-      if (Date.now() - started < (msg.spinMs || 2200)) {
+      if (Date.now() - started < spin) {
         $("drawNames").innerHTML = msg.winners.map(() => `<div class="draw-name spinning">${esc(pool[Math.floor(Math.random() * pool.length)])}</div>`).join("");
       } else {
         clearInterval(spinTimer);
@@ -162,18 +228,24 @@
       }
     }, 80);
   }
-  $("overlay").onclick = hideOverlay;
-  if (window.BroadcastChannel) {
-    const bc = new BroadcastChannel("classpulse_projector_" + sessionId);
+  $("overlay").onclick = () => { if (overlayMode !== "screen" && !mini) hideOverlay(); };
+  // Two-way channel with the teacher console: orders in, status out (only the real projector answers).
+  const bc = window.BroadcastChannel ? new BroadcastChannel("classpulse_projector_" + sessionId) : null;
+  function sendStatus() { if (bc && !mini) bc.postMessage({ type: "status", overlay: overlayMode, screen: screenUrl }); }
+  if (bc) {
     bc.onmessage = (e) => {
       const m = e.data || {};
-      if (m.type === "join") { if (m.show === false || (m.show === "toggle" && overlayMode === "join")) hideOverlay(); else showJoin(); }
+      if (m.type === "ping") sendStatus();
+      if (m.type === "join") { if (m.show === false || (m.show === "toggle" && overlayMode === "join")) { if (overlayMode === "join") hideOverlay(); } else showJoin(); }
       if (m.type === "draw") showDraw(m);
-      if (m.type === "hide") hideOverlay();
+      if (m.type === "hide") { if (overlayMode === "draw" || overlayMode === "join") hideOverlay(); }
+      if (m.type === "screen") { if (m.url) showScreen(m.url, m.label); else if (overlayMode === "screen") hideOverlay(); }
     };
+    if (!mini) setInterval(sendStatus, 1500);
   }
 
   document.addEventListener("keydown", (e) => {
+    if (mini) return;
     const k = e.key.toLowerCase();
     if (k === "f" && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     if (k === "j" || k === "q") { if (overlayMode === "join") hideOverlay(); else showJoin(); }
@@ -185,7 +257,7 @@
     if (!data.session) { $("content").innerHTML = "<h1>Open this window from the teacher console.</h1>"; return; }
     await refresh();
     refreshAttendanceCode();
-    setInterval(refresh, 1000);
+    setInterval(refresh, mini ? 2000 : 1000);
     setInterval(updateTimer, 250);
   })();
 </script>
