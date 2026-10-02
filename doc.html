@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="13">
+<html lang="en" data-version="14">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - document</title>
-<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body class="docview">
 <div class="docbar no-print">
@@ -21,7 +21,7 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=13"></script>
+<script src="js/common.js?v=14"></script>
 <script>
   // Protected document viewer. The page, the PDF and the attached file come from the database:
   // only a registered phone of a class where the document is visible receives them (or the teacher, in preview).
@@ -84,6 +84,32 @@
     };
   }
 
+  // Reading statistics for the teacher: seconds with the page on the screen, and how far down the student went.
+  function trackReading(readId) {
+    let active = 0, maxScroll = 0, sent = -1;
+    const scrolled = () => {
+      const total = document.documentElement.scrollHeight;
+      const pct = total <= window.innerHeight + 5 ? 100 : Math.round(100 * (window.scrollY + window.innerHeight) / total);
+      maxScroll = Math.max(maxScroll, Math.min(100, pct));
+    };
+    window.addEventListener("scroll", scrolled, { passive: true });
+    setTimeout(scrolled, 1500);
+    setInterval(() => { if (document.visibilityState === "visible") active += 1; }, 1000);
+    const send = (last) => {
+      if (active === sent && !last) return;
+      sent = active;
+      fetch(CONFIG.supabaseUrl + "/rest/v1/rpc/s_doc_ping", {
+        method: "POST", keepalive: true,
+        headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseAnonKey, Authorization: "Bearer " + CONFIG.supabaseAnonKey },
+        body: JSON.stringify({ p_device: token, p_read: readId, p_active_s: active, p_scroll: maxScroll }),
+      }).catch(() => {});
+    };
+    setInterval(() => send(false), 15000);
+    setTimeout(() => send(false), 4000);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") send(true); });
+    window.addEventListener("pagehide", () => send(true));
+  }
+
   function blockKeys(e) {
     const k = (e.key || "").toLowerCase();
     if ((e.ctrlKey || e.metaKey) && ["s", "p", "u", "c", "a"].includes(k)) e.preventDefault();
@@ -128,7 +154,7 @@
         catch (e) { toast(e.message, "error"); }
       };
     }
-    if (doc.html) showPage(doc.html, mark);
+    if (doc.html) { showPage(doc.html, mark); if (!previewId && doc.read_id) trackReading(doc.read_id); }
     else message(`<h2>${esc(doc.title)}</h2><p class="muted">${doc.file_name || hasPdf ? "Use the download button at the top of the page." : "This document has no content yet."}</p>`);
   })();
 </script>

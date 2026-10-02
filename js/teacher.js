@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "13"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "14"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -75,7 +75,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: loadDocs };
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats) };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
 });
@@ -120,7 +120,7 @@ async function selectClass(id) {
   await loadSessions();
   // refresh the tab currently shown, so that it always matches the selected class
   if (changed && activeTab === "students") await loadStudents();
-  if (changed && activeTab === "space") await loadDocs();
+  if (changed && activeTab === "space") { $("statsDetail").dataset.doc = ""; $("statsDetail").innerHTML = ""; await loadDocs(); await loadDocStats(); }
   if (activeTab === "classes" && !isAssistant()) loadAssistants();
 }
 
@@ -1217,8 +1217,9 @@ async function loadResources() {
 }
 
 // ------------------------------------------------------------------ demos
-// Two kinds: demos of the site (config.js, folder demos/) and demos published from this page
-// (files in the public Storage bucket "demos", served by the service worker at <site>/d/<prefix>/...).
+// Demos are published from this page: their files are stored in the database and served by the service worker
+// at <site>/d/<prefix>/... only to the teacher and to the students checked in a session where the demo was pushed.
+// (Old kinds still supported: demos listed in config.js, demos in the public Storage bucket "demos".)
 const DEMO_BUCKET = "demos";
 let allDemos = [];
 const siteBase = () => new URL("./", location.href).href;
@@ -1233,7 +1234,7 @@ async function loadDemos() {
   allDemos = CONFIG.links.map((l) => ({ kind: "site", title: l.label, module: l.module || guessModule(l.label), description: l.description || "",
       url: new URL(l.url, siteBase()).href, screen: l.screen ? new URL(l.screen, siteBase()).href : null }))
     .concat(published.map((d) => ({ kind: d.mine ? "mine" : "colleague", id: d.id, title: d.title, module: d.module, description: d.description,
-      url: demoPage(d.prefix, d.entry), screen: d.screen ? demoPage(d.prefix, d.screen) : null, shared: d.shared, files: d.files })));
+      url: demoPage(d.prefix, d.entry), screen: d.screen ? demoPage(d.prefix, d.screen) : null, shared: d.shared, files: d.files, in_db: d.in_db })));
   const modules = [...new Set(allDemos.map((d) => d.module || "Other"))].sort();
   const keep = $("demoModule").value || localStorage.getItem("cp_demo_module") || "";
   $("demoModule").innerHTML = `<option value="">All modules</option>` + modules.map((m) => `<option ${m === keep ? "selected" : ""}>${esc(m)}</option>`).join("");
@@ -1290,20 +1291,23 @@ $("dpPublish").onclick = async () => {
   const tooBig = publishFiles.filter((x) => x.file.size > CONFIG.maxFileMb * 1048576).map((x) => x.rel);
   if (tooBig.length) { toast(`Files above ${CONFIG.maxFileMb} MB: ` + tooBig.join(", "), "error"); return; }
   const total = publishFiles.reduce((t, x) => t + x.file.size, 0);
-  if (total > 200 * 1048576) { toast("The demo is above 200 MB: too big.", "error"); return; }
+  if (total > 40 * 1048576) { toast("The demo is above 40 MB: too big for a protected demo.", "error"); return; }
+  const heavy = publishFiles.filter((x) => x.file.size > 4 * 1048576).map((x) => x.rel);
+  if (heavy.length) { toast("Files above 4 MB (videos, big images) cannot be stored: " + heavy.join(", "), "error"); return; }
   const btn = $("dpPublish"); btn.disabled = true;
   try {
     const { data: u } = await db.auth.getUser();
     const prefix = `${u.user.id}/${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+    // v14: the files go into the database (protected), not into a public place
     let done = 0;
     for (const x of publishFiles) {
-      $("dpProgress").textContent = `Uploading ${++done} / ${publishFiles.length}: ${x.rel}`;
-      const { error } = await db.storage.from(DEMO_BUCKET).upload(`${prefix}/${x.rel}`, x.file, { contentType: x.file.type || "application/octet-stream", upsert: true });
-      if (error) throw new Error(`${x.rel}: ${error.message}`);
+      $("dpProgress").textContent = `Saving ${++done} / ${publishFiles.length}: ${x.rel}`;
+      try { await rpc("t_demo_put_file", { p_prefix: prefix, p_path: x.rel, p_data: await readFileAs(x.file, "base64") }); }
+      catch (e) { throw new Error(`${x.rel}: ${e.message}`); }
     }
     await rpc("t_add_demo", { p_title: title, p_module: $("dpModule").value.trim(), p_description: $("dpDescription").value.trim(), p_prefix: prefix,
       p_entry: $("dpEntry").value, p_screen: $("dpScreen").value || null, p_files: publishFiles.map((x) => x.rel), p_shared: $("dpShared").checked });
-    toast(`"${title}" is online.`, "ok");
+    toast(`"${title}" is saved. Students can open it only when you push it in a session where they are checked in.`, "ok");
     $("dpProgress").textContent = ""; $("dpTitle").value = ""; $("dpDescription").value = ""; $("dpFolder").value = ""; publishFiles = [];
     $("dpFolderInfo").textContent = ""; $("demoPublish").classList.add("hidden");
     await loadDemos();
@@ -1316,8 +1320,10 @@ async function deleteDemo(id) {
   if (!confirm(`Delete the demo "${d.title}"? Its address will stop working for everybody.`)) return;
   try {
     const r = await rpc("t_delete_demo", { p_id: id });
-    const paths = r.files.map((f) => `${r.prefix}/${f}`);
-    for (let i = 0; i < paths.length; i += 100) await db.storage.from(DEMO_BUCKET).remove(paths.slice(i, i + 100));
+    if (!d.in_db) {   // old demo, stored in the public bucket
+      const paths = r.files.map((f) => `${r.prefix}/${f}`);
+      for (let i = 0; i < paths.length; i += 100) await db.storage.from(DEMO_BUCKET).remove(paths.slice(i, i + 100));
+    }
     toast("Demo deleted.", "ok");
     loadDemos();
   } catch (e) { toast(e.message, "error"); }
@@ -1422,6 +1428,61 @@ async function loadDocs() {
   });
 }
 
+// ----- reading statistics of the documents of the class
+function fmtDuration(s) {
+  s = Number(s) || 0;
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min " + String(s % 60).padStart(2, "0") + " s";
+  return Math.floor(s / 3600) + " h " + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + " min";
+}
+function fmtWhen(t) { return t ? new Date(t).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; }
+let docStats = null;
+async function loadDocStats() {
+  if (!classId || isAssistant()) return;
+  try { docStats = await rpc("t_doc_stats", { p_class: classId }); } catch (e) { toast(e.message, "error"); return; }
+  const n = docStats.students.length;
+  const byDoc = (id) => docStats.reads.filter((r) => r.doc === id);
+  $("statsDocs").innerHTML = docStats.docs.length === 0 ? `<p class="muted">No stored document in this class yet.</p>` :
+    `<table><tr><th>Document</th><th>Opened by</th><th>Median reading time</th><th>Read to the end (≥ 90 %)</th><th>PDF downloads</th><th>File downloads</th><th></th></tr>` +
+    docStats.docs.map((d) => {
+      const rs = byDoc(d.id), opened = rs.filter((r) => r.opens > 0);
+      const times = opened.map((r) => r.active_s).sort((a, b) => a - b);
+      const median = times.length ? times[Math.floor(times.length / 2)] : 0;
+      return `<tr><td>${esc(d.title)}${d.visible ? "" : ' <span class="badge closed">hidden</span>'}</td>
+        <td><strong>${opened.length}</strong> / ${n}</td><td>${opened.length ? fmtDuration(median) : "-"}</td>
+        <td>${opened.filter((r) => r.scroll_pct >= 90).length}</td>
+        <td>${d.has_pdf ? rs.filter((r) => r.pdf_count > 0).length : '<span class="muted">-</span>'}</td>
+        <td>${d.file_name ? rs.filter((r) => r.file_count > 0).length : '<span class="muted">-</span>'}</td>
+        <td><button class="small secondary" data-sdoc="${d.id}">Students…</button></td></tr>`;
+    }).join("") + `</table>`;
+  $("statsDocs").querySelectorAll("[data-sdoc]").forEach((b) => b.onclick = () => showDocStudents(b.dataset.sdoc));
+  if ($("statsDetail").dataset.doc) showDocStudents($("statsDetail").dataset.doc);
+}
+function showDocStudents(docId) {
+  const d = docStats.docs.find((x) => x.id === docId);
+  if (!d) { $("statsDetail").innerHTML = ""; return; }
+  $("statsDetail").dataset.doc = docId;
+  const read = {};
+  docStats.reads.filter((r) => r.doc === docId).forEach((r) => { read[r.student] = r; });
+  const rows = docStats.students.map((st) => ({ st, r: read[st.id] })).sort((a, b) => (b.r ? 1 : 0) - (a.r ? 1 : 0) || a.st.name.localeCompare(b.st.name));
+  $("statsDetail").innerHTML = `<h3 style="margin-top:16px">${esc(d.title)}: student by student
+      <button class="small secondary" id="statsExport">⬇ Excel</button></h3>
+    <table><tr><th>Student</th><th>Matricule</th><th>First opened</th><th>Last seen</th><th>Times opened</th><th>Reading time</th><th>Read up to</th><th>PDF downloaded</th><th>File downloaded</th></tr>` +
+    rows.map(({ st, r }) => !r || (!r.opens && !r.pdf_count && !r.file_count)
+      ? `<tr><td><button class="linklike" data-profile="${st.id}">${esc(st.name)}</button></td><td>${esc(st.matricule)}</td><td colspan="7"><span class="badge no">never opened</span></td></tr>`
+      : `<tr><td><button class="linklike" data-profile="${st.id}">${esc(st.name)}</button></td><td>${esc(st.matricule)}</td><td>${fmtWhen(r.first_open)}</td><td>${fmtWhen(r.last_seen)}</td>
+          <td>${r.opens}</td><td>${fmtDuration(r.active_s)}</td><td>${r.scroll_pct} %</td><td>${fmtWhen(r.pdf_at)}</td><td>${fmtWhen(r.file_at)}</td></tr>`).join("") + `</table>`;
+  $("statsExport").onclick = () => {
+    const sheet = [["Student", "Matricule", "First opened", "Last seen", "Times opened", "Reading time (s)", "Read up to (%)", "PDF downloaded", "File downloaded"],
+      ...rows.map(({ st, r }) => [st.name, st.matricule, r ? fmtWhen(r.first_open) : "", r ? fmtWhen(r.last_seen) : "", r ? r.opens : 0, r ? r.active_s : 0,
+        r ? r.scroll_pct : 0, r ? fmtWhen(r.pdf_at) : "", r ? fmtWhen(r.file_at) : ""])];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheet), "Reading");
+    XLSX.writeFile(wb, `reading_${d.title.replace(/[^\w]+/g, "_").slice(0, 40)}.xlsx`);
+  };
+}
+$("statsRefreshBtn").onclick = loadDocStats;
+
 function readFileAs(file, how) {
   return new Promise((ok, ko) => {
     const r = new FileReader();
@@ -1436,7 +1497,9 @@ $("mdHtml").onchange = async () => {
   if (!f || $("mdTitle").value.trim()) return;
   const text = await readFileAs(f, "text");
   const m = text.match(/<title>([^<]*)<\/title>/i);
-  $("mdTitle").value = (m ? m[1].split(" · ")[0] : f.name.replace(/\.html?$/i, "")).trim();
+  const decode = document.createElement("textarea");      // "L&#x27;objet" -> "L'objet"
+  decode.innerHTML = m ? m[1].split(" · ")[0] : f.name.replace(/\.html?$/i, "");
+  $("mdTitle").value = decode.value.trim();
 };
 $("mdSaveBtn").onclick = async () => {
   const html = $("mdHtml").files[0], pdf = $("mdPdf").files[0], file = $("mdFile").files[0];
@@ -1514,7 +1577,13 @@ async function openProfile(studentId) {
       <td>${x.status === "absent" ? '<span class="badge no">absent</span>' : esc(x.status)}</td></tr>`).join("") + `</table>
     <h3 style="margin-top:14px">Quizzes and tests</h3><table><tr><th>Date</th><th>Type</th><th>Title</th><th>Mark</th><th>Left the screen</th></tr>` +
     p.quizzes.map((q) => `<tr><td>${q.date}</td><td>${KIND_LABEL[q.kind] || q.kind}${q.graded ? "" : " (not graded)"}</td><td>${esc(q.title)}</td>
-      <td>${q.kind === "survey" ? "-" : q.mark == null ? '<span class="badge no">no answer</span>' : `${Number(q.mark)} / ${Number(q.total_points)}`}</td><td>${q.left_screen || ""}</td></tr>`).join("") + `</table>`;
+      <td>${q.kind === "survey" ? "-" : q.mark == null ? '<span class="badge no">no answer</span>' : `${Number(q.mark)} / ${Number(q.total_points)}`}</td><td>${q.left_screen || ""}</td></tr>`).join("") + `</table>
+    <h3 style="margin-top:14px">Documents (course notes, lab sheets, code)</h3>` + ((p.documents || []).filter((d) => d.stored).length === 0 ? `<p class="muted">No document in this class yet.</p>` :
+    `<table><tr><th>Document</th><th>First opened</th><th>Last seen</th><th>Times opened</th><th>Reading time</th><th>Read up to</th><th>PDF downloaded</th><th>File downloaded</th></tr>` +
+    p.documents.filter((d) => d.stored).map((d) => !d.opens && !d.pdf_count && !d.file_count
+      ? `<tr><td>${esc(d.title)}</td><td colspan="7"><span class="badge no">never opened</span></td></tr>`
+      : `<tr><td>${esc(d.title)}</td><td>${fmtWhen(d.first_open)}</td><td>${fmtWhen(d.last_seen)}</td><td>${d.opens}</td><td>${fmtDuration(d.active_s)}</td>
+          <td>${d.scroll_pct} %</td><td>${fmtWhen(d.pdf_at)}</td><td>${fmtWhen(d.file_at)}</td></tr>`).join("") + `</table>`);
   $("profileBox").classList.remove("hidden");
 }
 $("profileClose").onclick = () => $("profileBox").classList.add("hidden");

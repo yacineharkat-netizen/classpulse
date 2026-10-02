@@ -14,11 +14,7 @@ const CONFIG = {
   //   url    = page opened on the students' phones
   //   screen = page the teacher opens on the projector (optional)
   // Each teacher adds his own links and files in the Resources tab, without touching this file.
-  links: [
-    { module: "IoT", label: "IoT S01 - IoT live (phones)", url: "demos/iot/s01-iot-live/", screen: "demos/iot/s01-iot-live/dashboard.html" },
-    { module: "Edge & Cloud", label: "Edge & Cloud S01 - Your phones are a supercomputer", url: "demos/edge-cloud/s01-swarm/", screen: "demos/edge-cloud/s01-swarm/dashboard.html" },
-    { module: "Edge & Cloud", label: "Edge & Cloud S01 - How far is the cloud?", url: "demos/edge-cloud/s01-latency/", screen: "demos/edge-cloud/s01-latency/dashboard.html" },
-  ],
+  links: [],   // v14: demos are published from the Demos tab and stored in the database (protected)
 
   // Files pushed to the phones: validity of the temporary link (hours) and maximum size (MB, 50 on the free plan).
   signedLinkHours: 4,

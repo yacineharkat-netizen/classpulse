@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="13">
+<html lang="en" data-version="14">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -302,6 +302,13 @@
           </div></details>
       </div>
       <div class="card">
+        <h2>Who reads what <button id="statsRefreshBtn" class="small secondary">↻ Refresh</button></h2>
+        <p class="muted">For each document: who opened it, when, how long the page stayed on the screen, how far the student went down the page,
+          and when the PDF or the attached file was downloaded. Click a student's name for all his documents.</p>
+        <div id="statsDocs"></div>
+        <div id="statsDetail"></div>
+      </div>
+      <div class="card">
         <h2>My documents (private)</h2>
         <p class="muted">Your documents are stored in the ClassPulse database, <strong>not on the public site</strong>: nobody can read them without being
           registered in a class where you made them visible. One document = a page (HTML file), and optionally its PDF and an attached file (code zip…).
@@ -472,9 +479,9 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=13"></script>
-<script src="js/excel.js?v=13"></script>
-<script src="js/teacher.js?v=13"></script>
+<script src="js/common.js?v=14"></script>
+<script src="js/excel.js?v=14"></script>
+<script src="js/teacher.js?v=14"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

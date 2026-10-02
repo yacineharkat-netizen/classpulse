@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "13"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "14"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -75,6 +75,9 @@ async function start() {
     show("viewCode");
     return;
   }
+  // remembered for the protected demos: they open only for a phone checked in this session
+  try { localStorage.setItem("cp_last_session", sessionCode); } catch (e) { /* private mode */ }
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw-demos.js", { scope: "./d/" }).catch(() => {});
   $("brand").textContent = sessionInfo.class_name;
   $("sessionLine").textContent = sessionInfo.title;
   try { deviceToken = localStorage.getItem(tokenKey()); } catch (e) { deviceToken = null; }
