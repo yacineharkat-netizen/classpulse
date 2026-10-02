@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "16"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "18"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -265,7 +265,7 @@ function render() {
   }
 
   if (!state.present && state.attendance_open) {
-    live.innerHTML = who + bigStatus("📷", "Check in", `The code on the screen changes every ${state.att_window_s || 15} seconds.`) +
+    live.innerHTML = who + bigStatus("📷", "Check in", (state.att_window_s || 15) >= 3600 ? "Type the attendance code given by the teacher." : `The code on the screen changes every ${state.att_window_s || 15} seconds.`) +
       `<div class="checkin-choice"><button id="scanBtn" class="orange">📷 Scan the QR code</button>
         <button id="typeBtn" class="secondary">⌨ Type the code</button></div>
       <div id="scanBox" class="card scanner hidden"><video id="scanVideo" playsinline muted></video>

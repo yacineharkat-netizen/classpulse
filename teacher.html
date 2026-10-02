@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="16">
+<html lang="en" data-version="18">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body>
 
@@ -64,8 +64,10 @@
           <div class="muted" id="sessionUrl"></div>
         </div>
         <div id="sessionOptions" class="row hidden" style="gap:18px;flex-wrap:wrap;margin-top:10px;align-items:center">
-          <label style="margin:0">Attendance code changes every
-            <select id="optWindow" style="width:auto"><option>15</option><option>30</option><option>45</option><option>60</option><option>90</option><option>120</option></select> s</label>
+          <label style="margin:0">Attendance code
+            <select id="optWindow" style="width:auto"><option value="15">changes every 15 s</option><option value="30">changes every 30 s</option><option value="45">changes every 45 s</option>
+              <option value="60">changes every 60 s</option><option value="90">changes every 90 s</option><option value="120">changes every 120 s</option>
+              <option value="86400">fixed for the day (lab without projector)</option></select></label>
           <label style="margin:0"><input type="checkbox" id="optLocation" style="width:auto"> Ask the phone position at check-in (flags students far from the room)</label>
         </div>
       </div>
@@ -101,6 +103,11 @@
                 <span class="badge" id="attBadge">closed</span>
                 <button id="attOnBtn" class="green small">Open attendance</button>
                 <button id="attOffBtn" class="secondary small">Close attendance</button>
+              </div>
+              <div id="attCodeBox" class="att-code hidden">
+                <div id="attCodeQr" class="reg-qr"></div>
+                <div><div class="muted" id="attCodeLabel">Attendance code</div><div class="code" id="attCodeBig">------</div>
+                  <div class="muted" style="font-size:12px">Without a projector: students open ClassPulse, type the session code, then this code.</div></div>
               </div>
               <div class="muted" style="font-size:12px;margin-top:4px">Only students not yet checked in see the check-in screen; the others keep what they are doing.</div>
               <div class="mini-figures"><span><strong id="presentCount">0</strong> present</span> · <span><strong id="classSize">0</strong> in the class</span>
@@ -410,8 +417,10 @@
             <datalist id="demoModuleList"></datalist>
           </div>
           <input id="dpDescription" placeholder="What the demo shows (optional)" style="margin-top:8px">
-          <label>Folder of the demo</label>
+          <label>Folder of the demo (from a computer)</label>
           <input type="file" id="dpFolder" webkitdirectory directory multiple style="max-width:420px">
+          <label>… or a .zip file of that folder (works from a phone)</label>
+          <input type="file" id="dpZip" accept=".zip,application/zip" style="max-width:420px">
           <div id="dpFolderInfo" class="muted"></div>
           <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:8px;align-items:center">
             <label style="margin:0">Page for the phones <select id="dpEntry" style="width:auto"></select></label>
@@ -503,10 +512,11 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/qrcode.js"></script>
+<script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=16"></script>
-<script src="js/excel.js?v=16"></script>
-<script src="js/teacher.js?v=16"></script>
+<script src="js/common.js?v=18"></script>
+<script src="js/excel.js?v=18"></script>
+<script src="js/teacher.js?v=18"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

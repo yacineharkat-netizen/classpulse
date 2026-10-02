@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "16";
+:root { --cp-version: "18";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -352,3 +352,7 @@ img, svg, video, iframe { max-width: 100%; }
   .teacher nav { padding: 14px 10px; }
   .teacher main { padding: 14px; }
 }
+
+/* ---------- v18: attendance code in the console (labs without projector, phone) ---------- */
+.att-code { display: flex; gap: 12px; align-items: center; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #DDF0E4; }
+.att-code .code { font: 800 30px ui-monospace, Consolas, monospace; letter-spacing: 4px; color: var(--navy); }

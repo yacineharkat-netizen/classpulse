@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "16"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "18"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -492,6 +492,7 @@ async function refreshLive() {
   renderQuizLive();
   renderMonitor();
   renderSessionLinks();
+  renderAttendanceCode();
   autoMode();
 }
 
@@ -544,6 +545,22 @@ function renderMonitor() {
   $("endedAt").textContent = ended ? "at " + new Date(s.ended_at).toLocaleTimeString().slice(0, 5) : "";
   $("endSessionBtn").classList.toggle("hidden", ended);
   if (ended) { $("attOnBtn").disabled = true; $("showQuizBtn").disabled = true; $("linkModeBtn").disabled = true; }
+}
+
+// The attendance code in the console itself: needed when there is no projector (labs), handy on a phone.
+let attCodeShown = "";
+async function renderAttendanceCode() {
+  const s = live.session;
+  $("attCodeBox").classList.toggle("hidden", !s.attendance_open || !!s.ended_at);
+  if (!s.attendance_open || s.ended_at) { attCodeShown = ""; return; }
+  let a;
+  try { a = await rpc("t_attendance_code", { p_session: sessionId }); } catch (e) { return; }
+  if (a.code === attCodeShown) return;
+  attCodeShown = a.code;
+  $("attCodeBig").textContent = a.code;
+  $("attCodeLabel").textContent = a.window_s >= 3600 ? "Attendance code (fixed today)" : `Attendance code (changes every ${a.window_s} s)`;
+  const qr = qrcode(0, "M"); qr.addData(siteUrl("student.html") + "?s=" + s.code + "&a=" + a.code); qr.make();
+  $("attCodeQr").innerHTML = qr.createSvgTag({ cellSize: 3, margin: 0 });
 }
 
 // Links and files kept on the phones for this session ("Documents of this session"): the teacher can remove them.
@@ -1336,6 +1353,34 @@ $("dpFolder").onchange = () => {
   if (!$("dpTitle").value && files[0]) $("dpTitle").value = (files[0].webkitRelativePath || "").split("/")[0];
 };
 
+// A .zip of the demo folder (the only way to send a folder from a phone).
+$("dpZip").onchange = async () => {
+  const f = $("dpZip").files[0];
+  if (!f) return;
+  try {
+    const zip = await JSZip.loadAsync(f);
+    let entries = Object.values(zip.files).filter((e) => !e.dir && !e.name.split("/").some((part) => part.startsWith(".") || part === "__MACOSX"));
+    // "myDemo/index.html" -> "index.html" when everything sits in one top folder
+    const tops = new Set(entries.map((e) => e.name.split("/")[0]));
+    const strip = tops.size === 1 && entries.every((e) => e.name.includes("/")) ? [...tops][0].length + 1 : 0;
+    publishFiles = [];
+    for (const e of entries) {
+      const blob = await e.async("blob");
+      publishFiles.push({ rel: e.name.slice(strip), file: new File([blob], e.name.split("/").pop()) });
+    }
+    $("dpFolder").value = "";
+    describePublishFiles(f.name.replace(/\.zip$/i, ""));
+  } catch (e) { toast("Cannot read this zip file: " + e.message, "error"); }
+};
+function describePublishFiles(defaultTitle) {
+  const html = publishFiles.map((x) => x.rel).filter((r) => /\.html?$/i.test(r)).sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+  const total = publishFiles.reduce((t, x) => t + x.file.size, 0);
+  $("dpFolderInfo").textContent = `${publishFiles.length} file(s), ${(total / 1048576).toFixed(1)} MB, ${html.length} page(s)`;
+  $("dpEntry").innerHTML = html.map((h) => `<option ${h === "index.html" ? "selected" : ""}>${esc(h)}</option>`).join("");
+  $("dpScreen").innerHTML = `<option value="">(none)</option>` + html.map((h) => `<option ${h === "dashboard.html" ? "selected" : ""}>${esc(h)}</option>`).join("");
+  if (!$("dpTitle").value && defaultTitle) $("dpTitle").value = defaultTitle;
+}
+
 $("dpPublish").onclick = async () => {
   const title = $("dpTitle").value.trim();
   if (!title) { toast("Give a title.", "error"); return; }
@@ -1364,7 +1409,7 @@ $("dpPublish").onclick = async () => {
       p_entry: $("dpEntry").value, p_screen: $("dpScreen").value || null, p_files: publishFiles.map((x) => x.rel), p_shared: $("dpShared").checked });
     toast(`"${title}" is saved. Students can open it only when you push it in a session where they are checked in.`, "ok");
     $("dpProgress").textContent = ""; $("dpTitle").value = ""; $("dpDescription").value = ""; $("dpFolder").value = ""; publishFiles = [];
-    $("dpFolderInfo").textContent = ""; $("demoPublish").classList.add("hidden");
+    $("dpFolderInfo").textContent = ""; $("dpZip").value = ""; $("demoPublish").classList.add("hidden");
     await loadDemos();
   } catch (e) { toast("Publishing failed: " + e.message, "error"); $("dpProgress").textContent = ""; }
   finally { btn.disabled = false; }

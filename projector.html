@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="16">
+<html lang="en" data-version="18">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,7 +18,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=16"></script>
+<script src="js/common.js?v=18"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -50,13 +50,20 @@
     $("topLeft").textContent = live.session.title;
     followTeacher();
     render();
+    // attendance just opened or closed while the big join QR code is shown: refresh it at once
+    if (lastAttOpen !== null && lastAttOpen !== live.session.attendance_open && overlayMode === "join") {
+      try { att = await rpc("t_attendance_code", { p_session: sessionId }); } catch (e) { /* next refresh */ }
+      showJoin();
+    }
+    lastAttOpen = live.session.attendance_open;
   }
 
   async function refreshAttendanceCode() {
     try { att = await rpc("t_attendance_code", { p_session: sessionId }); } catch (e) { att = null; }
     render(true);
+    if (overlayMode === "join") showJoin();      // keep the big QR code in step with the rotating attendance code
     // Next refresh right after the code changes on the server.
-    setTimeout(refreshAttendanceCode, att ? Math.max(500, att.next_change_ms + 300) : 5000);
+    setTimeout(refreshAttendanceCode, att ? Math.min(20000, Math.max(500, att.next_change_ms + 300)) : 5000);   // at most 20 s: the teacher may change the setting
   }
 
   function render(force) {
@@ -84,7 +91,7 @@
       const url = att && att.open ? joinUrl + "&a=" + att.code : joinUrl;
       $("content").innerHTML = `<div class="qr">${qrSvg(url, 8)}</div>
         <div><h1>Scan to check in</h1>
-        <div class="sub">The code changes every ${att && att.window_s ? att.window_s : 15} seconds</div>
+        <div class="sub">${att && att.window_s >= 3600 ? "Code fixed for today" : "The code changes every " + (att && att.window_s ? att.window_s : 15) + " seconds"}</div>
         <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> / ${live.class_size || "?"} present</span></div>
         <p class="sub" style="margin-top:4vh">No camera? Open <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong><br>
         and type the code <strong style="font-size:5vh;color:#E8741E;letter-spacing:.3vw">${att && att.open ? att.code : "-"}</strong></p></div>`;
@@ -164,7 +171,7 @@
   let lastState = null, lastActivity = null;
   function followTeacher() {
     const s = live.session, q = live.quiz;
-    const st = JSON.stringify([s.activity, s.active_quiz_id, q && q.phase, q && q.index, s.link_url, s.attendance_open, s.ended_at, q && q.results_on_projector]);
+    const st = JSON.stringify([s.activity, s.active_quiz_id, q && q.phase, q && q.index, s.link_url, s.ended_at, q && q.results_on_projector]);
     if (lastState !== null && st !== lastState && overlayMode) {
       const keepScreen = overlayMode === "screen" && (s.activity === lastActivity || s.activity === "link") && !s.ended_at;
       if (!keepScreen) hideOverlay();
@@ -178,6 +185,7 @@
   }
 
   // ---------------------------------------------------------------- overlay: join QR code, random draw
+  let lastAttOpen = null;
   let overlayMode = "";    // "", "join", "draw" or "screen"
   let screenUrl = null;
   let spinTimer = null;
@@ -200,7 +208,15 @@
     const code = live.session.code, joinUrl = siteUrl("student.html") + "?s=" + code;
     overlayMode = "join"; screenUrl = null;
     $("overlay").classList.remove("screen");
-    $("overlay").innerHTML = `<div class="qr">${qrSvg(joinUrl, 10)}</div>
+    // Attendance open: the big QR code also checks the student in (it carries the code that changes).
+    const checkin = live.session.attendance_open && att && att.open;
+    $("overlay").innerHTML = checkin
+      ? `<div class="qr">${qrSvg(joinUrl + "&a=" + att.code, 10)}</div>
+      <div><h1 style="font-size:6vh">Scan to check in</h1>
+      <div class="sub" style="margin:2vh 0 4vh">${att.window_s >= 3600 ? "Code fixed for today." : "The code changes every " + (att.window_s || 15) + " seconds."}</div>
+      <div class="sub">No camera? Open</div><div class="addr">${esc(joinUrl.replace(/^https?:\/\//, ""))}</div>
+      <div class="sub" style="margin-top:3vh">and type the attendance code</div><div class="code">${esc(att.code)}</div></div>`
+      : `<div class="qr">${qrSvg(joinUrl, 10)}</div>
       <div><h1 style="font-size:6vh">Scan to join the session</h1>
       <div class="sub" style="margin:2vh 0 4vh">Already registered? You go straight back to the session.</div>
       <div class="sub">No camera? Open</div><div class="addr">${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</div>
