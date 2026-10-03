@@ -1,9 +1,5 @@
 // ClassPulse - teacher console.
-<<<<<<< HEAD
 (window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "21"; // file version, checked by common.js
-=======
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "20"; // file version, checked by common.js
->>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
 
 let classId = null;
 let sessionId = null;

@@ -1,9 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-<<<<<<< HEAD
 (window.CP_FILES = window.CP_FILES || {})["excel.js"] = "21"; // file version, checked by common.js
-=======
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "20"; // file version, checked by common.js
->>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
