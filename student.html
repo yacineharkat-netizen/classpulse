@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="19">
+<html lang="en" data-version="20">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=19">
+<link rel="stylesheet" href="css/style.css?v=20">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -35,7 +35,7 @@
     <input id="regLast" autocomplete="family-name">
     <label for="regFirst">First name</label>
     <input id="regFirst" autocomplete="given-name">
-    <label for="regPin">Choose a 4-digit PIN (keep it: you need it if you change phone)</label>
+    <label for="regPin">4-digit PIN: the one you chose on the home page, or a new one if you never registered (keep it)</label>
     <input id="regPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
     <button id="regBtn" style="margin-top:14px; width:100%">Register</button>
     <p class="muted" style="margin-top:14px">Already registered on another phone? <a href="#" id="toNewDevice">Use this phone instead</a></p>
@@ -71,14 +71,15 @@
       <label for="rdMat">Student number (matricule)</label><input id="rdMat" inputmode="numeric" autocomplete="off">
       <label for="rdPin">PIN (4 digits, chosen at registration)</label><input id="rdPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
       <button id="rdBtn" style="margin-top:14px;width:100%">Sign in</button>
+      <p class="muted" style="margin-bottom:0">No PIN yet? <a href="index.html">Register in a course first</a> (home page).</p>
     </div>
   </details>
 </div>
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=19"></script>
-<script src="js/student.js?v=19"></script>
+<script src="js/common.js?v=20"></script>
+<script src="js/student.js?v=20"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

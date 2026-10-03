@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "19"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "20"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -102,34 +102,38 @@ async function startClassRegistration(reg) {
   try { info = await rpc("s_class_reg_info", { p_reg: reg }); } catch (e) { toast(e.message, "error"); show("viewCode"); return; }
   $("brand").textContent = info.class_name;
   let already = null;
-  try { already = localStorage.getItem("cp_device_" + info.class_id); } catch (e) { already = null; }
+  try { already = localStorage.getItem("cp_device_" + info.class_id) || localStorage.getItem("cp_reader_" + info.class_id); } catch (e) { already = null; }
   const box = $("viewClassReg");
   ["viewCode", "viewRegister", "viewNewDevice", "viewLive"].forEach((v) => $(v).classList.add("hidden"));
   box.classList.remove("hidden");
   if (already) {
-    box.innerHTML = `<h2>Already registered</h2><p class="muted">This phone is registered in ${esc(info.class_name)}. Your documents are below.</p>`;
+    box.innerHTML = `<h2>Already registered</h2><p class="muted">This device already has access to ${esc(info.class_name)}. Your documents are below.</p>
+      <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
     $("spaceBox").open = true;
     return;
   }
   if (!info.open) {
-    box.innerHTML = `<h2>Registration closed</h2><p class="muted">The registration of ${esc(info.class_name)} is not open. Register in class, during a session.</p>`;
+    box.innerHTML = `<h2>Registration closed</h2><p class="muted">The registration of ${esc(info.class_name)} is not open. Register in class, during a session.</p>
+      <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
     return;
   }
   box.innerHTML = `<h2>Register in ${esc(info.class_name)}</h2>
-    <p class="muted">Once, for the whole semester. You must be in the official list of the class.</p>
+    <p class="muted">Once, for the whole semester. You must be in the official list of the course.</p>
     <label for="crMat">Student number (matricule)</label><input id="crMat" inputmode="numeric" autocomplete="off">
     <label for="crLast">Last name (as in the official list)</label><input id="crLast" autocomplete="family-name">
-    <label for="crPin">Choose a 4-digit PIN (keep it: you need it if you change phone)</label>
+    <label for="crPin">Choose a 4-digit PIN (keep it secret: it is your password)</label>
     <input id="crPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
     <button id="crBtn" style="margin-top:14px;width:100%">Register</button>
-    <p class="muted" style="margin-top:14px">ClassPulse stores your student number, your name, your attendance and your quiz answers, for this course only.</p>`;
+    <p class="muted" style="margin-top:14px">Already have a PIN? <a href="student.html?space=1&login=1">Sign in</a> instead.</p>
+    <p class="muted">ClassPulse stores your student number, your name, your attendance and your quiz answers, for this course only.</p>`;
   $("crBtn").onclick = async () => {
     $("crBtn").disabled = true;
     try {
       const r = await rpc("s_register_class", { p_reg: reg, p_matricule: $("crMat").value, p_last_name: $("crLast").value, p_pin: $("crPin").value });
-      try { localStorage.setItem("cp_device_" + r.class_id, r.device_token); } catch (e) { /* private mode */ }
+      try { localStorage.setItem("cp_reader_" + r.class_id, r.reader_token); } catch (e) { /* private mode */ }
       box.innerHTML = `<div class="big-status"><div class="icon">✅</div><div class="title">Welcome, ${esc(r.first_name)} ${esc(r.last_name)}</div>
-        <div class="muted">This phone is registered in ${esc(r.class_name)}. In class, scan the QR code of the session to check in.</div></div>
+        <div class="muted">You are registered in ${esc(r.class_name)}. Your documents are below.</div></div>
+        <p><strong>In class</strong>, the first time, scan the QR code of the session with your phone and type the same student number and the same PIN: your phone is then linked for attendance and quizzes.</p>
         <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
       $("spaceBox").open = true;
       renderSpace();

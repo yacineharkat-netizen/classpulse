@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="19">
+<html lang="en" data-version="20">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=19">
+<link rel="stylesheet" href="css/style.css?v=20">
 </head>
 <body>
 
@@ -260,7 +260,9 @@
     <section id="tab-students" class="hidden">
       <div class="card teacher-only">
         <h2>Registration of the students</h2>
-        <p class="muted">A student registers his phone once (student number, name, PIN). You decide when new phones can register.</p>
+        <p class="muted">A student registers once (student number, name, PIN). From the home page he gets his PIN and his documents;
+          his <strong>phone is linked in class</strong>, at his first check-in. If somebody registered with the student number of another student,
+          use <strong>Reset PIN</strong> on his line in the list below.</p>
         <div class="reg-row">
           <button id="regSessionBtn" class="small"></button>
           <div><strong>During a session.</strong> Students of the official list register with the session QR code. A student who is
@@ -268,8 +270,8 @@
         </div>
         <div class="reg-row">
           <button id="regOpenBtn" class="small"></button>
-          <div><strong>Outside the sessions, with a registration QR code.</strong> Only students of the official list (student number and last name must match).
-            Nobody else can register this way.
+          <div><strong>Outside the sessions: home page, or registration QR code.</strong> Only students of the official list (student number and last name must match).
+            The student chooses his PIN and reads his documents; no phone is linked this way.
             <div id="regLinkBox" class="hidden" style="margin-top:8px">
               <div class="row" style="gap:14px;align-items:center">
                 <div id="regQr" class="reg-qr"></div>
@@ -514,9 +516,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=19"></script>
-<script src="js/excel.js?v=19"></script>
-<script src="js/teacher.js?v=19"></script>
+<script src="js/common.js?v=20"></script>
+<script src="js/excel.js?v=20"></script>
+<script src="js/teacher.js?v=20"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

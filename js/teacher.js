@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "19"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "20"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -1026,10 +1026,18 @@ async function loadStudents() {
     <table><tr><th>Matricule</th><th>Last name</th><th>First name</th><th>Official list</th><th>Phone</th><th></th></tr>` + list.map((s) =>
     `<tr data-id="${s.id}"><td class="c-mat">${esc(s.matricule)}</td><td class="c-last"><button class="linklike" data-profile="${s.id}">${esc(s.last_name)}</button></td><td class="c-first">${esc(s.first_name)}</td>
      <td>${isAssistant() ? (s.official ? "yes" : '<span class="badge no">no</span>') : `<button class="small ${s.official ? "green" : "red"}" data-official="${s.id}" data-val="${s.official ? 1 : 0}" title="Click to change">${s.official ? "✓ yes" : "✗ no"}</button>`}</td>
-     <td>${s.registered ? "registered" : "-"}${s.reset_allowed ? ' <span class="badge info">new phone allowed</span>' : ""}</td>
+     <td>${s.registered ? "registered" : (s.has_pin ? "PIN only" : "-")}${s.reset_allowed ? ' <span class="badge info">new phone allowed</span>' : ""}</td>
      <td style="white-space:nowrap"><button class="small secondary teacher-only" data-edit="${s.id}" title="Correct the student number or the name">✏ Edit</button>
        <button class="small red teacher-only" data-del="${s.id}">Delete</button>
-       ${s.registered ? `<button class="small secondary" data-reset="${s.id}">Allow a new phone</button>` : ""}</td></tr>`).join("") + `</table>`;
+       ${s.registered ? `<button class="small secondary" data-reset="${s.id}">Allow a new phone</button>` : ""}
+       ${s.registered || s.has_pin ? `<button class="small red" data-resetall="${s.id}" title="Erase the PIN and the phone of this student: he registers again">Reset PIN</button>` : ""}</td></tr>`).join("") + `</table>`;
+  $("studentsTable").querySelectorAll("[data-resetall]").forEach((b) => b.onclick = async () => {
+    const tr = b.closest("tr");
+    const name = tr.querySelector(".c-last").textContent.trim() + " " + tr.querySelector(".c-first").textContent;
+    if (!confirm(`${name}: erase the PIN and the registered phone?\nUse it when somebody else registered with this student number, or when the PIN is forgotten.\nAttendance and answers are kept. The student registers again.`)) return;
+    try { await rpc("t_reset_student", { p_student: b.dataset.resetall }); toast("PIN and phone erased. The student can register again.", "ok"); loadStudents(); }
+    catch (e) { toast(e.message, "error"); }
+  });
   $("studentsTable").querySelectorAll("[data-official]").forEach((b) => b.onclick = async () => {
     const to = b.dataset.val !== "1";
     const tr = b.closest("tr");

@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "19"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "20"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -11,7 +11,8 @@ const ERROR_MESSAGES = {
   UNKNOWN_DEVICE: "This phone is not registered for this class.",
   ALREADY_REGISTERED: "This student number is already registered on another phone. Ask the teacher.",
   ASK_TEACHER_RESET: "This student number is linked to another phone. Ask the teacher to allow a new phone.",
-  WRONG_PIN: "Wrong PIN.",
+  WRONG_PIN: "Wrong PIN. If you never chose a PIN for this student number, tell the teacher: he can reset it.",
+  ALREADY_HAS_PIN: "This student number already has a PIN: use \"Sign in\" with it. If you did not create it, tell the teacher in class: he will reset it.",
   BAD_PIN: "The PIN must be exactly 4 digits.",
   BAD_MATRICULE: "Invalid student number.",
   NAME_REQUIRED: "Your name is not in the official list yet: please type your first and last name.",
