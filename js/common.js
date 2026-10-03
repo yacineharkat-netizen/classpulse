@@ -1,5 +1,9 @@
 // Shared helpers for all ClassPulse pages.
+<<<<<<< HEAD
 (window.CP_FILES = window.CP_FILES || {})["common.js"] = "21"; // file version, checked by common.js
+=======
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "20"; // file version, checked by common.js
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -12,9 +16,13 @@ const ERROR_MESSAGES = {
   ALREADY_REGISTERED: "This student number is already linked to another phone. Ask the teacher to allow this phone, then use \"Sign in\".",
   ASK_TEACHER_RESET: "This student number is linked to another phone. Ask the teacher to allow a new phone.",
   WRONG_PIN: "Wrong PIN. If you never chose a PIN for this student number, tell the teacher: he can reset it.",
+<<<<<<< HEAD
   ALREADY_HAS_PIN: "This student number is already registered: use \"Sign in\" with your PIN. If you did not register it yourself, tell the teacher: he will reset it.",
   BAD_MATRICULE: "Check your student number.",
   NOT_REGISTERED_YET: "This student number is not registered yet: use \"Register\" first.",
+=======
+  ALREADY_HAS_PIN: "This student number already has a PIN: use \"Sign in\" with it. If you did not create it, tell the teacher in class: he will reset it.",
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
   BAD_PIN: "The PIN must be exactly 4 digits.",
   BAD_MATRICULE: "Invalid student number.",
   NAME_REQUIRED: "Your name is not in the official list yet: please type your first and last name.",
@@ -41,6 +49,10 @@ const ERROR_MESSAGES = {
   REGISTRATION_CLOSED: "The registration of new phones is closed for this class. Ask the teacher.",
   NOT_IN_OFFICIAL_LIST: "You are not in the official list (check your student number and your last name). The teacher has been told: see him if the list must be corrected.",
   UNKNOWN_CLASS: "This registration link is not valid.",
+<<<<<<< HEAD
+=======
+  NOT_REGISTERED_YET: "You have no PIN yet: register first (home page > Register in a course, or in class).",
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
   PIN_LOCKED: "Too many wrong PINs. Try again in 15 minutes.",
   QUIZ_NOT_FINISHED: "This quiz is not finished: its results do not exist yet.",
   ANOTHER_QUIZ_RUNNING: "Another quiz is running in this session: finish it before showing these results.",

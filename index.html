@@ -1,10 +1,18 @@
 <!DOCTYPE html>
+<<<<<<< HEAD
 <html lang="en" data-version="21">
+=======
+<html lang="en" data-version="20">
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
+<<<<<<< HEAD
 <link rel="stylesheet" href="css/style.css?v=21">
+=======
+<link rel="stylesheet" href="css/style.css?v=20">
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -13,6 +21,7 @@
 <div class="student" style="margin-top:6vh">
   <h1 id="appName">ClassPulse</h1>
   <p class="muted" id="institution"></p>
+<<<<<<< HEAD
 
   <!-- A. this device is signed in -->
   <div id="homeIn" class="card hidden">
@@ -50,6 +59,33 @@
     <p style="margin:14px 0 0">Already registered? <a href="#" id="goSignIn"><strong>Sign in</strong></a></p>
     <p class="muted">ClassPulse stores your student number, your name, your attendance and your quiz answers, for your courses only.</p>
   </div>
+=======
+  <a id="backToSession" class="hidden" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:14px">↩ Back to the session in progress</button></a>
+
+  <div class="card">
+    <h2>My courses</h2>
+    <p class="muted" style="margin-top:0">All the documents of the course, the labs and the tutorials: course notes, lab sheets, code.</p>
+    <a href="student.html?space=1" style="text-decoration:none"><button style="width:100%">📚 My documents</button></a>
+    <a href="student.html?space=1&login=1" style="text-decoration:none"><button class="secondary" style="margin-top:8px;width:100%">Sign in on this device (student number + PIN)</button></a>
+  </div>
+
+  <div class="card">
+    <h2>First time? Register in a course</h2>
+    <label for="courseSelect">Course</label>
+    <select id="courseSelect"><option value="">Loading…</option></select>
+    <button id="courseBtn" style="margin-top:8px;width:100%">Register</button>
+    <p class="muted" id="courseHelp" style="margin-bottom:0">You choose a PIN and you can read your documents at once. Your phone is linked later, in class, the first time you scan the QR code of a session.
+      Not in the official list of the course? Register in class, while the teacher opens the attendance.</p>
+  </div>
+
+  <details class="card">
+    <summary><strong>In class: join a session with its code</strong></summary>
+    <p class="muted">In class, scan the QR code shown on the screen: nothing to type. Use the code only if you cannot scan.</p>
+    <label for="code">Session code (shown on the screen)</label>
+    <input id="code" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:24px;letter-spacing:4px">
+    <button id="go" style="margin-top:14px;width:100%">Join</button>
+  </details>
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
 
   <details class="home-tip">
     <summary>📲 Put ClassPulse on your home screen (no more address to remember)</summary>
@@ -57,10 +93,15 @@
     <p><strong>iPhone (Safari):</strong> the <strong>Share</strong> button (square with an arrow) › <strong>Add to Home Screen</strong> › Add.</p>
     <p class="muted">An icon "ClassPulse" appears with your other apps. Use the same browser as the one you registered with: your phone stays recognised.</p>
   </details>
+<<<<<<< HEAD
+=======
+  <p class="muted">During a session, quizzes and demos are sent to your phone by the teacher. Outside the sessions, all the documents stay available in "My documents".</p>
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
   <p class="muted" style="text-align:right"><a href="teacher.html">Teacher</a></p>
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
+<<<<<<< HEAD
 <script src="js/common.js?v=21"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
@@ -101,6 +142,38 @@
     try { await accountLogin($("siMat").value, $("siPin").value); $("siPin").value = ""; await showHome(); }
     catch (e) { toast(e.message, "error"); }
     $("siBtn").disabled = false;
+=======
+<script src="js/common.js?v=20"></script>
+<script>
+  document.getElementById("appName").textContent = CONFIG.appName;
+  document.getElementById("institution").textContent = CONFIG.institution;
+  // a phone that joined a session gets a direct way back, but only while that session is not over
+  (async () => {
+    let last = null;
+    try { last = localStorage.getItem("cp_last_session"); } catch (e) { /* private mode */ }
+    if (!last) return;
+    try {
+      const info = await rpc("s_session_info", { p_code: last });
+      if (info.ended) { localStorage.removeItem("cp_last_session"); return; }
+      const back = document.getElementById("backToSession");
+      back.href = "student.html?s=" + encodeURIComponent(last); back.classList.remove("hidden");
+    } catch (e) { try { if (e.code === "SESSION_NOT_FOUND") localStorage.removeItem("cp_last_session"); } catch (x) { /* ignore */ } }
+  })();
+  // every course is listed; a course whose registration is closed cannot be chosen
+  (async () => {
+    const select = document.getElementById("courseSelect"), button = document.getElementById("courseBtn");
+    let courses = [];
+    try { courses = await rpc("s_courses"); } catch (e) { courses = []; }
+    select.innerHTML = courses.length
+      ? '<option value="">Choose a course…</option>' + courses.map((c) => `<option value="${esc(c.reg_code)}" ${c.open ? "" : "disabled"}>${esc(c.class_name)}${c.open ? "" : " (registration closed)"}</option>`).join("")
+      : '<option value="">No course yet</option>';
+    button.disabled = !courses.some((c) => c.open);
+    button.onclick = () => { if (select.value) location.href = "student.html?reg=" + encodeURIComponent(select.value); else toast("Choose a course.", "error"); };
+  })();
+  document.getElementById("go").onclick = () => {
+    const code = document.getElementById("code").value.trim().toUpperCase();
+    if (code.length === 6) location.href = "student.html?s=" + encodeURIComponent(code);
+>>>>>>> de5e8990f4e2c032576dc2fcf324b6ad8f95555f
   };
   $("rgBtn").onclick = async () => {
     $("rgBtn").disabled = true;
