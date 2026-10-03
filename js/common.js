@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "18"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "21"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -9,9 +9,12 @@ const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
 const ERROR_MESSAGES = {
   SESSION_NOT_FOUND: "Unknown session code. Check the code on the screen.",
   UNKNOWN_DEVICE: "This phone is not registered for this class.",
-  ALREADY_REGISTERED: "This student number is already registered on another phone. Ask the teacher.",
+  ALREADY_REGISTERED: "This student number is already linked to another phone. Ask the teacher to allow this phone, then use \"Sign in\".",
   ASK_TEACHER_RESET: "This student number is linked to another phone. Ask the teacher to allow a new phone.",
-  WRONG_PIN: "Wrong PIN.",
+  WRONG_PIN: "Wrong PIN. If you never chose a PIN for this student number, tell the teacher: he can reset it.",
+  ALREADY_HAS_PIN: "This student number is already registered: use \"Sign in\" with your PIN. If you did not register it yourself, tell the teacher: he will reset it.",
+  BAD_MATRICULE: "Check your student number.",
+  NOT_REGISTERED_YET: "This student number is not registered yet: use \"Register\" first.",
   BAD_PIN: "The PIN must be exactly 4 digits.",
   BAD_MATRICULE: "Invalid student number.",
   NAME_REQUIRED: "Your name is not in the official list yet: please type your first and last name.",
@@ -36,8 +39,9 @@ const ERROR_MESSAGES = {
   PDF_NOT_ALLOWED: "The teacher did not allow the PDF download of this document.",
   EMPTY_DOCUMENT: "Choose at least one file: the page (HTML), the PDF or an attached file.",
   REGISTRATION_CLOSED: "The registration of new phones is closed for this class. Ask the teacher.",
-  NOT_IN_OFFICIAL_LIST: "You are not in the official list of this class (check your student number and last name). You can register in class, when the teacher opens the attendance.",
+  NOT_IN_OFFICIAL_LIST: "You are not in the official list (check your student number and your last name). The teacher has been told: see him if the list must be corrected.",
   UNKNOWN_CLASS: "This registration link is not valid.",
+  PIN_LOCKED: "Too many wrong PINs. Try again in 15 minutes.",
   QUIZ_NOT_FINISHED: "This quiz is not finished: its results do not exist yet.",
   ANOTHER_QUIZ_RUNNING: "Another quiz is running in this session: finish it before showing these results.",
   TEACHER_ONLY: "Only the teacher of the class can do this (lab assistants cannot).",
@@ -68,6 +72,52 @@ async function rpc(fn, args) {
 }
 
 function $(id) { return document.getElementById(id); }
+
+// ------------------------------------------------------------------ student account (version 21)
+// A phone is "linked" to the student (attendance, quizzes). Any other device only reads the documents.
+function isPhone() {
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 820);
+}
+// Keeps the tokens returned by s_account_register / s_account_login: one per course.
+function storeAccount(account) {
+  account.classes.forEach((c) => {
+    try {
+      if (c.kind === "device") { localStorage.setItem("cp_device_" + c.class_id, c.token); localStorage.removeItem("cp_reader_" + c.class_id); }
+      else if (!localStorage.getItem("cp_device_" + c.class_id)) localStorage.setItem("cp_reader_" + c.class_id, c.token);
+    } catch (e) { /* private mode */ }
+  });
+}
+async function accountCall(fn, args) {
+  const r = await rpc(fn, Object.assign({ p_bind: isPhone() }, args));
+  if (r.error) { const e = new Error(errorText({ message: r.error })); e.code = r.error; throw e; }
+  storeAccount(r);
+  return r;
+}
+function accountLogin(matricule, pin) { return accountCall("s_account_login", { p_matricule: matricule, p_pin: pin }); }
+function accountRegister(matricule, lastName, firstName, pin) {
+  return accountCall("s_account_register", { p_matricule: matricule, p_last_name: lastName, p_first_name: firstName, p_pin: pin });
+}
+// Tokens kept by this browser: [{ classId, token, phone }]
+function accountTokens() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.indexOf("cp_device_") === 0) out.push({ classId: k.slice(10), token: localStorage.getItem(k), phone: true });
+      else if (k.indexOf("cp_reader_") === 0 && !localStorage.getItem("cp_device_" + k.slice(10))) out.push({ classId: k.slice(10), token: localStorage.getItem(k), phone: false });
+    }
+  } catch (e) { /* private mode */ }
+  return out;
+}
+function accountSignOut() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.indexOf("cp_device_") === 0 || k.indexOf("cp_reader_") === 0 || k === "cp_last_session")) keys.push(k); }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch (e) { /* private mode */ }
+}
 
 function esc(text) {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

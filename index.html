@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="18">
+<html lang="en" data-version="21">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=18">
+<link rel="stylesheet" href="css/style.css?v=21">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -13,37 +13,106 @@
 <div class="student" style="margin-top:6vh">
   <h1 id="appName">ClassPulse</h1>
   <p class="muted" id="institution"></p>
-  <a id="backToSession" class="hidden" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:14px">↩ Back to my session</button></a>
-  <div class="card">
-    <h2>Join a session</h2>
-    <label for="code">Session code (shown on the screen)</label>
-    <input id="code" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:24px;letter-spacing:4px">
-    <button id="go" style="margin-top:14px;width:100%">Join</button>
+
+  <!-- A. this device is signed in -->
+  <div id="homeIn" class="card hidden">
+    <h2 id="hello">My courses</h2>
+    <div id="liveBox"></div>
+    <div id="courseList" class="muted">Loading…</div>
+    <a href="student.html?space=1" style="text-decoration:none"><button style="width:100%;margin-top:10px">📚 My documents</button></a>
+    <p class="muted" style="margin:12px 0 0">Quizzes and demos open in class, after the check-in. <a href="#" id="signOut">Sign out of this device</a></p>
   </div>
-  <a href="student.html?space=1" style="text-decoration:none"><button class="secondary" style="width:100%;margin-bottom:14px">📚 My documents (course notes, lab sheets, code)</button></a>
+
+  <!-- B. sign in -->
+  <div id="homeSignIn" class="card hidden">
+    <h2>Sign in</h2>
+    <label for="siMat">Student number (matricule)</label>
+    <input id="siMat" inputmode="numeric" autocomplete="username">
+    <label for="siPin">PIN (4 digits)</label>
+    <input id="siPin" inputmode="numeric" maxlength="4" type="password" autocomplete="current-password">
+    <button id="siBtn" style="margin-top:14px;width:100%">Sign in</button>
+    <p style="margin:14px 0 0">Not registered yet? <a href="#" id="goRegister"><strong>Register here</strong></a></p>
+  </div>
+
+  <!-- C. register -->
+  <div id="homeRegister" class="card hidden">
+    <h2>Register</h2>
+    <p class="muted" style="margin-top:0">Once, for all your courses. Use the phone you will bring to class: it becomes your phone for attendance and quizzes.</p>
+    <label for="rgMat">Student number (matricule)</label>
+    <input id="rgMat" inputmode="numeric" autocomplete="off">
+    <label for="rgLast">Last name (as in the official list)</label>
+    <input id="rgLast" autocomplete="family-name">
+    <label for="rgFirst">First name</label>
+    <input id="rgFirst" autocomplete="given-name">
+    <label for="rgPin">Choose a 4-digit PIN (keep it secret: it is your password)</label>
+    <input id="rgPin" inputmode="numeric" maxlength="4" type="password" autocomplete="new-password">
+    <button id="rgBtn" style="margin-top:14px;width:100%">Register</button>
+    <p style="margin:14px 0 0">Already registered? <a href="#" id="goSignIn"><strong>Sign in</strong></a></p>
+    <p class="muted">ClassPulse stores your student number, your name, your attendance and your quiz answers, for your courses only.</p>
+  </div>
+
   <details class="home-tip">
     <summary>📲 Put ClassPulse on your home screen (no more address to remember)</summary>
     <p><strong>Android (Chrome):</strong> menu <strong>⋮</strong> at the top right › <strong>Add to Home screen</strong> › Add.</p>
     <p><strong>iPhone (Safari):</strong> the <strong>Share</strong> button (square with an arrow) › <strong>Add to Home Screen</strong> › Add.</p>
     <p class="muted">An icon "ClassPulse" appears with your other apps. Use the same browser as the one you registered with: your phone stays recognised.</p>
   </details>
-  <p class="muted">In class, simply scan the QR code shown on the screen: you do not need to type anything.
-    Demos and documents are sent to your phone by the teacher during the session.</p>
   <p class="muted" style="text-align:right"><a href="teacher.html">Teacher</a></p>
 </div>
+<script src="lib/supabase.js"></script>
 <script src="config.js"></script>
+<script src="js/common.js?v=21"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = CONFIG.institution;
-  // a phone that already joined a session gets a direct way back
-  try {
-    var last = localStorage.getItem("cp_last_session");
-    if (last) { var back = document.getElementById("backToSession"); back.href = "student.html?s=" + encodeURIComponent(last); back.classList.remove("hidden"); }
-  } catch (e) { /* private mode */ }
-  document.getElementById("go").onclick = () => {
-    const code = document.getElementById("code").value.trim().toUpperCase();
-    if (code.length === 6) location.href = "student.html?s=" + encodeURIComponent(code);
+  const view = (id) => ["homeIn", "homeSignIn", "homeRegister"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
+
+  // What a signed-in device sees: its courses, the session in progress (phone only), its documents.
+  async function showHome() {
+    const tokens = accountTokens();
+    if (!tokens.length) { view("homeSignIn"); return; }
+    view("homeIn");
+    const rows = [], live = [];
+    let name = "";
+    for (const t of tokens) {
+      try {
+        const sp = await rpc("s_space", { p_device: t.token });
+        name = name || (sp.student.first_name + " " + sp.student.last_name);
+        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${t.phone ? "" : " · documents only on this device"}</span></div>`);
+        if (t.phone) {
+          const s = await rpc("s_live_session", { p_device: t.token });
+          if (s) live.push(`<a href="student.html?s=${encodeURIComponent(s.code)}" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:10px">▶ Session in progress: ${esc(sp.class_name)} · ${esc(s.title)}</button></a>`);
+        }
+      } catch (e) {
+        if (e.code === "UNKNOWN_DEVICE") { try { localStorage.removeItem((t.phone ? "cp_device_" : "cp_reader_") + t.classId); } catch (x) { /* ignore */ } }
+      }
+    }
+    if (!rows.length) { view("homeSignIn"); return; }
+    $("hello").textContent = name ? "Hello, " + name : "My courses";
+    $("courseList").innerHTML = rows.join("");
+    $("liveBox").innerHTML = live.join("");
+  }
+
+  $("goRegister").onclick = (e) => { e.preventDefault(); view("homeRegister"); $("rgMat").value = $("siMat").value; };
+  $("goSignIn").onclick = (e) => { e.preventDefault(); view("homeSignIn"); $("siMat").value = $("rgMat").value; };
+  $("signOut").onclick = (e) => { e.preventDefault(); if (confirm("Sign out of this device? On your class phone, you will need the teacher to link it again.")) { accountSignOut(); showHome(); } };
+  $("siBtn").onclick = async () => {
+    $("siBtn").disabled = true;
+    try { await accountLogin($("siMat").value, $("siPin").value); $("siPin").value = ""; await showHome(); }
+    catch (e) { toast(e.message, "error"); }
+    $("siBtn").disabled = false;
   };
+  $("rgBtn").onclick = async () => {
+    $("rgBtn").disabled = true;
+    try {
+      const r = await accountRegister($("rgMat").value, $("rgLast").value, $("rgFirst").value, $("rgPin").value);
+      $("rgPin").value = "";
+      toast(`Registered: ${r.first_name} ${r.last_name}, ${r.classes.length} course(s).`, "ok");
+      await showHome();
+    } catch (e) { toast(e.message, "error"); }
+    $("rgBtn").disabled = false;
+  };
+  showHome();
 </script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).

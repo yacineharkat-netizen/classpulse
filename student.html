@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="18">
+<html lang="en" data-version="21">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=18">
+<link rel="stylesheet" href="css/style.css?v=21">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -17,41 +17,33 @@
   </header>
   <div class="muted" id="sessionLine"></div>
 
-  <!-- 1. Session code (when the page is opened without a code) -->
-  <div id="viewCode" class="card hidden">
-    <h2>Join a session</h2>
-    <label for="codeInput">Session code (shown on the screen)</label>
-    <input id="codeInput" maxlength="6" autocomplete="off" style="text-transform:uppercase; font-size:24px; letter-spacing:4px">
-    <button id="codeBtn" style="margin-top:14px; width:100%">Continue</button>
+  <!-- 1. Sign in (this phone is not known yet) -->
+  <div id="viewSignIn" class="card hidden">
+    <h2>Sign in</h2>
+    <label for="siMat">Student number (matricule)</label>
+    <input id="siMat" inputmode="numeric" autocomplete="username">
+    <label for="siPin">PIN (4 digits)</label>
+    <input id="siPin" inputmode="numeric" maxlength="4" type="password" autocomplete="current-password">
+    <button id="siBtn" style="margin-top:14px; width:100%">Sign in</button>
+    <p id="siHelp" class="muted hidden" style="margin-top:12px"></p>
+    <p style="margin:14px 0 0">Not registered yet? <a href="#" id="goRegister"><strong>Register here</strong></a></p>
   </div>
 
   <!-- 2. First registration on this phone -->
   <div id="viewRegister" class="card hidden">
-    <h2>First time on this phone</h2>
-    <p class="muted">Register once. Your phone will then be recognised automatically for the whole semester.</p>
+    <h2>Register</h2>
+    <p class="muted">Once, for all your courses. This phone becomes your phone for attendance and quizzes.</p>
     <label for="regMat">Student number (matricule)</label>
     <input id="regMat" inputmode="numeric" autocomplete="off">
-    <label for="regLast">Last name</label>
+    <label for="regLast">Last name (as in the official list)</label>
     <input id="regLast" autocomplete="family-name">
     <label for="regFirst">First name</label>
     <input id="regFirst" autocomplete="given-name">
-    <label for="regPin">Choose a 4-digit PIN (keep it: you need it if you change phone)</label>
+    <label for="regPin">Choose a 4-digit PIN (keep it secret: it is your password)</label>
     <input id="regPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
     <button id="regBtn" style="margin-top:14px; width:100%">Register</button>
-    <p class="muted" style="margin-top:14px">Already registered on another phone? <a href="#" id="toNewDevice">Use this phone instead</a></p>
+    <p style="margin:14px 0 0">Already registered? <a href="#" id="toSignIn"><strong>Sign in</strong></a></p>
     <p class="muted">ClassPulse stores your student number, your name, your attendance and your quiz answers, for this course only.</p>
-  </div>
-
-  <!-- 2b. New phone (after the teacher allowed it) -->
-  <div id="viewNewDevice" class="card hidden">
-    <h2>Use a new phone</h2>
-    <p class="muted">The teacher must first allow the change of phone.</p>
-    <label for="ndMat">Student number</label>
-    <input id="ndMat" inputmode="numeric" autocomplete="off">
-    <label for="ndPin">Your PIN</label>
-    <input id="ndPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
-    <button id="ndBtn" style="margin-top:14px; width:100%">Continue</button>
-    <p class="muted" style="margin-top:14px"><a href="#" id="toRegister">Back to registration</a></p>
   </div>
 
   <!-- 2c. Registration outside a session (link or QR code of the class, official list only) -->
@@ -69,8 +61,8 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=18"></script>
-<script src="js/student.js?v=18"></script>
+<script src="js/common.js?v=21"></script>
+<script src="js/student.js?v=21"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

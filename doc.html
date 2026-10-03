@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="18">
+<html lang="en" data-version="21">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - document</title>
-<link rel="stylesheet" href="css/style.css?v=18">
+<link rel="stylesheet" href="css/style.css?v=21">
 </head>
 <body class="docview">
 <div class="docbar no-print">
@@ -21,7 +21,7 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=18"></script>
+<script src="js/common.js?v=21"></script>
 <script>
   // Protected document viewer. The page, the PDF and the attached file come from the database:
   // only a registered phone of a class where the document is visible receives them (or the teacher, in preview).
@@ -121,9 +121,9 @@
     if (previewId) {
       $("backLink").textContent = "Teacher preview"; $("backLink").removeAttribute("href");
     } else {
-      try { token = localStorage.getItem("cp_device_" + classId); } catch (e) { token = null; }
+      try { token = localStorage.getItem("cp_device_" + classId) || localStorage.getItem("cp_reader_" + classId); } catch (e) { token = null; }
       if (!docId || !token) {
-        message(`<h2>Document not available</h2><p class="muted">Open it from ClassPulse on the phone you registered in class: home page › <strong>My documents</strong>.</p>
+        message(`<h2>Document not available</h2><p class="muted">Open it from ClassPulse: home page › <strong>My documents</strong>, on your registered phone or after signing in with your student number and PIN.</p>
           <a href="student.html?space=1"><button style="width:100%">My documents</button></a>`);
         return;
       }

@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "18"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "21"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -19,7 +19,7 @@ let sending = false;
 
 // ------------------------------------------------------------------ helpers
 function show(viewId) {
-  ["viewCode", "viewRegister", "viewNewDevice", "viewLive"].forEach((v) => $(v).classList.toggle("hidden", v !== viewId));
+  ["viewSignIn", "viewRegister", "viewLive"].forEach((v) => $(v).classList.toggle("hidden", v !== viewId));
 }
 function tokenKey() { return "cp_device_" + sessionInfo.class_id; }
 function saveToken(token) {
@@ -38,17 +38,11 @@ function dropAttendanceCodeFromUrl() {
 // Every class this phone is registered in keeps a token in localStorage ("cp_device_<class id>").
 const DOC_KIND = { course: "Course", tp: "Lab", code: "Code", other: "Document" };
 async function renderSpace() {
-  const tokens = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.indexOf("cp_device_") === 0) tokens.push(localStorage.getItem(k));
-    }
-  } catch (e) { /* private mode */ }
+  const tokens = accountTokens().map((t) => t.token);
   const box = $("spaceBox");
   if (!tokens.length) {
     box.classList.toggle("hidden", !params.has("space"));
-    $("spaceList").innerHTML = `<p class="muted">This phone is not registered yet. Join a session once in class (scan the QR code): your documents will then appear here.</p>`;
+    $("spaceList").innerHTML = `<p class="muted">This device is not signed in.</p><a href="index.html"><button style="width:100%">Sign in or register</button></a>`;
     return;
   }
   const blocks = [];
@@ -65,57 +59,17 @@ async function renderSpace() {
   box.classList.remove("hidden");
 }
 
-// ------------------------------------------------------------------ registration outside a session (official list only)
-async function startClassRegistration(reg) {
-  let info;
-  try { info = await rpc("s_class_reg_info", { p_reg: reg }); } catch (e) { toast(e.message, "error"); show("viewCode"); return; }
-  $("brand").textContent = info.class_name;
-  let already = null;
-  try { already = localStorage.getItem("cp_device_" + info.class_id); } catch (e) { already = null; }
-  const box = $("viewClassReg");
-  ["viewCode", "viewRegister", "viewNewDevice", "viewLive"].forEach((v) => $(v).classList.add("hidden"));
-  box.classList.remove("hidden");
-  if (already) {
-    box.innerHTML = `<h2>Already registered</h2><p class="muted">This phone is registered in ${esc(info.class_name)}. Your documents are below.</p>`;
-    $("spaceBox").open = true;
-    return;
-  }
-  if (!info.open) {
-    box.innerHTML = `<h2>Registration closed</h2><p class="muted">The registration of ${esc(info.class_name)} is not open. Register in class, during a session.</p>`;
-    return;
-  }
-  box.innerHTML = `<h2>Register in ${esc(info.class_name)}</h2>
-    <p class="muted">Once, for the whole semester. You must be in the official list of the class.</p>
-    <label for="crMat">Student number (matricule)</label><input id="crMat" inputmode="numeric" autocomplete="off">
-    <label for="crLast">Last name (as in the official list)</label><input id="crLast" autocomplete="family-name">
-    <label for="crPin">Choose a 4-digit PIN (keep it: you need it if you change phone)</label>
-    <input id="crPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
-    <button id="crBtn" style="margin-top:14px;width:100%">Register</button>
-    <p class="muted" style="margin-top:14px">ClassPulse stores your student number, your name, your attendance and your quiz answers, for this course only.</p>`;
-  $("crBtn").onclick = async () => {
-    $("crBtn").disabled = true;
-    try {
-      const r = await rpc("s_register_class", { p_reg: reg, p_matricule: $("crMat").value, p_last_name: $("crLast").value, p_pin: $("crPin").value });
-      try { localStorage.setItem("cp_device_" + r.class_id, r.device_token); } catch (e) { /* private mode */ }
-      box.innerHTML = `<div class="big-status"><div class="icon">✅</div><div class="title">Welcome, ${esc(r.first_name)} ${esc(r.last_name)}</div>
-        <div class="muted">This phone is registered in ${esc(r.class_name)}. In class, scan the QR code of the session to check in.</div></div>
-        <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
-      $("spaceBox").open = true;
-      renderSpace();
-    } catch (e) { toast(e.message, "error"); $("crBtn").disabled = false; }
-  };
-}
-
 async function start() {
   if (params.has("space")) $("spaceBox").open = true;
   renderSpace();
-  if (params.get("reg")) { startClassRegistration(params.get("reg").toUpperCase()); return; }
-  if (!sessionCode) { show("viewCode"); return; }
+  // old registration links (?reg=...) and a page opened without a session: everything starts from the home page
+  if (params.get("reg") || (!sessionCode && !params.has("space"))) { location.replace("index.html"); return; }
+  if (!sessionCode) return;
   try {
     sessionInfo = await rpc("s_session_info", { p_code: sessionCode });
   } catch (e) {
     toast(e.message, "error");
-    show("viewCode");
+    setTimeout(() => location.replace("index.html"), 2500);
     return;
   }
   // remembered for the protected demos: they open only for a phone checked in this session
@@ -124,7 +78,7 @@ async function start() {
   $("brand").textContent = sessionInfo.class_name;
   $("sessionLine").textContent = sessionInfo.title;
   try { deviceToken = localStorage.getItem(tokenKey()); } catch (e) { deviceToken = null; }
-  if (!deviceToken) { show("viewRegister"); return; }
+  if (!deviceToken) { show("viewSignIn"); return; }
   await afterIdentified();
 }
 
@@ -150,8 +104,8 @@ async function afterIdentified() {
 function forgetDevice() {
   try { localStorage.removeItem(tokenKey()); } catch (e) { /* ignore */ }
   deviceToken = null;
-  toast("This phone is not registered for this class anymore. Register again.", "error");
-  show("viewRegister");
+  toast("This phone is not linked to your account anymore. Sign in again.", "error");
+  show("viewSignIn");
 }
 
 // Optional position check: sent after a successful check-in, never before (the code would expire).
@@ -187,12 +141,30 @@ function pollLoop() {
 }
 
 // ------------------------------------------------------------------ registration
-$("codeBtn").onclick = () => {
-  const code = $("codeInput").value.trim().toUpperCase();
-  if (code.length !== 6) { toast("The code has 6 characters.", "error"); return; }
-  params.set("s", code);
-  window.location.search = params.toString();
+// Sign in on the session page: the phone is linked now if no other phone is linked to this student.
+$("siBtn").onclick = async () => {
+  $("siBtn").disabled = true;
+  $("siHelp").classList.add("hidden");
+  try {
+    const r = await accountCall("s_account_login", { p_matricule: $("siMat").value, p_pin: $("siPin").value, p_bind: true });
+    $("siPin").value = "";
+    const mine = r.classes.find((c) => c.class_id === sessionInfo.class_id);
+    try { deviceToken = localStorage.getItem(tokenKey()); } catch (e) { deviceToken = null; }
+    if (!mine) {
+      $("siHelp").textContent = "You are signed in, but you are not in the list of this course. See the teacher.";
+      $("siHelp").classList.remove("hidden");
+    } else if (!deviceToken) {
+      $("siHelp").textContent = "You are signed in, but another phone is linked to your student number. Ask the teacher to allow this phone, then sign in again.";
+      $("siHelp").classList.remove("hidden");
+    } else {
+      toast("Welcome, " + r.first_name + ".", "ok");
+      await afterIdentified();
+    }
+  } catch (e) { toast(e.message, "error"); }
+  $("siBtn").disabled = false;
 };
+$("goRegister").onclick = (ev) => { ev.preventDefault(); $("regMat").value = $("siMat").value; show("viewRegister"); };
+$("toSignIn").onclick = (ev) => { ev.preventDefault(); $("siMat").value = $("regMat").value; show("viewSignIn"); };
 
 $("regBtn").onclick = async () => {
   $("regBtn").disabled = true;
@@ -207,22 +179,10 @@ $("regBtn").onclick = async () => {
     await afterIdentified();
   } catch (e) {
     toast(e.message, "error");
+    // not in the official list: the teacher is told in the application
+    if (e.code === "NOT_IN_OFFICIAL_LIST") rpc("s_report_attempt", { p_code: sessionCode, p_matricule: $("regMat").value, p_last_name: $("regLast").value, p_first_name: $("regFirst").value }).catch(() => {});
   } finally {
     $("regBtn").disabled = false;
-  }
-};
-
-$("toNewDevice").onclick = (ev) => { ev.preventDefault(); show("viewNewDevice"); };
-$("toRegister").onclick = (ev) => { ev.preventDefault(); show("viewRegister"); };
-
-$("ndBtn").onclick = async () => {
-  try {
-    const r = await rpc("s_login_new_device", { p_code: sessionCode, p_matricule: $("ndMat").value, p_pin: $("ndPin").value });
-    saveToken(r.device_token);
-    toast("Welcome back, " + r.first_name + ".", "ok");
-    await afterIdentified();
-  } catch (e) {
-    toast(e.message, "error");
   }
 };
 
