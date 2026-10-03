@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="18">
+<html lang="en" data-version="19">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=18">
+<link rel="stylesheet" href="css/style.css?v=19">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -20,7 +20,16 @@
     <input id="code" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:24px;letter-spacing:4px">
     <button id="go" style="margin-top:14px;width:100%">Join</button>
   </div>
-  <a href="student.html?space=1" style="text-decoration:none"><button class="secondary" style="width:100%;margin-bottom:14px">📚 My documents (course notes, lab sheets, code)</button></a>
+  <div class="card">
+    <h2>My courses</h2>
+    <p class="muted" style="margin-top:0">Every document of the course, the labs and the tutorials is here: course notes, lab sheets, code.</p>
+    <a href="student.html?space=1" style="text-decoration:none"><button class="secondary" style="width:100%">📚 My documents</button></a>
+    <label for="courseSelect" style="margin-top:14px">Register in a course (once, with the phone you will use in class)</label>
+    <select id="courseSelect"><option value="">Loading…</option></select>
+    <button id="courseBtn" class="secondary" style="margin-top:8px;width:100%">Register</button>
+    <p class="muted" id="courseHelp" style="margin-bottom:0">Not in the official list of the course? Register in class instead: scan the QR code of the session while the attendance is open.</p>
+    <a href="student.html?space=1&login=1" style="text-decoration:none"><button class="secondary" style="margin-top:14px;width:100%">💻 Read my documents on another device (student number + PIN)</button></a>
+  </div>
   <details class="home-tip">
     <summary>📲 Put ClassPulse on your home screen (no more address to remember)</summary>
     <p><strong>Android (Chrome):</strong> menu <strong>⋮</strong> at the top right › <strong>Add to Home screen</strong> › Add.</p>
@@ -28,10 +37,12 @@
     <p class="muted">An icon "ClassPulse" appears with your other apps. Use the same browser as the one you registered with: your phone stays recognised.</p>
   </details>
   <p class="muted">In class, simply scan the QR code shown on the screen: you do not need to type anything.
-    Demos and documents are sent to your phone by the teacher during the session.</p>
+    Quizzes and demos are sent to your phone by the teacher during the session. Outside the sessions, all the documents stay available in "My documents".</p>
   <p class="muted" style="text-align:right"><a href="teacher.html">Teacher</a></p>
 </div>
+<script src="lib/supabase.js"></script>
 <script src="config.js"></script>
+<script src="js/common.js?v=19"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = CONFIG.institution;
@@ -40,6 +51,17 @@
     var last = localStorage.getItem("cp_last_session");
     if (last) { var back = document.getElementById("backToSession"); back.href = "student.html?s=" + encodeURIComponent(last); back.classList.remove("hidden"); }
   } catch (e) { /* private mode */ }
+  // courses open to registration (official list only; the others register in class)
+  (async () => {
+    const select = document.getElementById("courseSelect"), button = document.getElementById("courseBtn");
+    let open = [];
+    try { open = (await rpc("s_courses")).filter((c) => c.reg_code); } catch (e) { open = []; }
+    select.innerHTML = open.length
+      ? '<option value="">Choose a course…</option>' + open.map((c) => `<option value="${esc(c.reg_code)}">${esc(c.class_name)}</option>`).join("")
+      : '<option value="">No course is open to registration now</option>';
+    button.disabled = !open.length;
+    button.onclick = () => { if (select.value) location.href = "student.html?reg=" + encodeURIComponent(select.value); };
+  })();
   document.getElementById("go").onclick = () => {
     const code = document.getElementById("code").value.trim().toUpperCase();
     if (code.length === 6) location.href = "student.html?s=" + encodeURIComponent(code);

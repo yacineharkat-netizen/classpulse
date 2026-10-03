@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "18"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "19"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -42,13 +42,18 @@ async function renderSpace() {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.indexOf("cp_device_") === 0) tokens.push(localStorage.getItem(k));
+      // "cp_device_<class>": the registered phone. "cp_reader_<class>": a device signed in with student number + PIN (documents only).
+      if (k && (k.indexOf("cp_device_") === 0 || k.indexOf("cp_reader_") === 0)) {
+        const classId = k.slice(10);
+        if (k.indexOf("cp_reader_") === 0 && localStorage.getItem("cp_device_" + classId)) continue;    // the phone token is enough
+        tokens.push(localStorage.getItem(k));
+      }
     }
   } catch (e) { /* private mode */ }
   const box = $("spaceBox");
   if (!tokens.length) {
     box.classList.toggle("hidden", !params.has("space"));
-    $("spaceList").innerHTML = `<p class="muted">This phone is not registered yet. Join a session once in class (scan the QR code): your documents will then appear here.</p>`;
+    $("spaceList").innerHTML = `<p class="muted">This device is not registered. On your phone: register in a course from the home page, or join a session in class. On a laptop: sign in below with your student number and your PIN.</p>`;
     return;
   }
   const blocks = [];
@@ -63,6 +68,32 @@ async function renderSpace() {
   }
   $("spaceList").innerHTML = blocks.join("") || `<p class="muted">No document yet.</p>`;
   box.classList.remove("hidden");
+}
+
+// ------------------------------------------------------------------ read-only sign-in (student number + PIN), for a laptop or another phone
+async function openReaderLogin() {
+  $("spaceBox").classList.remove("hidden"); $("spaceBox").open = true;
+  $("readerLogin").classList.remove("hidden");
+  let courses = [];
+  try { courses = await rpc("s_courses"); } catch (e) { toast(e.message, "error"); }
+  $("rdClass").innerHTML = '<option value="">Choose a course…</option>' + courses.map((c) => `<option value="${esc(c.class_id)}">${esc(c.class_name)}</option>`).join("");
+}
+function setupReaderLogin() {
+  $("readerToggle").onclick = (e) => { e.preventDefault(); openReaderLogin(); };
+  $("rdBtn").onclick = async () => {
+    if (!$("rdClass").value) { toast("Choose a course.", "error"); return; }
+    $("rdBtn").disabled = true;
+    try {
+      const r = await rpc("s_reader_login", { p_class: $("rdClass").value, p_matricule: $("rdMat").value, p_pin: $("rdPin").value });
+      if (r.error) throw new Error(errorText({ message: r.error }));
+      try { localStorage.setItem("cp_reader_" + r.class_id, r.reader_token); } catch (e) { /* private mode */ }
+      $("rdPin").value = "";
+      $("readerLogin").classList.add("hidden");
+      toast(`Signed in: ${r.first_name} ${r.last_name}, ${r.class_name}`);
+      renderSpace();
+    } catch (e) { toast(e.message, "error"); }
+    $("rdBtn").disabled = false;
+  };
 }
 
 // ------------------------------------------------------------------ registration outside a session (official list only)
@@ -108,7 +139,9 @@ async function startClassRegistration(reg) {
 
 async function start() {
   if (params.has("space")) $("spaceBox").open = true;
+  setupReaderLogin();
   renderSpace();
+  if (params.has("login")) openReaderLogin();
   if (params.get("reg")) { startClassRegistration(params.get("reg").toUpperCase()); return; }
   if (!sessionCode) { show("viewCode"); return; }
   try {

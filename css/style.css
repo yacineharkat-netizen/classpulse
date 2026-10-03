@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "18";
+:root { --cp-version: "19";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
