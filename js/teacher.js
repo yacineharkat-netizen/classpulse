@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "22"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "23"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -611,14 +611,14 @@ function renderQuizLive() {
   $("nextBtn").textContent = !self && q.is_last && (q.phase === "question" || q.phase === "reveal") ? "Finish quiz?" : "Next question";
   if (self) {
     const perQ = q.per_question || [];
-    box.innerHTML = `<div><p><strong>${esc(q.title)}</strong> · self-paced${q.ask_variant ? " · board number asked" : ""}</p>
+    box.innerHTML = `<div><p><strong>${esc(q.title)}</strong> · self-paced${q.ask_variant ? " · board number asked" : ""}${q.lock_screen ? " · 🔒 screen locked" : ""}</p>
       <p>${q.phase === "self" ? "OPEN: students answer at their own pace, and can change an answer until you click <strong>Finish quiz</strong>."
         : q.phase === "finished" ? "Finished." : "Not open yet: click <strong>1. Open</strong>."}</p>
       <table>${perQ.map((n, i) => `<tr><td>Q${i + 1}</td><td><div class="b" style="display:inline-block;height:10px;background:#1B7F8C;border-radius:4px;width:${Math.max(3, (160 * n) / Math.max(1, live.present))}px"></div></td><td>${n}</td></tr>`).join("")}</table></div>
       <div><div class="stat">${q.started == null ? 0 : q.started} / ${live.present}</div><div class="muted">students started</div>
       <div class="stat" style="margin-top:10px">${q.done == null ? 0 : q.done}</div><div class="muted">answered every question</div></div>`;
     if (q.phase === "finished" && q.results) { box.innerHTML = resultsPanel(q); bindResultsToggle(q); }
-    $("lockedBox").classList.add("hidden");
+    renderLocked(q);
     return;
   }
   if ((q.phase === "question" || q.phase === "reveal") && q.per_student) {
@@ -627,8 +627,8 @@ function renderQuizLive() {
   } else if (q.phase === "question" || q.phase === "reveal") {
     const max = Math.max(1, ...(q.distribution || [0]));
     left = `<div><p><strong>Question ${q.index + 1} / ${q.count}</strong> · ${q.phase === "question" ? `<span class="timer">${formatSeconds(q.remaining_ms)} s</span>` : "answers shown"}</p>
-      <p>${esc(q.question)}</p><p class="muted">Answers shown to students: ${{ each: "after each question", end: "at the end", never: "never" }[q.reveal_mode] || ""}</p><div class="bars">` +
-      q.options.map((o, i) => `<div class="bar"><span class="l">${LETTERS[i]}</span><div class="b ${!q.survey && q.correct.includes(i) ? "ok" : ""}" style="width:${Math.max(4, (200 * q.distribution[i]) / max)}px"></div>
+      <p>${esc(q.question)}</p>${q.qtype === "number" ? `<p><span class="kind">🔢 numeric answer</span> accepted: <strong>${esc(q.expected || "")} ${esc(q.unit || "")}</strong></p>` : ""}<p class="muted">Answers shown to students: ${{ each: "after each question", end: "at the end", never: "never" }[q.reveal_mode] || ""}</p><div class="bars">` +
+      (q.options || []).map((o, i) => `<div class="bar"><span class="l">${LETTERS[i]}</span><div class="b ${!q.survey && q.correct.includes(i) ? "ok" : ""}" style="width:${Math.max(4, (200 * q.distribution[i]) / max)}px"></div>
         <span>${q.distribution[i]}</span><span class="muted">${esc(o)}</span></div>`).join("") + `</div></div>`;
   } else if (q.phase === "lobby") {
     left = `<div><p><strong>${esc(q.title)}</strong> · ${KIND_LABEL[q.kind] || ""}</p><p>The phones show the rules. No timer runs.</p>
@@ -640,9 +640,14 @@ function renderQuizLive() {
   const right = `<div><div class="stat">${q.answers} / ${live.present}</div><div class="muted">answers to this question</div>
     ${q.survey ? `<div class="muted" style="margin-top:10px">survey: no right answer</div>` : `<div class="stat" style="margin-top:10px">${q.success_rate == null ? "-" : q.success_rate + " %"}</div><div class="muted">full marks</div>`}</div>`;
   box.innerHTML = left + right;
-  $("lockedBox").classList.toggle("hidden", q.locked.length === 0);
-  $("lockedCount").textContent = q.locked.length;
-  $("lockedList").innerHTML = q.locked.length === 0 ? "" : `<table>` + q.locked.map((l) =>
+  renderLocked(q);
+}
+// Students locked because they left the quiz screen (live quizzes, and self-paced tests created with the lock).
+function renderLocked(q) {
+  const list = q.locked || [];
+  $("lockedBox").classList.toggle("hidden", list.length === 0);
+  $("lockedCount").textContent = list.length;
+  $("lockedList").innerHTML = list.length === 0 ? "" : `<table>` + list.map((l) =>
     `<tr><td>${esc(l.name)}</td><td>left ${l.leaves} time(s)</td><td><button class="small green" data-unlock="${l.student_id}">Unlock</button></td></tr>`).join("") + `</table>`;
   $("lockedList").querySelectorAll("[data-unlock]").forEach((b) => b.onclick = () =>
     act("t_unlock", { p_quiz: q.id, p_student: b.dataset.unlock }, "Student unlocked."));
@@ -689,7 +694,7 @@ async function loadQuizzes() {
   const quizzes = await rpc("t_list_quizzes", { p_session: sessionId });
   quizList = quizzes;
   const modeLabel = { each: "answers after each question", end: "answers at the end", never: "answers never shown" };
-  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">[${KIND_LABEL[q.kind] || "Quiz"}${q.graded ? "" : ", not graded"}] ${esc(q.title)} (${q.pace === "self" ? "self-paced, " : ""}${q.per_student ? q.count + " q. per student from " + q.pool : q.count + " q."}, /${Number(q.total_points)}, ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
+  $("quizSelect").innerHTML = quizzes.map((q) => `<option value="${q.id}">[${KIND_LABEL[q.kind] || "Quiz"}${q.graded ? "" : ", not graded"}] ${esc(q.title)} (${q.pace === "self" ? "self-paced, " : ""}${q.lock_screen ? "" : "no lock, "}${q.per_student ? q.count + " q. per student from " + q.pool : q.count + " q."}, /${Number(q.total_points)}, ${q.status}, ${modeLabel[q.reveal_mode] || ""}${q.time_override ? ", " + q.time_override + " s each" : ""})</option>`).join("") ||
     `<option value="">- create a quiz below -</option>`;
   allQuestions = await rpc("t_list_questions", { p_module: null, p_class: classId });
   fillPickFilters();
@@ -803,7 +808,9 @@ function syncQuizOptions() {
   if (perStudent) $("quizProjector").checked = false;
   if (survey && !perStudent) $("quizProjector").checked = true;
 }
-["quizKind", "quizPerStudent", "quizPace"].forEach((id) => { $(id).onchange = syncQuizOptions; });
+["quizKind", "quizPerStudent"].forEach((id) => { $(id).onchange = syncQuizOptions; });
+// the lock follows the pace by default (live: locked, self-paced: free); the teacher can then change it
+$("quizPace").onchange = () => { $("quizLock").checked = $("quizPace").value === "live"; syncQuizOptions(); };
 
 $("createQuizBtn").onclick = async () => {
   if (picked.length === 0) { toast("Tick questions or use the random draw first.", "error"); return; }
@@ -812,12 +819,13 @@ $("createQuizBtn").onclick = async () => {
   if (perStudent && (perStudent < 1 || perStudent > ids.length)) { toast(`Each student can get 1 to ${ids.length} questions (the ticked ones).`, "error"); return; }
   if (perStudent && perStudent === ids.length) toast("Every student gets all the ticked questions (only the order of the options changes). Tick more questions for a real draw.", "error");
   try {
-    await rpc("t_create_quiz", { p_session: sessionId, p_title: $("quizTitle").value.trim() || defaultQuizTitle(ids), p_question_ids: ids,
+    const newQuiz = await rpc("t_create_quiz", { p_session: sessionId, p_title: $("quizTitle").value.trim() || defaultQuizTitle(ids), p_question_ids: ids,
       p_reveal_mode: $("quizReveal").value, p_time_override: $("quizTime").value ? Number($("quizTime").value) : null,
       p_kind: $("quizKind").value, p_show_answer_count: $("quizShowCount").checked,
       p_graded: $("quizGraded").checked, p_scoring: $("quizScoring").value, p_total_points: Number($("quizTotal").value) || 20,
       p_per_student_count: perStudent, p_show_on_projector: $("quizProjector").checked,
       p_pace: $("quizPace").value, p_ask_variant: $("quizVariant").checked });
+    await rpc("t_quiz_set_lock", { p_quiz: newQuiz, p_lock: $("quizLock").checked });
     toast(perStudent ? `Quiz created: ${perStudent} question(s) per student, drawn from ${ids.length}.` : `Quiz created with ${ids.length} question(s).`, "ok");
     $("quizTitle").value = "";
     picked = [];

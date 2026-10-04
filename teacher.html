@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="22">
+<html lang="en" data-version="23">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=22">
+<link rel="stylesheet" href="css/style.css?v=23">
 </head>
 <body>
 
@@ -183,8 +183,9 @@
                 <label for="quizPace">Pace</label>
                 <select id="quizPace">
                   <option value="live">Live: one question at a time, with a timer</option>
-                  <option value="self">Self-paced: all questions at once (lab test, numeric answers)</option>
+                  <option value="self">Self-paced: all questions at once, no timer</option>
                 </select>
+                <label class="tick"><input type="checkbox" id="quizLock" checked> 🔒 Lock the phone on the quiz: a student who leaves the screen is locked until I unlock him</label>
                 <label class="tick"><input type="checkbox" id="quizVariant"> Students type their board / variant number (lab parameters)</label>
               </fieldset>
               <fieldset>
@@ -522,9 +523,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=22"></script>
-<script src="js/excel.js?v=22"></script>
-<script src="js/teacher.js?v=22"></script>
+<script src="js/common.js?v=23"></script>
+<script src="js/excel.js?v=23"></script>
+<script src="js/teacher.js?v=23"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
