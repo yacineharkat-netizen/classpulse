@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="20">
+<html lang="en" data-version="22">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=20">
+<link rel="stylesheet" href="css/style.css?v=22">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -12,50 +12,11 @@
 <body>
 <div class="student">
   <header>
+    <a href="index.html" id="homeLink" class="home-link">⌂ Home</a>
     <div class="brand" id="brand">ClassPulse</div>
     <div id="presence"></div>
   </header>
   <div class="muted" id="sessionLine"></div>
-
-  <!-- 1. Session code (when the page is opened without a code) -->
-  <div id="viewCode" class="card hidden">
-    <h2>Join a session</h2>
-    <label for="codeInput">Session code (shown on the screen)</label>
-    <input id="codeInput" maxlength="6" autocomplete="off" style="text-transform:uppercase; font-size:24px; letter-spacing:4px">
-    <button id="codeBtn" style="margin-top:14px; width:100%">Continue</button>
-  </div>
-
-  <!-- 2. First registration on this phone -->
-  <div id="viewRegister" class="card hidden">
-    <h2>First time on this phone</h2>
-    <p class="muted">Register once. Your phone will then be recognised automatically for the whole semester.</p>
-    <label for="regMat">Student number (matricule)</label>
-    <input id="regMat" inputmode="numeric" autocomplete="off">
-    <label for="regLast">Last name</label>
-    <input id="regLast" autocomplete="family-name">
-    <label for="regFirst">First name</label>
-    <input id="regFirst" autocomplete="given-name">
-    <label for="regPin">4-digit PIN: the one you chose on the home page, or a new one if you never registered (keep it)</label>
-    <input id="regPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
-    <button id="regBtn" style="margin-top:14px; width:100%">Register</button>
-    <p class="muted" style="margin-top:14px">Already registered on another phone? <a href="#" id="toNewDevice">Use this phone instead</a></p>
-    <p class="muted">ClassPulse stores your student number, your name, your attendance and your quiz answers, for this course only.</p>
-  </div>
-
-  <!-- 2b. New phone (after the teacher allowed it) -->
-  <div id="viewNewDevice" class="card hidden">
-    <h2>Use a new phone</h2>
-    <p class="muted">The teacher must first allow the change of phone.</p>
-    <label for="ndMat">Student number</label>
-    <input id="ndMat" inputmode="numeric" autocomplete="off">
-    <label for="ndPin">Your PIN</label>
-    <input id="ndPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
-    <button id="ndBtn" style="margin-top:14px; width:100%">Continue</button>
-    <p class="muted" style="margin-top:14px"><a href="#" id="toRegister">Back to registration</a></p>
-  </div>
-
-  <!-- 2c. Registration outside a session (link or QR code of the class, official list only) -->
-  <div id="viewClassReg" class="card hidden"></div>
 
   <!-- 3. Live content pushed by the teacher -->
   <div id="viewLive" class="hidden"></div>
@@ -64,22 +25,13 @@
   <details id="spaceBox" class="card hidden">
     <summary><strong>📚 My documents</strong></summary>
     <div id="spaceList"><p class="muted">Loading…</p></div>
-    <p style="margin:12px 0 0"><a href="#" id="readerToggle">💻 Sign in with my student number and PIN (laptop, other phone)</a></p>
-    <div id="readerLogin" class="hidden">
-      <p class="muted">This gives access to your documents only. Attendance and quizzes stay on the phone you registered.</p>
-      <label for="rdClass">Course</label><select id="rdClass"><option value="">Loading…</option></select>
-      <label for="rdMat">Student number (matricule)</label><input id="rdMat" inputmode="numeric" autocomplete="off">
-      <label for="rdPin">PIN (4 digits, chosen at registration)</label><input id="rdPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
-      <button id="rdBtn" style="margin-top:14px;width:100%">Sign in</button>
-      <p class="muted" style="margin-bottom:0">No PIN yet? <a href="index.html">Register in a course first</a> (home page).</p>
-    </div>
   </details>
 </div>
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=20"></script>
-<script src="js/student.js?v=20"></script>
+<script src="js/common.js?v=22"></script>
+<script src="js/student.js?v=22"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="20">
+<html lang="en" data-version="22">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=20">
+<link rel="stylesheet" href="css/style.css?v=22">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,7 +18,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=20"></script>
+<script src="js/common.js?v=22"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -149,8 +149,7 @@
       return;
     }
     $("content").innerHTML = `<div class="qr">${qrSvg(joinUrl, 8)}</div><div><h1>${esc(live.session.title)}</h1>
-      <div class="sub">Join: <strong>${esc(joinUrl.replace(/^https?:\/\//, ""))}</strong></div>
-      <div class="sub">or open <strong>${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</strong> and type the code <strong style="color:#E8741E;letter-spacing:.3vw">${esc(s.code)}</strong></div>
+      <div class="sub">Scan to join. No camera? Open <strong>${esc(siteUrl("index.html").replace(/^https?:\/\//, "").replace(/index\.html$/, ""))}</strong> and sign in.</div>
       <div class="huge" style="margin-top:4vh">${live.present}<span class="sub"> present</span></div></div>`;
   }
 
@@ -214,13 +213,13 @@
       ? `<div class="qr">${qrSvg(joinUrl + "&a=" + att.code, 10)}</div>
       <div><h1 style="font-size:6vh">Scan to check in</h1>
       <div class="sub" style="margin:2vh 0 4vh">${att.window_s >= 3600 ? "Code fixed for today." : "The code changes every " + (att.window_s || 15) + " seconds."}</div>
-      <div class="sub">No camera? Open</div><div class="addr">${esc(joinUrl.replace(/^https?:\/\//, ""))}</div>
-      <div class="sub" style="margin-top:3vh">and type the attendance code</div><div class="code">${esc(att.code)}</div></div>`
-      : `<div class="qr">${qrSvg(joinUrl, 10)}</div>
-      <div><h1 style="font-size:6vh">Scan to join the session</h1>
-      <div class="sub" style="margin:2vh 0 4vh">Already registered? You go straight back to the session.</div>
-      <div class="sub">No camera? Open</div><div class="addr">${esc(siteUrl("student.html").replace(/^https?:\/\//, ""))}</div>
-      <div class="sub" style="margin-top:3vh">and type the session code</div><div class="code">${esc(code)}</div></div>`;
+      <div class="sub">No camera? Open</div><div class="addr">${esc(siteUrl("index.html").replace(/^https?:\/\//, "").replace(/index\.html$/, ""))}</div>
+      <div class="sub" style="margin-top:3vh">sign in, join the session in progress and type the attendance code</div><div class="code">${esc(att.code)}</div></div>`
+      : `<div class="qr">${qrSvg(siteUrl("index.html").replace(/index\.html$/, ""), 10)}</div>
+      <div><h1 style="font-size:6vh">Scan to sign in or register</h1>
+      <div class="sub" style="margin:2vh 0 4vh">This code opens the home page. Already signed in? Use its "Check in" button.</div>
+      <div class="sub">No camera? Open</div><div class="addr">${esc(siteUrl("index.html").replace(/^https?:\/\//, "").replace(/index\.html$/, ""))}</div>
+      <div class="sub" style="margin-top:3vh">The attendance opens when the teacher starts it.</div></div>`;
     $("overlay").classList.remove("hidden");
     sendStatus();
   }

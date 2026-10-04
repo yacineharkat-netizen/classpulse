@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "20"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "22"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -64,6 +64,7 @@ async function showApp() {
   const { data } = await db.auth.getUser();
   $("whoAmI").textContent = data && data.user ? data.user.email : "";
   await loadClasses();
+  loadAttempts(); setInterval(loadAttempts, 60000);
   await loadResources();
   await loadDemos();
 }
@@ -158,7 +159,7 @@ function renderSessionsTable() {
       <td class="c-kind"><span class="kind ${s.kind}">${SESSION_KIND[s.kind] || s.kind}</span></td><td class="c-title">${esc(s.title)}</td>
       <td>${s.code}</td><td>${s.present}</td><td>${s.quizzes}</td>
       <td style="white-space:nowrap"><button class="small green" data-open="${s.id}">Open</button>
-        <button class="small secondary" data-sedit="${s.id}">Edit</button> <button class="small red teacher-only" data-sdel="${s.id}">Delete</button></td></tr>`).join("") + `</table>`;
+        ${s.mine === false ? "" : `<button class="small secondary" data-sedit="${s.id}">Edit</button> <button class="small red" data-sdel="${s.id}">Delete</button>`}</td></tr>`).join("") + `</table>`;
   $("sessionsTable").querySelectorAll("[data-open]").forEach((b) => b.onclick = async () => {
     $("sessionSelect").value = b.dataset.open;
     await selectSession(b.dataset.open);
@@ -993,7 +994,7 @@ function renderRegistration() {
   const show = c.reg_open && c.reg_code;
   $("regLinkBox").classList.toggle("hidden", !show);
   if (show) {
-    const url = siteUrl("student.html") + "?reg=" + c.reg_code;
+    const url = siteUrl("index.html").replace(/index\.html$/, "");
     $("regLink").textContent = url; $("regLink").href = url;
     const qr = qrcode(0, "M"); qr.addData(url); qr.make();
     $("regQr").innerHTML = qr.createSvgTag({ cellSize: 3, margin: 0 });
@@ -1016,8 +1017,31 @@ $("regOpenBtn").onclick = () => setRegistration(null, !classInfo[classId].reg_op
 $("regPageBtn").onclick = () => window.open("join.html?reg=" + classInfo[classId].reg_code, "classpulse_registration");
 
 // ------------------------------------------------------------------ students
+// People who tried to register and are not in the official list.
+async function loadAttempts() {
+  let list = [];
+  try { list = await rpc("t_reg_attempts"); } catch (e) { return; }
+  $("attemptBadge").textContent = list.length; $("attemptBadge").classList.toggle("hidden", !list.length);
+  $("attemptCount").textContent = list.length || "";
+  $("attemptsCard").classList.toggle("hidden", !list.length);
+  $("attemptsTable").innerHTML = `<table><tr><th>Matricule</th><th>Last name</th><th>First name</th><th>Tried</th><th>When</th><th></th></tr>` + list.map((a) =>
+    `<tr><td>${esc(a.matricule)}</td><td>${esc(a.last_name)}</td><td>${esc(a.first_name)}</td><td>${a.class_id ? "in a session of " + esc(a.class_name) : "from the home page"}</td>
+     <td>${new Date(a.at).toLocaleString()}</td>
+     <td style="white-space:nowrap">${classId ? `<button class="small green" data-attadd="${a.id}">+ Add to ${esc(classNames[classId] || "this class")}</button>` : ""}
+       <button class="small secondary" data-attdis="${a.id}">Dismiss</button></td></tr>`).join("") + `</table>`;
+  $("attemptsTable").querySelectorAll("[data-attadd]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_handle_attempt", { p_id: Number(b.dataset.attadd), p_class: classId }); toast("Added to the official list. The student can register now.", "ok"); loadStudents(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  $("attemptsTable").querySelectorAll("[data-attdis]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_handle_attempt", { p_id: Number(b.dataset.attdis), p_class: null }); loadAttempts(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
 async function loadStudents() {
   renderRegistration();
+  loadAttempts();
   if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const all = await rpc("t_list_students", { p_class: classId });
   const f = norm($("studentSearch").value);

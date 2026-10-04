@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "20"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "22"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -19,7 +19,7 @@ let sending = false;
 
 // ------------------------------------------------------------------ helpers
 function show(viewId) {
-  ["viewCode", "viewRegister", "viewNewDevice", "viewLive"].forEach((v) => $(v).classList.toggle("hidden", v !== viewId));
+  $("viewLive").classList.toggle("hidden", viewId !== "viewLive");
 }
 function tokenKey() { return "cp_device_" + sessionInfo.class_id; }
 function saveToken(token) {
@@ -38,22 +38,11 @@ function dropAttendanceCodeFromUrl() {
 // Every class this phone is registered in keeps a token in localStorage ("cp_device_<class id>").
 const DOC_KIND = { course: "Course", tp: "Lab", code: "Code", other: "Document" };
 async function renderSpace() {
-  const tokens = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      // "cp_device_<class>": the registered phone. "cp_reader_<class>": a device signed in with student number + PIN (documents only).
-      if (k && (k.indexOf("cp_device_") === 0 || k.indexOf("cp_reader_") === 0)) {
-        const classId = k.slice(10);
-        if (k.indexOf("cp_reader_") === 0 && localStorage.getItem("cp_device_" + classId)) continue;    // the phone token is enough
-        tokens.push(localStorage.getItem(k));
-      }
-    }
-  } catch (e) { /* private mode */ }
+  const tokens = accountTokens().map((t) => t.token);
   const box = $("spaceBox");
   if (!tokens.length) {
     box.classList.toggle("hidden", !params.has("space"));
-    $("spaceList").innerHTML = `<p class="muted">This device is not registered. On your phone: register in a course from the home page, or join a session in class. On a laptop: sign in below with your student number and your PIN.</p>`;
+    $("spaceList").innerHTML = `<p class="muted">This device is not signed in.</p><a href="index.html"><button style="width:100%">Sign in or register</button></a>`;
     return;
   }
   const blocks = [];
@@ -70,89 +59,18 @@ async function renderSpace() {
   box.classList.remove("hidden");
 }
 
-// ------------------------------------------------------------------ read-only sign-in (student number + PIN), for a laptop or another phone
-async function openReaderLogin() {
-  $("spaceBox").classList.remove("hidden"); $("spaceBox").open = true;
-  $("readerLogin").classList.remove("hidden");
-  let courses = [];
-  try { courses = await rpc("s_courses"); } catch (e) { toast(e.message, "error"); }
-  $("rdClass").innerHTML = '<option value="">Choose a course…</option>' + courses.map((c) => `<option value="${esc(c.class_id)}">${esc(c.class_name)}</option>`).join("");
-}
-function setupReaderLogin() {
-  $("readerToggle").onclick = (e) => { e.preventDefault(); openReaderLogin(); };
-  $("rdBtn").onclick = async () => {
-    if (!$("rdClass").value) { toast("Choose a course.", "error"); return; }
-    $("rdBtn").disabled = true;
-    try {
-      const r = await rpc("s_reader_login", { p_class: $("rdClass").value, p_matricule: $("rdMat").value, p_pin: $("rdPin").value });
-      if (r.error) throw new Error(errorText({ message: r.error }));
-      try { localStorage.setItem("cp_reader_" + r.class_id, r.reader_token); } catch (e) { /* private mode */ }
-      $("rdPin").value = "";
-      $("readerLogin").classList.add("hidden");
-      toast(`Signed in: ${r.first_name} ${r.last_name}, ${r.class_name}`);
-      renderSpace();
-    } catch (e) { toast(e.message, "error"); }
-    $("rdBtn").disabled = false;
-  };
-}
-
-// ------------------------------------------------------------------ registration outside a session (official list only)
-async function startClassRegistration(reg) {
-  let info;
-  try { info = await rpc("s_class_reg_info", { p_reg: reg }); } catch (e) { toast(e.message, "error"); show("viewCode"); return; }
-  $("brand").textContent = info.class_name;
-  let already = null;
-  try { already = localStorage.getItem("cp_device_" + info.class_id) || localStorage.getItem("cp_reader_" + info.class_id); } catch (e) { already = null; }
-  const box = $("viewClassReg");
-  ["viewCode", "viewRegister", "viewNewDevice", "viewLive"].forEach((v) => $(v).classList.add("hidden"));
-  box.classList.remove("hidden");
-  if (already) {
-    box.innerHTML = `<h2>Already registered</h2><p class="muted">This device already has access to ${esc(info.class_name)}. Your documents are below.</p>
-      <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
-    $("spaceBox").open = true;
-    return;
-  }
-  if (!info.open) {
-    box.innerHTML = `<h2>Registration closed</h2><p class="muted">The registration of ${esc(info.class_name)} is not open. Register in class, during a session.</p>
-      <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
-    return;
-  }
-  box.innerHTML = `<h2>Register in ${esc(info.class_name)}</h2>
-    <p class="muted">Once, for the whole semester. You must be in the official list of the course.</p>
-    <label for="crMat">Student number (matricule)</label><input id="crMat" inputmode="numeric" autocomplete="off">
-    <label for="crLast">Last name (as in the official list)</label><input id="crLast" autocomplete="family-name">
-    <label for="crPin">Choose a 4-digit PIN (keep it secret: it is your password)</label>
-    <input id="crPin" inputmode="numeric" maxlength="4" type="password" autocomplete="off">
-    <button id="crBtn" style="margin-top:14px;width:100%">Register</button>
-    <p class="muted" style="margin-top:14px">Already have a PIN? <a href="student.html?space=1&login=1">Sign in</a> instead.</p>
-    <p class="muted">ClassPulse stores your student number, your name, your attendance and your quiz answers, for this course only.</p>`;
-  $("crBtn").onclick = async () => {
-    $("crBtn").disabled = true;
-    try {
-      const r = await rpc("s_register_class", { p_reg: reg, p_matricule: $("crMat").value, p_last_name: $("crLast").value, p_pin: $("crPin").value });
-      try { localStorage.setItem("cp_reader_" + r.class_id, r.reader_token); } catch (e) { /* private mode */ }
-      box.innerHTML = `<div class="big-status"><div class="icon">✅</div><div class="title">Welcome, ${esc(r.first_name)} ${esc(r.last_name)}</div>
-        <div class="muted">You are registered in ${esc(r.class_name)}. Your documents are below.</div></div>
-        <p><strong>In class</strong>, the first time, scan the QR code of the session with your phone and type the same student number and the same PIN: your phone is then linked for attendance and quizzes.</p>
-        <a href="index.html"><button class="secondary" style="width:100%">ClassPulse home page</button></a>`;
-      $("spaceBox").open = true;
-      renderSpace();
-    } catch (e) { toast(e.message, "error"); $("crBtn").disabled = false; }
-  };
-}
-
 async function start() {
   if (params.has("space")) $("spaceBox").open = true;
-  setupReaderLogin();
   renderSpace();
-  if (params.has("login")) openReaderLogin();
-  if (params.get("reg")) { startClassRegistration(params.get("reg").toUpperCase()); return; }
-  if (!sessionCode) { show("viewCode"); return; }
+  // old registration links (?reg=...) and a page opened without a session: everything starts from the home page
+  if (params.has("checkin")) { startCheckinHome(); return; }
+  if (params.get("reg") || (!sessionCode && !params.has("space"))) { location.replace("index.html"); return; }
+  if (!sessionCode) return;
   try {
     sessionInfo = await rpc("s_session_info", { p_code: sessionCode });
   } catch (e) {
     toast(e.message, "error");
-    show("viewCode");
+    setTimeout(() => location.replace("index.html"), 2500);
     return;
   }
   // remembered for the protected demos: they open only for a phone checked in this session
@@ -161,7 +79,9 @@ async function start() {
   $("brand").textContent = sessionInfo.class_name;
   $("sessionLine").textContent = sessionInfo.title;
   try { deviceToken = localStorage.getItem(tokenKey()); } catch (e) { deviceToken = null; }
-  if (!deviceToken) { show("viewRegister"); return; }
+  // v22: there is one place to sign in or register, the home page. It sends the phone back here afterwards.
+  if (!deviceToken) { goSignIn(); return; }
+  if (params.get("checked")) { showCheckinResult(params.get("checked")); params.delete("checked"); dropAttendanceCodeFromUrl(); }
   await afterIdentified();
 }
 
@@ -184,11 +104,16 @@ async function afterIdentified() {
   setInterval(tick, 250);
 }
 
+function goSignIn() {
+  const q = "s=" + sessionCode + (attendanceCode ? "&a=" + attendanceCode : "");
+  location.replace("index.html?next=" + encodeURIComponent(q));
+}
+
 function forgetDevice() {
   try { localStorage.removeItem(tokenKey()); } catch (e) { /* ignore */ }
   deviceToken = null;
-  toast("This phone is not registered for this class anymore. Register again.", "error");
-  show("viewRegister");
+  toast("This phone is not linked to your account anymore. Sign in again.", "error");
+  setTimeout(goSignIn, 1500);
 }
 
 // Optional position check: sent after a successful check-in, never before (the code would expire).
@@ -223,45 +148,51 @@ function pollLoop() {
   setTimeout(async () => { await fetchState(); pollLoop(); }, delay);
 }
 
-// ------------------------------------------------------------------ registration
-$("codeBtn").onclick = () => {
-  const code = $("codeInput").value.trim().toUpperCase();
-  if (code.length !== 6) { toast("The code has 6 characters.", "error"); return; }
-  params.set("s", code);
-  window.location.search = params.toString();
-};
-
-$("regBtn").onclick = async () => {
-  $("regBtn").disabled = true;
-  try {
-    const r = await rpc("s_register", {
-      p_code: sessionCode, p_matricule: $("regMat").value, p_first_name: $("regFirst").value,
-      p_last_name: $("regLast").value, p_pin: $("regPin").value, p_att_code: attendanceCode,
-    });
-    saveToken(r.device_token);
-    if (attendanceCode) { showCheckinResult(r.checkin); attendanceCode = null; dropAttendanceCodeFromUrl(); }
-    else toast("Registered. Now scan the QR code on the screen to check in.", "ok");
-    await afterIdentified();
-  } catch (e) {
-    toast(e.message, "error");
-  } finally {
-    $("regBtn").disabled = false;
+// ------------------------------------------------------------------ check-in from the home page (no session known yet)
+// The phone scans the QR code of the screen, or types the attendance code: the session is found from the code.
+function startCheckinHome() {
+  const phones = accountTokens().filter((t) => t.phone);
+  if (!phones.length) { location.replace("index.html"); return; }
+  $("brand").textContent = "Check in";
+  show("viewLive");
+  renderCheckinHome();
+}
+function checkinBoxHtml(label) {
+  return `<div class="checkin-choice"><button id="scanBtn" class="orange">📷 Scan the QR code</button>
+        <button id="typeBtn" class="secondary">⌨ Type the code</button></div>
+      <div id="scanBox" class="card scanner hidden"><video id="scanVideo" playsinline muted></video>
+        <p class="muted" id="scanMsg">Point the camera at the QR code of the screen.</p><button id="scanStop" class="secondary" style="width:100%">Cancel</button></div>
+      <div id="typeBox" class="card hidden"><label for="attInput">${label}</label>
+        <input id="attInput" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:22px;letter-spacing:4px">
+        <button id="attBtn" style="margin-top:10px;width:100%">Check in</button></div>`;
+}
+function wireCheckinBox(onCancel) {
+  $("scanBtn").onclick = startScan;
+  $("scanStop").onclick = () => { stopScan(); onCancel(); };
+  $("typeBtn").onclick = () => { $("typeBox").classList.remove("hidden"); $("attInput").focus(); };
+  $("attBtn").onclick = () => checkinWith($("attInput").value);
+}
+function renderCheckinHome() {
+  $("viewLive").innerHTML = bigStatus("📷", "Check in", "Scan the QR code shown by the teacher, or type the attendance code written under it.") +
+    checkinBoxHtml("Attendance code given by the teacher");
+  wireCheckinBox(renderCheckinHome);
+}
+// Finds the session from what was scanned or typed, then opens it (the check-in is done there).
+async function checkinFromHome(text) {
+  const raw = String(text || "").trim();
+  const s = raw.match(/[?&]s=([A-Za-z0-9]+)/), a = raw.match(/[?&]a=([A-Za-z0-9]+)/);
+  if (s) { location.href = "student.html?s=" + s[1].toUpperCase() + (a ? "&a=" + a[1].toUpperCase() : ""); return true; }
+  const code = (a ? a[1] : raw).toUpperCase();
+  if (!/^[A-Z0-9]{4,8}$/.test(code)) { toast("This is not a ClassPulse attendance code.", "error"); return false; }
+  for (const t of accountTokens().filter((x) => x.phone)) {
+    try {
+      const found = await rpc("s_find_session", { p_device: t.token, p_att_code: code });
+      if (found) { location.href = "student.html?s=" + found.code + "&a=" + code; return true; }
+    } catch (e) { /* next course */ }
   }
-};
-
-$("toNewDevice").onclick = (ev) => { ev.preventDefault(); show("viewNewDevice"); };
-$("toRegister").onclick = (ev) => { ev.preventDefault(); show("viewRegister"); };
-
-$("ndBtn").onclick = async () => {
-  try {
-    const r = await rpc("s_login_new_device", { p_code: sessionCode, p_matricule: $("ndMat").value, p_pin: $("ndPin").value });
-    saveToken(r.device_token);
-    toast("Welcome back, " + r.first_name + ".", "ok");
-    await afterIdentified();
-  } catch (e) {
-    toast(e.message, "error");
-  }
-};
+  toast("No open attendance of your courses has this code. Check the code on the screen.", "error");
+  return false;
+}
 
 // ------------------------------------------------------------------ state
 async function fetchState() {
@@ -292,6 +223,7 @@ function render() {
   if (snapshot === lastRendered) return;
   lastRendered = snapshot;
 
+  $("homeLink").classList.toggle("hidden", state.activity === "quiz" && !!state.quiz);
   $("presence").innerHTML = state.present ? '<span class="badge ok">Present</span>' : '<span class="badge no">Not checked in</span>';
   const who = `<p class="muted">${esc(state.student.first_name)} ${esc(state.student.last_name)} · ${esc(state.student.matricule)}</p>`;
   const live = $("viewLive");
@@ -303,17 +235,8 @@ function render() {
 
   if (!state.present && state.attendance_open) {
     live.innerHTML = who + bigStatus("📷", "Check in", (state.att_window_s || 15) >= 3600 ? "Type the attendance code given by the teacher." : `The code on the screen changes every ${state.att_window_s || 15} seconds.`) +
-      `<div class="checkin-choice"><button id="scanBtn" class="orange">📷 Scan the QR code</button>
-        <button id="typeBtn" class="secondary">⌨ Type the code</button></div>
-      <div id="scanBox" class="card scanner hidden"><video id="scanVideo" playsinline muted></video>
-        <p class="muted" id="scanMsg">Point the camera at the QR code of the screen.</p><button id="scanStop" class="secondary" style="width:100%">Cancel</button></div>
-      <div id="typeBox" class="card hidden"><label for="attInput">Code shown under the QR code</label>
-        <input id="attInput" maxlength="6" autocomplete="off" style="text-transform:uppercase;font-size:22px;letter-spacing:4px">
-        <button id="attBtn" style="margin-top:10px;width:100%">Check in</button></div>`;
-    $("scanBtn").onclick = startScan;
-    $("scanStop").onclick = () => { stopScan(); lastRendered = ""; render(); };
-    $("typeBtn").onclick = () => { $("typeBox").classList.remove("hidden"); $("attInput").focus(); };
-    $("attBtn").onclick = () => checkinWith($("attInput").value);
+      checkinBoxHtml("Code shown under the QR code");
+    wireCheckinBox(() => { lastRendered = ""; render(); });
     return;
   }
 
@@ -343,6 +266,7 @@ let scanning = false, scanStream = null;
 
 async function checkinWith(text) {
   // Accepts the scanned address (".../student.html?s=ABC123&a=XYZ789") or the code alone.
+  if (!sessionCode) return checkinFromHome(text);
   let code = String(text || "").trim();
   const m = code.match(/[?&]a=([A-Za-z0-9]+)/);
   if (m) code = m[1];
@@ -401,7 +325,7 @@ async function startScan() {
     if (text) {
       stopScan();
       const ok = await checkinWith(text);
-      if (!ok) { lastRendered = ""; render(); }
+      if (!ok) { if (sessionCode) { lastRendered = ""; render(); } else renderCheckinHome(); }
       return;
     }
     setTimeout(loop, 200);
