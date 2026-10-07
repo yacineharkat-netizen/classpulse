@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="22">
+<html lang="en" data-version="24">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=22">
+<link rel="stylesheet" href="css/style.css?v=24">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -21,8 +21,8 @@
     <h2 id="hello">My courses</h2>
     <div id="liveBox"></div>
     <div id="courseList" class="muted">Loading…</div>
-    <a id="checkinLink" href="student.html?checkin=1" class="hidden" style="text-decoration:none"><button id="checkinBtn" class="orange" style="width:100%;margin-top:10px">✅ Check in (scan or type the code)</button></a>
-    <p id="checkinNote" class="muted hidden" style="margin:10px 0 0">The check-in is done with your class phone, not with this device.</p>
+    <a id="checkinLink" href="student.html?checkin=1" style="text-decoration:none"><button id="checkinBtn" class="orange" style="width:100%;margin-top:10px">✅ Check in (scan or type the code)</button></a>
+    <p id="deviceNote" class="muted" style="margin:10px 0 0"></p>
     <a href="student.html?space=1" style="text-decoration:none"><button id="docsBtn" style="width:100%;margin-top:10px">📚 My documents</button></a>
     <p class="muted" style="margin:12px 0 0">Quizzes and demos open in class, after the check-in. <a href="#" id="signOut">Sign out of this device</a></p>
   </div>
@@ -37,12 +37,13 @@
     <button id="siBtn" style="margin-top:14px;width:100%">Sign in</button>
     <p id="siHelp" class="muted hidden" style="margin-top:12px"></p>
     <p style="margin:14px 0 0">Not registered yet? <a href="#" id="goRegister"><strong>Register here</strong></a></p>
+    <p class="muted" style="margin:10px 0 0">You can sign in on any device (phone, computer) to read your documents.</p>
   </div>
 
   <!-- C. register (the only place to register) -->
   <div id="viewRegister" class="card hidden">
     <h2>Register</h2>
-    <p class="muted" style="margin-top:0">Once, for all your courses. Use the phone you will bring to class: it becomes your phone for attendance and quizzes.</p>
+    <p class="muted" style="margin-top:0">Once, for all your courses. Attendance and quizzes are done with <strong>one class device</strong>: the phone you register with now, or the first device (phone or laptop) you use in class.</p>
     <label for="regMat">Student number (matricule)</label>
     <input id="regMat" inputmode="numeric" autocomplete="off">
     <label for="regLast">Last name (as in the official list)</label>
@@ -66,7 +67,7 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=22"></script>
+<script src="js/common.js?v=24"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -79,7 +80,8 @@
   const nextCode = (next.get("s") || "").toUpperCase(), nextAtt = next.get("a") || null;
   let nextInfo = null;   // { class_id, class_name, title } of the session to go back to
   function goNext() { location.replace("student.html?s=" + encodeURIComponent(nextCode) + (nextAtt ? "&a=" + encodeURIComponent(nextAtt) : "")); }
-  function deviceTokenOf(classId) { try { return localStorage.getItem("cp_device_" + classId); } catch (e) { return null; } }
+  // any token of this course: the session page then links the device, or lets the student ask the teacher (v24)
+  function deviceTokenOf(classId) { try { return localStorage.getItem("cp_device_" + classId) || localStorage.getItem("cp_reader_" + classId); } catch (e) { return null; } }
 
   // What a signed-in device sees: its courses, the session in progress (phone only), the check-in, its documents.
   async function showHome() {
@@ -95,12 +97,15 @@
     if (!tokens.length) { view("viewSignIn"); return; }
     view("homeIn");
     const rows = [], live = [];
-    let name = "", phone = false;
+    let name = "", phone = false, others = [];
     for (const t of tokens) {
       try {
         const sp = await rpc("s_space", { p_device: t.token });
         name = name || (sp.student.first_name + " " + sp.student.last_name);
-        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${t.phone ? "" : " · documents only on this device"}</span></div>`);
+        if (sp.linked && !t.phone) { promoteToken(t.classId); t.phone = true; }   // this device became the class device
+        if (!sp.linked && sp.has_device) others.push(sp.device_kind || "device");
+        const groups = [sp.td_group, sp.tp_group].filter(Boolean).join(" · ");
+        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${t.phone ? " · class device: this " + deviceKind() : ""}</span></div>`);
         if (t.phone) {
           phone = true;
           const s = await rpc("s_live_session", { p_device: t.token });
@@ -114,8 +119,9 @@
     $("hello").textContent = name ? "Hello, " + name : "My courses";
     $("courseList").innerHTML = rows.join("");
     $("liveBox").innerHTML = live.join("");
-    $("checkinLink").classList.toggle("hidden", !phone);
-    $("checkinNote").classList.toggle("hidden", phone);
+    $("deviceNote").textContent = others.length
+      ? "Your documents are available on this device. Attendance and quizzes are done with your class device (your " + others[0] + "). To use this device in class, tap Check in: you can ask the teacher there."
+      : phone ? "" : "Your documents are available on this device. The first device you use in class becomes your class device.";
   }
 
   // After a sign-in started from a session: back to it, or the reason why this phone cannot join.
@@ -133,7 +139,7 @@
 
   $("goRegister").onclick = (e) => { e.preventDefault(); view("viewRegister"); $("regMat").value = $("siMat").value; };
   $("toSignIn").onclick = (e) => { e.preventDefault(); view("viewSignIn"); $("siMat").value = $("regMat").value; };
-  $("signOut").onclick = (e) => { e.preventDefault(); if (confirm("Sign out of this device? On your class phone, you will need the teacher to link it again.")) { accountSignOut(); showHome(); } };
+  $("signOut").onclick = (e) => { e.preventDefault(); if (confirm("Sign out of this device? You sign in again with your student number and your PIN.")) { accountSignOut(); showHome(); } };
   $("siBtn").onclick = async () => {
     $("siBtn").disabled = true;
     try {

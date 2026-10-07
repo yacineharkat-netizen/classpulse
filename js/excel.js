@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "22"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "24"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -39,6 +39,8 @@ const STUDENT_HEADER_WORDS = {
   matricule: ["matricule", "mat", "matr", "student_number", "numero", "num", "n_inscription", "numero_inscription", "id"],
   last_name: ["nom", "last_name", "lastname", "surname", "nom_etudiant", "name", "nom_et_prenom", "nom_prenom"],
   first_name: ["prenom", "first_name", "firstname", "prenoms"],
+  td_group: ["td", "groupe_td", "td_group", "groupe", "group", "gr", "grp"],
+  tp_group: ["tp", "groupe_tp", "tp_group", "sous_groupe", "sous_groupe_tp", "sg", "subgroup"],
 };
 
 // Which role (matricule / last_name / first_name) a header cell plays, or null.
@@ -47,6 +49,8 @@ function studentHeaderRole(cell) {
   if (!h) return null;
   for (const [role, words] of Object.entries(STUDENT_HEADER_WORDS)) if (words.includes(h)) return role;
   if (h.startsWith("matric")) return "matricule";
+  if (h.startsWith("sous_groupe") || h.startsWith("tp_") || h.startsWith("groupe_tp")) return "tp_group";
+  if (h.startsWith("groupe") || h.startsWith("td_")) return "td_group";
   if (h.startsWith("prenom")) return "first_name";
   if (h.startsWith("nom")) return "last_name";
   return null;
@@ -65,18 +69,22 @@ function detectStudentColumns(grid) {
 }
 
 // Build the student list from a grid, a header line and the chosen columns (-1 = none).
-function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst) {
+// The group columns are optional: when one is not chosen, the groups already in the class are kept.
+function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst, colTd, colTp) {
   const seen = new Set();
   const out = [];
   for (const row of grid.slice(headerRow + 1)) {
     const matricule = (row[colMat] || "").replace(/\s+/g, "");
     if (!matricule || seen.has(matricule)) continue;
     seen.add(matricule);
-    out.push({
+    const st = {
       matricule,
       last_name: colLast >= 0 ? row[colLast] || "" : "",
       first_name: colFirst >= 0 ? row[colFirst] || "" : "",
-    });
+    };
+    if (colTd >= 0) st.td_group = row[colTd] || "";
+    if (colTp >= 0) st.tp_group = row[colTp] || "";
+    out.push(st);
   }
   return out;
 }
@@ -155,43 +163,86 @@ function downloadResults(exp) {
   exp.scores.forEach((s) => { pts[s.quiz_id + "|" + s.student_id] = Number(s.points); maxOf[s.quiz_id + "|" + s.student_id] = Number(s.max); });
   const sessionLabel = (s) => `${s.date}${s.time ? " " + s.time : ""} ${KIND[s.kind] || ""} ${s.title}`.replace(/\s+/g, " ");
 
-  // Sheet 1: attendance, one column per session (date, time, type)
-  const attRows = [["Matricule", "Last name", "First name", "In official list", ...exp.sessions.map(sessionLabel), "Present", "Absent (unexcused)"]];
+  // v24: groups. A session may be for one TD group / TP sub-group; the sessions of the same unit (e.g. TP1,
+  // run once per sub-group) make ONE column. A student allowed in another group counts as present (catch-up).
+  const sessionOf = {};
+  exp.sessions.forEach((x) => { sessionOf[x.id] = x; });
+  const inGroup = (ses, st) => {
+    const g = ses.group || "";
+    if (!g) return true;
+    if (ses.kind === "td") return st.td_group === g;
+    if (ses.kind === "tp") return st.tp_group === g;
+    return st.td_group === g || st.tp_group === g;
+  };
+  const present = (ses, st) => { const v = att[ses.id + "|" + st.id]; return v === "present" || v === "late"; };
+  const columns = [];                       // [{ label, sessions: [...] }]
+  const columnOf = {};
+  exp.sessions.forEach((x) => {
+    const key = x.unit ? x.kind + "|" + x.unit : "id|" + x.id;
+    if (!columnOf[key]) {
+      columnOf[key] = { label: x.unit ? (x.unit.toUpperCase().startsWith((KIND[x.kind] || "?").toUpperCase()) ? x.unit : `${KIND[x.kind] || ""} ${x.unit}`.trim()) : sessionLabel(x) + (x.group ? ` [${x.group}]` : ""), sessions: [] };
+      columns.push(columnOf[key]);
+    }
+    columnOf[key].sessions.push(x);
+  });
+  const attendanceCell = (col, st) => {
+    const own = col.sessions.filter((x) => inGroup(x, st));
+    const ownPresent = own.find((x) => present(x, st));
+    if (ownPresent) return statusLetter[att[ownPresent.id + "|" + st.id]];
+    const other = col.sessions.find((x) => !inGroup(x, st) && present(x, st));
+    if (other) return `P (with ${other.group || "another group"})`;
+    if (own.some((x) => att[x.id + "|" + st.id] === "excused")) return "E";
+    return own.length ? "A" : "-";
+  };
+
+  // Sheet 1: attendance, one column per session or per unit
+  const attRows = [["Matricule", "Last name", "First name", "TD group", "TP group", "In official list", ...columns.map((c) => c.label), "Present", "Absent (unexcused)"]];
   exp.students.forEach((st) => {
-    const cells = exp.sessions.map((s) => statusLetter[att[s.id + "|" + st.id]] || "A");
-    attRows.push([st.matricule, st.last_name, st.first_name, st.official ? "yes" : "NO",
-      ...cells, cells.filter((c) => c === "P" || c === "L").length, cells.filter((c) => c === "A").length]);
+    const cells = columns.map((c) => attendanceCell(c, st));
+    attRows.push([st.matricule, st.last_name, st.first_name, st.td_group || "", st.tp_group || "", st.official ? "yes" : "NO",
+      ...cells, cells.filter((c) => c[0] === "P" || c === "L").length, cells.filter((c) => c === "A").length]);
   });
 
   // Marks, one sheet per type of evaluation. Each cell is the mark on the scale of the quiz (e.g. /5);
-  // the averages are computed on /20. Absent = 0; excused = EXC (ignored). Only graded quizzes.
+  // the averages are computed on /20. Absent = 0; excused = EXC (ignored); not in the group of the quiz = empty (ignored).
   const finished = exp.quizzes.filter((q) => q.status === "finished" && q.graded !== false && q.kind !== "survey");
   const markSheet = (kind, dropLowest) => {
     const list = finished.filter((q) => (q.kind || "quiz") === kind);
-    const head = ["Matricule", "Last name", "First name", ...list.map((q) => `${q.date}${q.time ? " " + q.time : ""} ${q.title} (/${Number(q.total_points || 20)})`)];
+    const groups = [], groupOf = {};          // the same test run once per sub-group = one column
+    list.forEach((q) => {
+      const ses = sessionOf[q.session_id] || {};
+      const key = ses.unit ? ses.unit + "|" + q.title : "id|" + q.id;
+      if (!groupOf[key]) {
+        groupOf[key] = { label: (ses.unit ? `${ses.unit} ${q.title}` : `${q.date}${q.time ? " " + q.time : ""} ${q.title}`) + ` (/${Number(q.total_points || 20)})`, quizzes: [] };
+        groups.push(groupOf[key]);
+      }
+      groupOf[key].quizzes.push(q);
+    });
+    const head = ["Matricule", "Last name", "First name", ...groups.map((g) => g.label)];
     if (dropLowest) head.push(`Average /20 (without the ${dropLowest} lowest)`);
     head.push("Average /20 (all)");
     const rows = [head];
     exp.students.forEach((st) => {
       const on20 = [];
-      const cells = list.map((q) => {
-        const key = q.id + "|" + st.id;
-        const scale = Number(q.total_points || 20);
-        if (pts[key] === undefined) {
-          if (att[q.session_id + "|" + st.id] === "excused") return "EXC";
-          on20.push(0); return 0;
+      const cells = groups.map((g) => {
+        const done = g.quizzes.find((q) => pts[q.id + "|" + st.id] !== undefined);
+        if (done) {
+          const key = done.id + "|" + st.id, scale = Number(done.total_points || 20);
+          const max = maxOf[key] || Number(done.max_points) || 1;
+          on20.push((pts[key] / max) * 20);
+          return Math.round((pts[key] / max) * scale * 100) / 100;
         }
-        const max = maxOf[key] || Number(q.max_points) || 1;
-        const mark = Math.round((pts[key] / max) * scale * 100) / 100;
-        on20.push((pts[key] / max) * 20);
-        return mark;
+        const own = g.quizzes.filter((q) => inGroup(sessionOf[q.session_id] || {}, st));
+        if (!own.length) return "";                                             // this test was not for his group
+        if (own.some((q) => att[q.session_id + "|" + st.id] === "excused")) return "EXC";
+        on20.push(0); return 0;
       });
       const sorted = on20.slice().sort((x, y) => x - y);
       const kept = sorted.slice(Math.min(dropLowest, Math.max(0, sorted.length - 1)));
       const avg = (arr) => (arr.length ? Math.round((arr.reduce((x, y) => x + y, 0) / arr.length) * 100) / 100 : "");
       rows.push([st.matricule, st.last_name, st.first_name, ...cells, ...(dropLowest ? [avg(kept)] : []), avg(on20)]);
     });
-    return { rows, count: list.length };
+    return { rows, count: groups.length };
   };
   const quizSheet = markSheet("quiz", CONFIG.dropLowest);
   const testSheet = markSheet("test", 0);
@@ -230,7 +281,7 @@ function downloadResults(exp) {
     ws["!cols"] = widths.map((w) => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
-  add(attRows, "Attendance", [12, 18, 16, 10, ...exp.sessions.map(() => 16), 9, 12]);
+  add(attRows, "Attendance", [12, 18, 16, 9, 9, 10, ...columns.map(() => 16), 9, 12]);
   add(quizSheet.rows, "Course quizzes", [12, 18, 16, ...Array(quizSheet.count).fill(16), 18, 12]);
   add(testSheet.rows, "Tests", [12, 18, 16, ...Array(testSheet.count).fill(16), 12]);
   add(tpSheet.rows, "TP tests", [12, 18, 16, ...Array(tpSheet.count).fill(16), 12]);

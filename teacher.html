@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="22">
+<html lang="en" data-version="24">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=22">
+<link rel="stylesheet" href="css/style.css?v=24">
 </head>
 <body>
 
@@ -24,7 +24,7 @@
     <label for="classSelect" style="color:#C9DCEB">Class</label>
     <select id="classSelect"></select>
     <button data-tab="live" class="active">▶ Live session</button>
-    <button data-tab="sessions">📅 Sessions</button>
+    <button data-tab="sessions">📅 Sessions <span id="sessionsBadge" class="badge open hidden"></span></button>
     <button data-tab="students">👥 Students <span id="attemptBadge" class="badge no hidden"></span></button>
     <button data-tab="questions" class="teacher-only">❓ Questions</button>
     <button data-tab="space" class="teacher-only">📚 Student space</button>
@@ -55,6 +55,8 @@
           <input id="newSessionTime" type="time" style="max-width:120px" title="Start">
           <input id="newSessionEnd" type="time" style="max-width:120px" title="End">
           <select id="newSessionKind" style="width:auto"><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select>
+          <select id="newSessionGroup" style="width:auto" title="The group of this session: only its students are expected"><option value="">Whole class</option></select>
+          <input id="newSessionUnit" placeholder="Unit, e.g. TP1" style="max-width:130px" title="Same unit for the sessions of the same lab or TD run once per group: one column in the export">
           <button id="createSessionBtn" class="secondary">Create</button>
         </div>
         <p class="muted" id="noSessionHelp">To start a class: type a title and click <strong>Create</strong>. ClassPulse gives the session a
@@ -161,6 +163,7 @@
           <div class="row" style="margin-top:8px">
             <label style="margin:0"><input type="checkbox" id="autoMode" style="width:auto"> Automatic mode: close each question when the time is over, then go to the next one after <span id="autoDelay"></span> s</label>
           </div>
+          <div id="liveRequests" class="locked-alert hidden"></div>
           <div id="lockedBox" class="locked-alert hidden">
             <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
             <div id="lockedList"></div>
@@ -183,8 +186,9 @@
                 <label for="quizPace">Pace</label>
                 <select id="quizPace">
                   <option value="live">Live: one question at a time, with a timer</option>
-                  <option value="self">Self-paced: all questions at once (lab test, numeric answers)</option>
+                  <option value="self">Self-paced: all questions at once, no timer</option>
                 </select>
+                <label class="tick"><input type="checkbox" id="quizLock" checked> 🔒 Lock the phone on the quiz: a student who leaves the screen is locked until I unlock him</label>
                 <label class="tick"><input type="checkbox" id="quizVariant"> Students type their board / variant number (lab parameters)</label>
               </fieldset>
               <fieldset>
@@ -251,7 +255,9 @@
       <div class="card">
         <h2>Sessions of this class</h2>
         <p class="muted">A session created by mistake can be corrected (title, date, time, type) or deleted with its attendance and quizzes.
-          <strong>Open</strong> takes you to the live session.</p>
+          <strong>Open</strong> takes you to the live session. <strong>Group</strong>: the TD group or TP sub-group of the session (empty = whole class);
+          only its students are expected. <strong>Unit</strong>: the same name (e.g. TP1) for the sessions of one lab run once per sub-group.</p>
+        <div id="sessionsAlerts"></div>
         <div id="sessionsTable"></div>
       </div>
     </section>
@@ -261,9 +267,11 @@
       <div class="card teacher-only">
         <h2>Registration of the students</h2>
         <p class="muted">A student registers once, from the home page or in class: student number, last name, first name, PIN. He must be in the
-          <strong>official list</strong> (student number and last name). The phone he registers with becomes his phone for attendance and quizzes;
-          a registration made on a computer links no phone: the phone is linked at the first sign-in in class.
-          Another phone later: <strong>Allow a new phone</strong>. Somebody registered in his place, or PIN forgotten: <strong>Reset PIN</strong>.</p>
+          <strong>official list</strong> (student number and last name). The phone he registers with becomes his <strong>class device</strong> (attendance and quizzes);
+          after a registration made on a computer, the first device he uses in a session (phone or computer) becomes his class device.
+          With another device he asks from the session page, for one session or as his new class device: you accept in the Live session tab or here.
+          You can also decide yourself: <strong>Allow a new device</strong>. Too many wrong PINs: <strong>Unlock PIN</strong>.
+          Somebody registered in his place, or PIN forgotten: <strong>Reset PIN</strong>.</p>
         <div class="reg-row">
           <button id="regSessionBtn" class="small"></button>
           <div><strong>During a session</strong> (the student scans the QR code of the session and registers). Official list only;
@@ -281,6 +289,11 @@
             </div>
           </div>
         </div>
+      </div>
+      <div class="card hidden" id="deviceReqCard">
+        <h2>Device requests <span id="deviceReqCount" class="badge no"></span></h2>
+        <p class="muted">Students who ask to use another device than their class device: for one session only, or as their new class device.</p>
+        <div id="deviceReqTable"></div>
       </div>
       <div class="card" id="attemptsCard">
         <h2>Not in the official list <span id="attemptCount" class="badge no"></span></h2>
@@ -303,6 +316,8 @@
             <label style="margin:0">Student number <select id="stColMat" style="width:auto"></select></label>
             <label style="margin:0">Last name <select id="stColLast" style="width:auto"></select></label>
             <label style="margin:0">First name <select id="stColFirst" style="width:auto"></select></label>
+            <label style="margin:0">TD group <select id="stColTd" style="width:auto"></select></label>
+            <label style="margin:0">TP sub-group <select id="stColTp" style="width:auto"></select></label>
           </div>
           <div id="stPreview" style="margin-top:10px"></div>
           <label class="tick" style="margin-top:10px"><input type="checkbox" id="stReplace"> This list <strong>replaces</strong> the previous official list: students who are not in it lose the "official" mark (nobody is deleted, attendance and marks are kept)</label>
@@ -328,7 +343,7 @@
     <section id="tab-space" class="hidden">
       <div class="card">
         <h2>Student space of this class</h2>
-        <p class="muted">The students open ClassPulse on their registered phone (home page › <strong>My documents</strong>), even outside a session,
+        <p class="muted">The students open ClassPulse on any device where they are signed in (home page › <strong>My documents</strong>), even outside a session,
           and see the documents you make <strong>visible</strong> here. A document is read on the site, with the name of the student printed over it.
           The PDF can be downloaded only if you allow it, document by document.</p>
         <div id="docsTable"></div>
@@ -491,7 +506,11 @@
           <button id="createClassBtn">Create</button>
         </div>
       </div>
-      <div class="card"><div id="classesTable"></div></div>
+      <div class="card">
+        <label class="tick"><input type="checkbox" id="showArchived"> Show the archived classes</label>
+        <div id="classesTable"></div>
+        <p class="muted"><strong>Archive</strong>: the class leaves your lists, nothing is lost, and you can bring it back. <strong>Delete</strong> erases its students, sessions, attendance and marks for ever.</p>
+      </div>
       <div class="card teacher-only">
         <h2>Lab assistants of this class</h2>
         <p class="muted">An assistant runs the <strong>lab (TP) sessions</strong> of this class with his own account: attendance, lab tests, random draw, bonus,
@@ -522,9 +541,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=22"></script>
-<script src="js/excel.js?v=22"></script>
-<script src="js/teacher.js?v=22"></script>
+<script src="js/common.js?v=24"></script>
+<script src="js/excel.js?v=24"></script>
+<script src="js/teacher.js?v=24"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

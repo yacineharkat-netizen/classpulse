@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "22"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "24"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -16,6 +16,7 @@ let selection = [];         // positions selected on screen for the current ques
 let selectionKey = "";      // quiz id + question index the selection belongs to
 let armedQuiz = null;       // quiz id for which the student entered the guarded quiz screen
 let sending = false;
+let liveNumKey = "", liveNumDraft = "";   // number typed for the current question of a live quiz
 
 // ------------------------------------------------------------------ helpers
 function show(viewId) {
@@ -78,11 +79,67 @@ async function start() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw-demos.js", { scope: "./d/" }).catch(() => {});
   $("brand").textContent = sessionInfo.class_name;
   $("sessionLine").textContent = sessionInfo.title;
-  try { deviceToken = localStorage.getItem(tokenKey()); } catch (e) { deviceToken = null; }
+  try { deviceToken = localStorage.getItem(tokenKey()) || localStorage.getItem("cp_reader_" + sessionInfo.class_id); } catch (e) { deviceToken = null; }
   // v22: there is one place to sign in or register, the home page. It sends the phone back here afterwards.
   if (!deviceToken) { goSignIn(); return; }
   if (params.get("checked")) { showCheckinResult(params.get("checked")); params.delete("checked"); dropAttendanceCodeFromUrl(); }
-  await afterIdentified();
+  await deviceGate();
+}
+
+// ------------------------------------------------------------------ class device (v24)
+// The first device used in a session becomes the class device. Another device must be allowed by the teacher:
+// for this session only, or as the new class device.
+let gateTimer = null;
+async function deviceGate() {
+  let claim;
+  try { claim = await rpc("s_claim_device", { p_token: deviceToken, p_kind: deviceKind() }); }
+  catch (e) {
+    if (e.code === "UNKNOWN_DEVICE") { forgetDevice(); return; }
+    toast(e.message, "error"); return;
+  }
+  if (claim.linked) { promoteToken(sessionInfo.class_id); await afterIdentified(); return; }
+  // not the class device: maybe already allowed for this session
+  try { await rpc("s_state", { p_device: deviceToken, p_code: sessionCode }); await afterIdentified(); return; }
+  catch (e) { if (e.code !== "UNKNOWN_DEVICE") { toast(e.message, "error"); return; } }
+  renderDeviceGate(claim.device_kind || "device", "none");
+}
+function renderDeviceGate(otherKind, status) {
+  show("viewLive");
+  $("presence").innerHTML = '<span class="badge no">Not your class device</span>';
+  const live = $("viewLive");
+  if (status === "pending") {
+    live.innerHTML = bigStatus("⏳", "Waiting for the teacher", "Your request is on his screen. Keep this page open.") +
+      `<button id="gateCancel" class="secondary" style="width:100%">Cancel and go back to the home page</button>`;
+    $("gateCancel").onclick = () => { location.href = "index.html"; };
+    return;
+  }
+  live.innerHTML = bigStatus("📵", "This device is not your class device",
+      `Attendance and quizzes are done with your class device (your ${esc(otherKind)}).` + (status === "refused" ? "<br><strong>Your last request was refused.</strong>" : "")) +
+    `<div class="card"><p><strong>You do not have your class device today?</strong></p>
+       <button id="gateSession" class="orange" style="width:100%">Ask to use this device for this session only</button>
+       <p style="margin-top:14px"><strong>You changed your device?</strong></p>
+       <button id="gateReplace" class="secondary" style="width:100%">Ask to make this device my class device</button>
+       <p class="muted" style="margin-top:12px">The teacher (or the assistant) accepts on his screen. Your documents stay available on every device.</p></div>`;
+  const ask = async (kind) => {
+    try {
+      await rpc("s_device_request", { p_token: deviceToken, p_code: sessionCode, p_kind: kind, p_device_kind: deviceKind() });
+      renderDeviceGate(otherKind, "pending");
+      clearInterval(gateTimer);
+      gateTimer = setInterval(async () => {
+        let st;
+        try { st = await rpc("s_device_state", { p_token: deviceToken, p_code: sessionCode }); } catch (e) { return; }
+        if (st.status === "pending") return;
+        clearInterval(gateTimer);
+        if (st.status === "accepted") {
+          if (st.linked) promoteToken(sessionInfo.class_id);
+          toast("The teacher allowed this device.", "ok");
+          await afterIdentified();
+        } else renderDeviceGate(otherKind, "refused");
+      }, 3000);
+    } catch (e) { toast(e.message, "error"); }
+  };
+  $("gateSession").onclick = () => ask("session");
+  $("gateReplace").onclick = () => ask("replace");
 }
 
 async function afterIdentified() {
@@ -110,7 +167,7 @@ function goSignIn() {
 }
 
 function forgetDevice() {
-  try { localStorage.removeItem(tokenKey()); } catch (e) { /* ignore */ }
+  try { localStorage.removeItem(tokenKey()); localStorage.removeItem("cp_reader_" + sessionInfo.class_id); } catch (e) { /* ignore */ }
   deviceToken = null;
   toast("This phone is not linked to your account anymore. Sign in again.", "error");
   setTimeout(goSignIn, 1500);
@@ -136,6 +193,7 @@ function showCheckinResult(result) {
     ALREADY_PRESENT: ["You were already checked in.", "ok"],
     ATTENDANCE_CLOSED: ["Attendance is closed.", "error"],
     CODE_EXPIRED: ["This QR code has expired. Scan the one on the screen again.", "error"],
+    OTHER_GROUP: ["This session is for another group. The teacher has been told: wait, he can let you in.", "error"],
   };
   const m = messages[result] || [result, ""];
   toast(m[0], m[1]);
@@ -151,8 +209,7 @@ function pollLoop() {
 // ------------------------------------------------------------------ check-in from the home page (no session known yet)
 // The phone scans the QR code of the screen, or types the attendance code: the session is found from the code.
 function startCheckinHome() {
-  const phones = accountTokens().filter((t) => t.phone);
-  if (!phones.length) { location.replace("index.html"); return; }
+  if (!accountTokens().length) { location.replace("index.html"); return; }
   $("brand").textContent = "Check in";
   show("viewLive");
   renderCheckinHome();
@@ -184,7 +241,7 @@ async function checkinFromHome(text) {
   if (s) { location.href = "student.html?s=" + s[1].toUpperCase() + (a ? "&a=" + a[1].toUpperCase() : ""); return true; }
   const code = (a ? a[1] : raw).toUpperCase();
   if (!/^[A-Z0-9]{4,8}$/.test(code)) { toast("This is not a ClassPulse attendance code.", "error"); return false; }
-  for (const t of accountTokens().filter((x) => x.phone)) {
+  for (const t of accountTokens()) {
     try {
       const found = await rpc("s_find_session", { p_device: t.token, p_att_code: code });
       if (found) { location.href = "student.html?s=" + found.code + "&a=" + code; return true; }
@@ -219,6 +276,8 @@ function render() {
   if (typingCode && state && !state.present && state.attendance_open) return;
   const typing = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("numAnswer");
   if (typing && state && state.quiz && state.quiz.pace === "self" && state.quiz.phase === "self") return;
+  if (document.activeElement && document.activeElement.id === "liveNum" && state && state.quiz && state.quiz.phase === "question"
+      && liveNumKey === state.quiz.quiz_id + ":" + state.quiz.index) { tick(); return; }
   const snapshot = JSON.stringify([state, selection, armedQuiz]).replace(/"remaining_ms":\d+/, "");
   if (snapshot === lastRendered) return;
   lastRendered = snapshot;
@@ -393,14 +452,13 @@ function renderQuiz(live, who) {
       <p>You left the quiz screen. Your answers are frozen.</p><p><strong>Raise your hand: only the teacher can unlock you.</strong></p></div>`;
     return;
   }
-  if (q.pace === "self") { renderSelfPaced(live, who, head, q); return; }
-  if (armedQuiz !== q.quiz_id) {
-    // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
+  if (q.pace === "self" && (!q.lock_screen || armedQuiz === q.quiz_id)) { renderSelfPaced(live, who, head, q); return; }
+  if (q.pace === "self") {
+    // self-paced test with the screen lock: the rules first, then the questions
     live.innerHTML = who + head + `<div class="card">
       <div style="font-size:42px;text-align:center">📝</div><h2 style="text-align:center">Read the rules</h2>
-      ${q.phase === "question" || q.phase === "reveal" ? `<p class="far" style="text-align:center">The quiz has already started: tap the button below now to join the current question.</p>` : ""}
       <ol class="rules">${rulesFor(q)}
-        <li>You can change your answer until the time of the question is over.</li>
+        <li>You answer in any order, at your own pace, until the teacher closes the test.</li>
         <li><strong>Do not leave this screen</strong> (no other app, no other tab, no notification opened). If you leave, you are locked and only the teacher can unlock you.</li>
         <li>Your name and student number are printed on the questions: any photo or screenshot shows who took it.</li>
       </ol>
@@ -408,20 +466,35 @@ function renderQuiz(live, who) {
     $("enterBtn").onclick = enterQuiz;
     return;
   }
+  if (armedQuiz !== q.quiz_id) {
+    // Rules first. In the "lobby" phase no timer runs: the teacher starts question 1 when students are ready.
+    live.innerHTML = who + head + `<div class="card">
+      <div style="font-size:42px;text-align:center">📝</div><h2 style="text-align:center">Read the rules</h2>
+      ${q.phase === "question" || q.phase === "reveal" ? `<p class="far" style="text-align:center">The quiz has already started: tap the button below now to join the current question.</p>` : ""}
+      <ol class="rules">${rulesFor(q)}
+        <li>You can change your answer until the time of the question is over.</li>
+        ${q.lock_screen ? `<li><strong>Do not leave this screen</strong> (no other app, no other tab, no notification opened). If you leave, you are locked and only the teacher can unlock you.</li>` : `<li>You may leave this screen during this quiz: nothing is locked.</li>`}
+        <li>Your name and student number are printed on the questions: any photo or screenshot shows who took it.</li>
+      </ol>
+      <button id="enterBtn" class="orange" style="width:100%;font-size:19px">I have read the rules, I am ready</button></div>`;
+    $("enterBtn").onclick = enterQuiz;
+    return;
+  }
   if (q.phase === "lobby") {
-    live.innerHTML = who + head + bigStatus("✅", "You are ready", "The first question will appear when the teacher starts the quiz. Stay on this screen.");
+    live.innerHTML = who + head + bigStatus("✅", "You are ready", "The first question will appear when the teacher starts the quiz." + (q.lock_screen ? " Stay on this screen." : ""));
     return;
   }
 
   const key = q.quiz_id + ":" + q.index;
   if (selectionKey !== key) { selectionKey = key; selection = q.my_answer ? q.my_answer.slice() : []; }
   const reveal = q.phase === "reveal";
+  if (q.qtype === "number") { renderLiveNumber(live, who, head, q, key, reveal); return; }
   const answered = q.my_answer && q.my_answer.length > 0;
   let html = who + head;
   if (!reveal) html += `<div class="row" style="justify-content:space-between"><span class="timer" id="timer"></span>` +
     `<span class="answer-kind ${q.multiple === false ? "single" : "multi"}">${q.survey ? "Survey: your opinion, not graded" : q.multiple === false ? "Only one correct answer" : q.multiple ? "Several correct answers: tick all" : "One or more answers may be correct"}</span></div><div class="progress"><div id="bar"></div></div>`;
   html += `<div class="protected"><div class="question-text">${esc(q.question)}</div>`;
-  q.options.forEach((opt, pos) => {
+  (q.options || []).forEach((opt, pos) => {
     let cls = "option";
     if (reveal && q.correct) {
       if (q.correct.includes(pos)) cls += " correct";
@@ -451,9 +524,57 @@ function renderQuiz(live, who) {
   }
 }
 
+// A question of a live quiz whose answer is a number: one field, the same timer, the answer can be changed until the time is over.
+function renderLiveNumber(live, who, head, q, key, reveal) {
+  const saved = q.my_number == null ? "" : String(Number(q.my_number));
+  if (liveNumKey !== key) { liveNumKey = key; liveNumDraft = saved; }
+  const answered = q.my_number != null;
+  let html = who + head;
+  if (!reveal) html += `<div class="row" style="justify-content:space-between"><span class="timer" id="timer"></span><span class="answer-kind single">Type a number</span></div>
+    <div class="progress"><div id="bar"></div></div>`;
+  html += `<div class="protected"><div class="question-text">${esc(q.question)}</div>`;
+  if (reveal) {
+    html += `<div class="option ${q.reveal_mode === "each" ? (Number(q.my_score) > 0 ? "correct" : "wrong") : "selected"}">Your answer: <strong>${answered ? saved : "-"} ${esc(q.unit || "")}</strong></div>` +
+      (q.expected ? `<div class="muted">Accepted: ${esc(withUnit(q.expected, q.unit || ""))}</div>` : "");
+  } else {
+    html += `<div class="row" style="gap:8px;align-items:center"><input id="liveNum" inputmode="decimal" autocomplete="off" value="${esc(liveNumDraft)}" style="font-size:22px;max-width:200px">
+      <span style="font-size:18px">${esc(q.unit || "")}</span></div><p class="muted">Use a dot or a comma (2.5 or 2,5).</p>`;
+  }
+  html += watermark() + `</div>`;
+  if (reveal && q.reveal_mode === "each") {
+    html += `<div class="card" style="text-align:center"><strong>${answered ? "Your score: " + Number(q.my_score) : "No answer"}</strong></div>`;
+  } else if (reveal) {
+    html += `<div class="card" style="text-align:center"><strong>${answered ? "✔ Answer recorded" : "No answer"}</strong><br>
+      <span class="muted">${q.reveal_mode === "end" ? "The correct answers will be shown at the end of the quiz." : "The correct answers are not shown for this quiz."}</span></div>`;
+  } else {
+    html += `<button id="sendBtn" class="orange" style="width:100%;font-size:19px;margin-top:6px">${answered ? "Change my answer" : "Send my answer"}</button>`;
+    if (answered) html += `<p class="muted" style="text-align:center">✔ Answer received: ${esc(saved)} ${esc(q.unit || "")}. You can change it until the time is over.</p>`;
+  }
+  live.innerHTML = html;
+  if (!reveal) {
+    $("liveNum").oninput = () => { liveNumDraft = $("liveNum").value; };
+    $("sendBtn").onclick = sendNumber;
+    tick();
+  }
+}
+async function sendNumber() {
+  if (sending) return;
+  const v = parseFloat(String(liveNumDraft).trim().replace(",", "."));
+  if (String(liveNumDraft).trim() === "" || isNaN(v)) { toast("Type a number (for example 2.5).", "error"); return; }
+  sending = true;
+  try {
+    await rpc("s_answer_number", { p_device: deviceToken, p_code: sessionCode, p_quiz: state.quiz.quiz_id, p_index: state.quiz.index, p_number: v });
+    if (document.activeElement) document.activeElement.blur();
+    lastRendered = "";
+    await fetchState();
+  } catch (e) { toast(e.message, "error"); lastRendered = ""; await fetchState(); }
+  finally { sending = false; }
+}
+
 // ------------------------------------------------------------------ self-paced quiz (lab test)
 // Every question at once; each answer is saved on its own and can be changed until the teacher closes the test.
-// No full screen and no lock: during a lab, students go back and forth between the phone and their tools.
+// By default no full screen and no lock (during a lab, students go back and forth between the phone and their tools);
+// the teacher can turn the lock on for a test (v23).
 const drafts = {};            // quiz id + index -> unsaved value typed or ticked by the student
 function renderSelfPaced(live, who, head, q) {
   const key = (i) => q.quiz_id + ":" + i;
@@ -569,7 +690,7 @@ async function enterQuiz() {
   rpc("s_quiz_ready", { p_device: deviceToken, p_code: sessionCode, p_quiz: armedQuiz }).catch(() => {});
   const el = document.documentElement;
   // Full screen exists on Android/desktop browsers, not on iPhone: we still guard with visibility.
-  if (el.requestFullscreen) { try { await el.requestFullscreen({ navigationUI: "hide" }); } catch (e) { /* refused: ignore */ } }
+  if (state.quiz.lock_screen && el.requestFullscreen) { try { await el.requestFullscreen({ navigationUI: "hide" }); } catch (e) { /* refused: ignore */ } }
   await keepScreenOn();
   lastRendered = "";
   render();
@@ -591,8 +712,8 @@ function disarm(q) {
 }
 
 function guardActive() {
-  return armedQuiz && state && state.quiz && state.quiz.quiz_id === armedQuiz &&
-    (state.quiz.phase === "question" || state.quiz.phase === "reveal") && !state.quiz.locked;
+  return armedQuiz && state && state.quiz && state.quiz.quiz_id === armedQuiz && state.quiz.lock_screen &&
+    (state.quiz.phase === "question" || state.quiz.phase === "reveal" || state.quiz.phase === "self") && !state.quiz.locked;
 }
 
 function reportLeave(kind) {

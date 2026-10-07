@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "22"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "24"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -9,8 +9,8 @@ const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
 const ERROR_MESSAGES = {
   SESSION_NOT_FOUND: "Unknown session code. Check the code on the screen.",
   UNKNOWN_DEVICE: "This phone is not registered for this class.",
-  ALREADY_REGISTERED: "This student number is already linked to another phone. Ask the teacher to allow this phone, then use \"Sign in\".",
-  ASK_TEACHER_RESET: "This student number is linked to another phone. Ask the teacher to allow a new phone.",
+  ALREADY_REGISTERED: "This student number is already linked to another device. Use \"Sign in\": you can then ask the teacher to allow this device.",
+  ASK_TEACHER_RESET: "This student number is linked to another device. Ask the teacher to allow a new device.",
   WRONG_PIN: "Wrong PIN. If you never chose a PIN for this student number, tell the teacher: he can reset it.",
   ALREADY_HAS_PIN: "This student number is already registered: use \"Sign in\" with your PIN. If you did not register it yourself, tell the teacher: he will reset it.",
   BAD_MATRICULE: "Check your student number.",
@@ -41,13 +41,14 @@ const ERROR_MESSAGES = {
   REGISTRATION_CLOSED: "The registration of new phones is closed for this class. Ask the teacher.",
   NOT_IN_OFFICIAL_LIST: "You are not in the official list (check your student number and your last name). The teacher has been told: see him if the list must be corrected.",
   UNKNOWN_CLASS: "This registration link is not valid.",
-  PIN_LOCKED: "Too many wrong PINs. Try again in 15 minutes.",
+  PIN_LOCKED: "Too many wrong PINs. Try again in 5 minutes, or ask the teacher to unlock you now.",
   QUIZ_NOT_FINISHED: "This quiz is not finished: its results do not exist yet.",
   ANOTHER_QUIZ_RUNNING: "Another quiz is running in this session: finish it before showing these results.",
   TEACHER_ONLY: "Only the teacher of the class can do this (lab assistants cannot).",
   ASSISTANT_TP_ONLY: "A lab assistant can only work on lab (TP) sessions and lab tests.",
   NO_SUCH_ACCOUNT: "No ClassPulse account with this e-mail. Create it first in Supabase (Authentication > Users > Add user).",
   BAD_QUESTIONS: "Select at least one question.",
+  NAME_DOES_NOT_MATCH: "The name typed is not the name of the class: nothing was deleted.",
   NOT_YOUR_SESSION: "A lab assistant can only edit or delete the sessions he created himself.",
 };
 
@@ -80,14 +81,29 @@ function isPhone() {
   return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 820);
 }
+function deviceKind() { return isPhone() ? "phone" : "computer"; }
 // Keeps the tokens returned by s_account_register / s_account_login: one per course.
+// "cp_device_<class>" = the class device (attendance, quizzes); "cp_reader_<class>" = documents only;
+// "cp_keep_<class>" = the class-device key kept after "Sign out", so that the same browser is recognised again (v24).
 function storeAccount(account) {
   account.classes.forEach((c) => {
     try {
-      if (c.kind === "device") { localStorage.setItem("cp_device_" + c.class_id, c.token); localStorage.removeItem("cp_reader_" + c.class_id); }
-      else if (!localStorage.getItem("cp_device_" + c.class_id)) localStorage.setItem("cp_reader_" + c.class_id, c.token);
+      if (c.kind === "device") { localStorage.setItem("cp_device_" + c.class_id, c.token); localStorage.removeItem("cp_reader_" + c.class_id); localStorage.removeItem("cp_keep_" + c.class_id); }
+      else {
+        const kept = localStorage.getItem("cp_keep_" + c.class_id);
+        if (kept && !localStorage.getItem("cp_device_" + c.class_id)) { localStorage.setItem("cp_device_" + c.class_id, kept); localStorage.removeItem("cp_keep_" + c.class_id); }
+        localStorage.setItem("cp_reader_" + c.class_id, c.token);
+      }
     } catch (e) { /* private mode */ }
   });
+}
+// A reader token that the server now knows as the class device (first session, or request accepted).
+function promoteToken(classId) {
+  try {
+    const r = localStorage.getItem("cp_reader_" + classId);
+    // never over an existing class-device key: that one is the key the server knows
+    if (r && !localStorage.getItem("cp_device_" + classId)) { localStorage.setItem("cp_device_" + classId, r); localStorage.removeItem("cp_reader_" + classId); }
+  } catch (e) { /* private mode */ }
 }
 async function accountCall(fn, args) {
   const r = await rpc(fn, Object.assign({ p_bind: isPhone() }, args));
@@ -123,7 +139,11 @@ function accountSignOut() {
   try {
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.indexOf("cp_device_") === 0 || k.indexOf("cp_reader_") === 0 || k === "cp_last_session")) keys.push(k); }
-    keys.forEach((k) => localStorage.removeItem(k));
+    keys.forEach((k) => {
+      // the class-device key is kept aside: signing in again on this browser gives the class device back
+      if (k.indexOf("cp_device_") === 0) localStorage.setItem("cp_keep_" + k.slice(10), localStorage.getItem(k));
+      localStorage.removeItem(k);
+    });
   } catch (e) { /* private mode */ }
 }
 
