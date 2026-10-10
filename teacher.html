@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="24">
+<html lang="en" data-version="25">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=24">
+<link rel="stylesheet" href="css/style.css?v=25">
 </head>
 <body>
 
@@ -28,6 +28,7 @@
     <button data-tab="students">👥 Students <span id="attemptBadge" class="badge no hidden"></span></button>
     <button data-tab="questions" class="teacher-only">❓ Questions</button>
     <button data-tab="space" class="teacher-only">📚 Student space</button>
+    <button data-tab="content">📂 Course content</button>
     <button data-tab="demos" class="teacher-only">🎬 Demos</button>
     <button data-tab="resources" class="teacher-only">📎 Resources</button>
     <button data-tab="export" class="teacher-only">⬇ Export results</button>
@@ -103,16 +104,19 @@
               <h4>Controls</h4>
               <div class="row" style="gap:6px;align-items:center">
                 <span class="badge" id="attBadge">closed</span>
+                <select id="attGroup" class="hidden" style="width:auto;padding:4px 6px" title="Group checking in now: each opening has its own list and a new code"></select>
                 <button id="attOnBtn" class="green small">Open attendance</button>
                 <button id="attOffBtn" class="secondary small">Close attendance</button>
               </div>
+              <div id="runsBox" class="runs-box hidden"></div>
               <div id="attCodeBox" class="att-code hidden">
                 <div id="attCodeQr" class="reg-qr"></div>
                 <div><div class="muted" id="attCodeLabel">Attendance code</div><div class="code" id="attCodeBig">------</div>
                   <div class="muted" style="font-size:12px">Without a projector: students open ClassPulse, type the session code, then this code.</div></div>
               </div>
               <div class="muted" style="font-size:12px;margin-top:4px">Only students not yet checked in see the check-in screen; the others keep what they are doing.</div>
-              <div class="mini-figures"><span><strong id="presentCount">0</strong> present</span> · <span><strong id="classSize">0</strong> in the class</span>
+              <div class="mini-figures"><span><strong id="presentCount">0</strong> present</span> · <span><strong id="classSize">0</strong> <span id="classSizeLabel">in the class</span></span>
+                <span id="presentTotal" class="muted"></span>
                 <span class="hidden" id="attState">-</span></div>
               <label for="linkSelect" style="margin-top:10px">Demo, link or file</label>
               <select id="linkSelect" style="max-width:100%"></select>
@@ -157,6 +161,7 @@
             <button id="quizRenameBtn" class="small secondary">✏ Rename</button>
             <button id="quizDupBtn" class="small secondary" title="New quiz with the same questions and settings">⧉ Duplicate</button>
             <button id="quizResultsBtn" class="small secondary" title="Marks of the class for the selected finished quiz, on the projector (no question, no name)">📊 Results on projector</button>
+            <button id="quizBoardBtn" class="small secondary teacher-only" title="Lab test with board numbers: find the students who computed with the values of another board, and correct">🔢 Board check</button>
             <button id="quizResetBtn" class="small secondary teacher-only" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
             <button id="quizDeleteBtn" class="small red teacher-only">🗑 Delete</button>
           </div>
@@ -244,7 +249,11 @@
 
         <div class="card">
           <h3>Attendance list</h3>
-          <input id="attSearch" placeholder="Search by name or student number" style="max-width:320px;margin-bottom:8px">
+          <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
+            <input id="attSearch" placeholder="Search by name or student number" style="max-width:320px">
+            <label class="hidden" id="attScopeBox" style="margin:0"><select id="attScope" style="width:auto">
+              <option value="run">Group checking in now</option><option value="session">Whole session (all its groups)</option><option value="all">All the students of the class</option></select></label>
+          </div>
           <div id="attendanceTable"></div>
         </div>
       </div>
@@ -318,6 +327,7 @@
             <label style="margin:0">First name <select id="stColFirst" style="width:auto"></select></label>
             <label style="margin:0">TD group <select id="stColTd" style="width:auto"></select></label>
             <label style="margin:0">TP sub-group <select id="stColTp" style="width:auto"></select></label>
+            <label style="margin:0">E-mail <select id="stColMail" style="width:auto"></select></label>
           </div>
           <div id="stPreview" style="margin-top:10px"></div>
           <label class="tick" style="margin-top:10px"><input type="checkbox" id="stReplace"> This list <strong>replaces</strong> the previous official list: students who are not in it lose the "official" mark (nobody is deleted, attendance and marks are kept)</label>
@@ -336,6 +346,29 @@
       <div class="card">
         <input id="studentSearch" placeholder="🔍 Search a student (name, first name, matricule)" style="max-width:420px">
         <div id="studentsTable" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <!-- ===================== COURSE CONTENT (v25: what the lab assistants see) ===================== -->
+    <section id="tab-content" class="hidden">
+      <div class="card teacher-only">
+        <h2>What the lab assistants of this class see</h2>
+        <p class="muted">The assistants of this class (Classes tab) find here the content you give to the students: documents of the student space,
+          your resources (files and links pushed in class) and your demos. They can open it, download it if you allow it, and push it to the phones
+          in the lab sessions they run. Everything they open or download is written in their activity log. They never change or delete anything.
+          <strong>Read only</strong> removes the download buttons; it cannot stop a photo or a screenshot.</p>
+        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">
+          <label style="margin:0">For this class: <select id="caLevel" style="width:auto">
+            <option value="none">nothing</option><option value="view">read only</option><option value="download">read and download</option></select></label>
+          <label style="margin:0"><input type="checkbox" id="caPrepublish" style="width:auto"> they also see the documents <strong>not yet published</strong> to the students (to prepare the lab)</label>
+        </div>
+        <p class="muted" style="margin-top:8px">Each line below can differ from the class setting (for example: answers hidden, code downloadable).</p>
+      </div>
+      <div class="card">
+        <h2 id="contentTitle">Course content</h2>
+        <p class="muted assistant-only" style="display:block">Content of this class that the teacher shares with you. Open it to prepare the lab; push it to the phones
+          from the Live session tab (list "Demo, link or file"). What you open is written in the activity log of the class.</p>
+        <div id="contentTable"></div>
       </div>
     </section>
 
@@ -525,6 +558,27 @@
       </div>
     </section>
   </main>
+  <div id="boardBox" class="modal hidden">
+    <div class="modal-content card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 id="boardTitle" style="margin:0">Board check</h2>
+        <div><button id="boardRefresh" class="small secondary">↻ Refresh</button> <button id="boardClose" class="small">Close</button></div>
+      </div>
+      <p class="muted">Each numeric answer that depends on the board is checked with the values of <strong>every</strong> board. A student is flagged when another
+        board fits his answers clearly better than the board he typed (he changed group, or read the wrong line of the table). Nothing changes until you click
+        <strong>Recalculate</strong>: his numeric answers are then marked with the board you choose, minus the penalty you choose. The correction can be undone,
+        it is shown on his phone (mark), in his profile and in the Excel export.</p>
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap" id="boardPenaltyRow">
+        <span>Penalty proposed for a correction:</span>
+        <input id="boardPenalty" type="number" min="0" step="0.25" style="width:80px">
+        <select id="boardPenaltyKind" style="width:auto"><option value="points">point(s) of the quiz scale</option><option value="percent">% of the quiz scale</option></select>
+        <button id="boardPenaltySave" class="small secondary">Save as default for this test</button>
+        <label style="margin:0"><input type="checkbox" id="boardOnlySuspect" checked style="width:auto"> Show only the flagged students</label>
+      </div>
+      <div id="boardBody" style="margin-top:10px"></div>
+    </div>
+  </div>
+
   <div id="profileBox" class="modal hidden">
     <div class="modal-content card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -541,9 +595,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=24"></script>
-<script src="js/excel.js?v=24"></script>
-<script src="js/teacher.js?v=24"></script>
+<script src="js/common.js?v=25"></script>
+<script src="js/excel.js?v=25"></script>
+<script src="js/teacher.js?v=25"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

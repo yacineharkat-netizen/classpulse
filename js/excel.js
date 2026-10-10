@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "24"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "25"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -41,6 +41,7 @@ const STUDENT_HEADER_WORDS = {
   first_name: ["prenom", "first_name", "firstname", "prenoms"],
   td_group: ["td", "groupe_td", "td_group", "groupe", "group", "gr", "grp"],
   tp_group: ["tp", "groupe_tp", "tp_group", "sous_groupe", "sous_groupe_tp", "sg", "subgroup"],
+  email: ["email", "e_mail", "e_mails", "emails", "mail", "mails", "courriel", "adresse_mail", "adresse_email"],
 };
 
 // Which role (matricule / last_name / first_name) a header cell plays, or null.
@@ -49,6 +50,7 @@ function studentHeaderRole(cell) {
   if (!h) return null;
   for (const [role, words] of Object.entries(STUDENT_HEADER_WORDS)) if (words.includes(h)) return role;
   if (h.startsWith("matric")) return "matricule";
+  if (h.includes("mail") || h.startsWith("courriel")) return "email";
   if (h.startsWith("sous_groupe") || h.startsWith("tp_") || h.startsWith("groupe_tp")) return "tp_group";
   if (h.startsWith("groupe") || h.startsWith("td_")) return "td_group";
   if (h.startsWith("prenom")) return "first_name";
@@ -57,11 +59,18 @@ function studentHeaderRole(cell) {
 }
 
 // Find the header line (0-based) in the first 30 lines and the columns of the three fields.
+// v25: a column named exactly "Matricule" wins over "Numero inscription", "N°"... placed before it.
+function studentColumnsOf(row) {
+  const cols = {};
+  row.forEach((cell, c) => { const role = studentHeaderRole(cell); if (role && cols[role] === undefined) cols[role] = c; });
+  const exact = row.findIndex((cell) => normaliseHeader(cell).startsWith("matric"));
+  if (exact >= 0) cols.matricule = exact;
+  return cols;
+}
 function detectStudentColumns(grid) {
   let best = { row: 0, score: -1, cols: {} };
   grid.slice(0, 30).forEach((row, r) => {
-    const cols = {};
-    row.forEach((cell, c) => { const role = studentHeaderRole(cell); if (role && cols[role] === undefined) cols[role] = c; });
+    const cols = studentColumnsOf(row);
     const score = Object.keys(cols).length;
     if (score > best.score) best = { row: r, score, cols };
   });
@@ -70,7 +79,7 @@ function detectStudentColumns(grid) {
 
 // Build the student list from a grid, a header line and the chosen columns (-1 = none).
 // The group columns are optional: when one is not chosen, the groups already in the class are kept.
-function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst, colTd, colTp) {
+function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst, colTd, colTp, colMail) {
   const seen = new Set();
   const out = [];
   for (const row of grid.slice(headerRow + 1)) {
@@ -84,6 +93,7 @@ function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst, colTd, col
     };
     if (colTd >= 0) st.td_group = row[colTd] || "";
     if (colTp >= 0) st.tp_group = row[colTp] || "";
+    if (colMail >= 0) st.email = String(row[colMail] || "").trim().toLowerCase();
     out.push(st);
   }
   return out;
@@ -159,20 +169,27 @@ function downloadResults(exp) {
   const statusLetter = { present: "P", late: "L", absent: "A", excused: "E" };
   const att = {};
   exp.attendance.forEach((a) => { att[a.session_id + "|" + a.student_id] = a.status; });
-  const pts = {}, maxOf = {};
-  exp.scores.forEach((s) => { pts[s.quiz_id + "|" + s.student_id] = Number(s.points); maxOf[s.quiz_id + "|" + s.student_id] = Number(s.max); });
+  const pts = {}, maxOf = {}, penaltyOf = {}, boardOf = {};
+  exp.scores.forEach((s) => {
+    const k = s.quiz_id + "|" + s.student_id;
+    pts[k] = Number(s.points); maxOf[k] = Number(s.max);
+    penaltyOf[k] = Number(s.penalty || 0);                       // v25: board corrected by the teacher, penalty on the quiz scale
+    if (s.board_used != null) boardOf[k] = { from: s.board_declared, to: s.board_used, penalty: Number(s.penalty || 0) };
+  });
   const sessionLabel = (s) => `${s.date}${s.time ? " " + s.time : ""} ${KIND[s.kind] || ""} ${s.title}`.replace(/\s+/g, " ");
 
   // v24: groups. A session may be for one TD group / TP sub-group; the sessions of the same unit (e.g. TP1,
   // run once per sub-group) make ONE column. A student allowed in another group counts as present (catch-up).
   const sessionOf = {};
   exp.sessions.forEach((x) => { sessionOf[x.id] = x; });
+  // v25: a session has the groups of its attendance runs (one session for all the sub-groups of a lab); [] = whole class
+  const groupsOf = (ses) => ses.groups ? ses.groups : (ses.group ? [ses.group] : []);
   const inGroup = (ses, st) => {
-    const g = ses.group || "";
-    if (!g) return true;
-    if (ses.kind === "td") return st.td_group === g;
-    if (ses.kind === "tp") return st.tp_group === g;
-    return st.td_group === g || st.tp_group === g;
+    const gs = groupsOf(ses);
+    if (!gs.length) return true;
+    if (ses.kind === "td") return gs.includes(st.td_group);
+    if (ses.kind === "tp") return gs.includes(st.tp_group);
+    return gs.includes(st.td_group) || gs.includes(st.tp_group);
   };
   const present = (ses, st) => { const v = att[ses.id + "|" + st.id]; return v === "present" || v === "late"; };
   const columns = [];                       // [{ label, sessions: [...] }]
@@ -180,7 +197,7 @@ function downloadResults(exp) {
   exp.sessions.forEach((x) => {
     const key = x.unit ? x.kind + "|" + x.unit : "id|" + x.id;
     if (!columnOf[key]) {
-      columnOf[key] = { label: x.unit ? (x.unit.toUpperCase().startsWith((KIND[x.kind] || "?").toUpperCase()) ? x.unit : `${KIND[x.kind] || ""} ${x.unit}`.trim()) : sessionLabel(x) + (x.group ? ` [${x.group}]` : ""), sessions: [] };
+      columnOf[key] = { label: x.unit ? (x.unit.toUpperCase().startsWith((KIND[x.kind] || "?").toUpperCase()) ? x.unit : `${KIND[x.kind] || ""} ${x.unit}`.trim()) : sessionLabel(x) + (groupsOf(x).length ? ` [${groupsOf(x).join(", ")}]` : ""), sessions: [] };
       columns.push(columnOf[key]);
     }
     columnOf[key].sessions.push(x);
@@ -190,16 +207,16 @@ function downloadResults(exp) {
     const ownPresent = own.find((x) => present(x, st));
     if (ownPresent) return statusLetter[att[ownPresent.id + "|" + st.id]];
     const other = col.sessions.find((x) => !inGroup(x, st) && present(x, st));
-    if (other) return `P (with ${other.group || "another group"})`;
+    if (other) return `P (with ${groupsOf(other).join(", ") || "another group"})`;
     if (own.some((x) => att[x.id + "|" + st.id] === "excused")) return "E";
     return own.length ? "A" : "-";
   };
 
   // Sheet 1: attendance, one column per session or per unit
-  const attRows = [["Matricule", "Last name", "First name", "TD group", "TP group", "In official list", ...columns.map((c) => c.label), "Present", "Absent (unexcused)"]];
+  const attRows = [["Matricule", "Last name", "First name", "TD group", "TP group", "E-mail", "In official list", ...columns.map((c) => c.label), "Present", "Absent (unexcused)"]];
   exp.students.forEach((st) => {
     const cells = columns.map((c) => attendanceCell(c, st));
-    attRows.push([st.matricule, st.last_name, st.first_name, st.td_group || "", st.tp_group || "", st.official ? "yes" : "NO",
+    attRows.push([st.matricule, st.last_name, st.first_name, st.td_group || "", st.tp_group || "", st.email || "", st.official ? "yes" : "NO",
       ...cells, cells.filter((c) => c[0] === "P" || c === "L").length, cells.filter((c) => c === "A").length]);
   });
 
@@ -229,8 +246,9 @@ function downloadResults(exp) {
         if (done) {
           const key = done.id + "|" + st.id, scale = Number(done.total_points || 20);
           const max = maxOf[key] || Number(done.max_points) || 1;
-          on20.push((pts[key] / max) * 20);
-          return Math.round((pts[key] / max) * scale * 100) / 100;
+          const mark = Math.max(0, (pts[key] / max) * scale - (penaltyOf[key] || 0));   // v25: penalty of a board correction
+          on20.push((mark / scale) * 20);
+          return Math.round(mark * 100) / 100;
         }
         const own = g.quizzes.filter((q) => inGroup(sessionOf[q.session_id] || {}, st));
         if (!own.length) return "";                                             // this test was not for his group
@@ -275,13 +293,20 @@ function downloadResults(exp) {
   const lRows = [["Matricule", "Last name", "First name", "Quiz", "Times left the screen"]];
   exp.leaves.forEach((l) => { const s = nameOf[l.student_id] || {}; lRows.push([s.matricule, s.last_name, s.first_name, quizTitle[l.quiz_id], l.leaves]); });
 
+  // v25: boards corrected by the teacher (the marks of the TP sheet already include them)
+  const bfRows = [["Matricule", "Last name", "First name", "Test", "Board typed", "Board used for the mark", "Penalty (points of the test scale)"]];
+  Object.entries(boardOf).forEach(([k, b]) => {
+    const [quizId, studentId] = k.split("|"); const s = nameOf[studentId] || {};
+    bfRows.push([s.matricule, s.last_name, s.first_name, quizTitle[quizId], b.from, b.to, b.penalty]);
+  });
+
   const wb = XLSX.utils.book_new();
   const add = (rows, name, widths) => {
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"] = widths.map((w) => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
-  add(attRows, "Attendance", [12, 18, 16, 9, 9, 10, ...columns.map(() => 16), 9, 12]);
+  add(attRows, "Attendance", [12, 18, 16, 9, 9, 28, 10, ...columns.map(() => 16), 9, 12]);
   add(quizSheet.rows, "Course quizzes", [12, 18, 16, ...Array(quizSheet.count).fill(16), 18, 12]);
   add(testSheet.rows, "Tests", [12, 18, 16, ...Array(testSheet.count).fill(16), 12]);
   add(tpSheet.rows, "TP tests", [12, 18, 16, ...Array(tpSheet.count).fill(16), 12]);
@@ -289,6 +314,7 @@ function downloadResults(exp) {
   add(qRows, "Questions", [22, 8, 60, 9, 10, 12, 14]);
   add(sRows, "Surveys", [11, 24, 50, 9, 30, 8, 6]);
   add(lRows, "Left the quiz", [12, 18, 16, 26, 12]);
+  if (bfRows.length > 1) add(bfRows, "Board corrections", [12, 18, 16, 26, 12, 22, 22]);
   const safe = exp.class.name.replace(/[^\w-]+/g, "_");
   XLSX.writeFile(wb, `ClassPulse_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

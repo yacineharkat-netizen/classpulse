@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "24"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "25"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -119,8 +119,8 @@ function accountLogin(matricule, pin, bind) {
 }
 // Text shown under the application name on the student pages (config.js may override it with homeLine).
 const HOME_LINE = (typeof CONFIG !== "undefined" && CONFIG.homeLine) || "Dr Yacine Harkat · Telecommunications Department · FGE · USTHB";
-function accountRegister(matricule, lastName, firstName, pin) {
-  return accountCall("s_account_register", { p_matricule: matricule, p_last_name: lastName, p_first_name: firstName, p_pin: pin });
+function accountRegister(matricule, lastName, firstName, pin, email) {
+  return accountCall("s_account_register", { p_matricule: matricule, p_last_name: lastName, p_first_name: firstName, p_pin: pin, p_email: email });
 }
 // Tokens kept by this browser: [{ classId, token, phone }]
 function accountTokens() {

@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "24";
+:root { --cp-version: "25";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -360,3 +360,19 @@ img, svg, video, iframe { max-width: 100%; }
 /* v22: link back to the home page, on every student page */
 .home-link { font-weight: 700; color: var(--teal); text-decoration: none; margin-right: 10px; white-space: nowrap; }
 .docbar .back + .back { margin-left: 10px; }
+
+/* v25: attendance runs (one list per sub-group), board check, board reminder, new documents */
+.runs-box { margin-top: 6px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.runs-box .run { background: #EEF3F8; border: 1px solid #D5E0EC; border-radius: 12px; padding: 2px 9px; white-space: nowrap; }
+.runs-box .run.on { background: #E3F4EA; border-color: #2E7D4F; color: #1E5A37; }
+.board-table td.bcell { text-align: center; font-weight: 700; color: #5A6B7D; }
+.board-table td.bcell.used { background: #E3F4EA; color: #1E5A37; }
+.board-table td.bcell.best { background: #FFE9D6; color: #A3480B; }
+.board-table tr.suspect td:first-child { border-left: 4px solid #E8741E; }
+.board-banner { position: sticky; top: 0; z-index: 5; background: #0B2545; color: #fff; border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; font-size: 17px; }
+.board-banner strong { font-size: 22px; color: #FFD27A; }
+.board-banner span { display: block; font-size: 13px; color: #C9DCEB; margin-top: 2px; }
+.board-tag { background: #0B2545; color: #FFD27A; border-radius: 8px; padding: 1px 7px; font-weight: 700; }
+.badge.new { background: #E8741E; color: #fff; }
+.session-docs p { margin: 6px 0; }
+.profile-groups { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

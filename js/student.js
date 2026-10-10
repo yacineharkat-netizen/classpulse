@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "24"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "25"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -63,6 +63,7 @@ async function renderSpace() {
 async function start() {
   if (params.has("space")) $("spaceBox").open = true;
   renderSpace();
+  setInterval(renderSpace, 60000);   // v25: a document made visible during the session appears without signing in again
   // old registration links (?reg=...) and a page opened without a session: everything starts from the home page
   if (params.has("checkin")) { startCheckinHome(); return; }
   if (params.get("reg") || (!sessionCode && !params.has("space"))) { location.replace("index.html"); return; }
@@ -101,7 +102,13 @@ async function deviceGate() {
   // not the class device: maybe already allowed for this session
   try { await rpc("s_state", { p_device: deviceToken, p_code: sessionCode }); await afterIdentified(); return; }
   catch (e) { if (e.code !== "UNKNOWN_DEVICE") { toast(e.message, "error"); return; } }
+  gateLinkedAt = claim.device_linked_at || null;
   renderDeviceGate(claim.device_kind || "device", "none");
+}
+let gateLinkedAt = null;
+// v25: day AND time the class device was linked, so that the student knows for sure which device it is
+function linkedOn(t) {
+  return t ? new Date(t).toLocaleString([], { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 }
 function renderDeviceGate(otherKind, status) {
   show("viewLive");
@@ -114,7 +121,8 @@ function renderDeviceGate(otherKind, status) {
     return;
   }
   live.innerHTML = bigStatus("📵", "This device is not your class device",
-      `Attendance and quizzes are done with your class device (your ${esc(otherKind)}).` + (status === "refused" ? "<br><strong>Your last request was refused.</strong>" : "")) +
+      `Attendance and quizzes are done with your class device (your ${esc(otherKind)}${gateLinkedAt ? `, linked on <strong>${esc(linkedOn(gateLinkedAt))}</strong>` : ""}).` +
+      (status === "refused" ? "<br><strong>Your last request was refused.</strong>" : "")) +
     `<div class="card"><p><strong>You do not have your class device today?</strong></p>
        <button id="gateSession" class="orange" style="width:100%">Ask to use this device for this session only</button>
        <p style="margin-top:14px"><strong>You changed your device?</strong></p>
@@ -413,12 +421,22 @@ function rulesFor(q) {
 }
 
 // Documents and links shared by the teacher during this session (kept after they were pushed).
-function sharedLinksHtml() {
+// v25: the newest document is marked "new" until the student opens it; the list is the same above a lab test.
+function seenKey() { return "cp_seen_links_" + sessionCode; }
+function seenLinks() { try { return JSON.parse(localStorage.getItem(seenKey()) || "{}"); } catch (e) { return {}; } }
+function markSeen(id, at) { const s = seenLinks(); s[id] = at; try { localStorage.setItem(seenKey(), JSON.stringify(s)); } catch (e) { /* ignore */ } }
+function sharedLinksHtml(title) {
   const list = state.shared_links || [];
   if (!list.length) return "";
-  return `<div class="card"><strong>Documents of this session</strong>` +
-    list.map((l) => `<p><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label || l.url)}</a></p>`).join("") + `</div>`;
+  const seen = seenLinks();
+  return `<div class="card session-docs"><strong>${title || "Documents of this session"}</strong>` +
+    list.map((l) => `<p><a href="${esc(l.url)}" target="_blank" rel="noopener" data-link="${l.id}" data-at="${esc(l.at || "")}">${esc(l.label || l.url)}</a>
+      ${l.id && seen[l.id] !== l.at ? '<span class="badge new">new</span>' : ""}</p>`).join("") + `</div>`;
 }
+document.addEventListener("click", (e) => {
+  const a = e.target.closest && e.target.closest("a[data-link]");
+  if (a) { markSeen(a.dataset.link, a.dataset.at); setTimeout(() => { lastRendered = ""; render(); }, 300); }
+});
 // "3 (±2 %)" + "V" -> "3 V (±2 %)"
 function withUnit(expected, unit) {
   if (!unit) return expected;
@@ -588,6 +606,7 @@ function renderSelfPaced(live, who, head, q) {
       <button id="variantBtn" class="orange" style="width:100%;margin-top:10px">Confirm</button></div>`;
     $("variantBtn").onclick = async () => {
       const v = Number($("variantInput").value);
+      if (!v || !confirm(`Board number ${v}?\nAll your numeric answers will be checked with the values of board ${v}.`)) return;
       try { await rpc("s_set_variant", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_variant: v }); await fetchState(); }
       catch (e) { toast(e.message, "error"); }
     };
@@ -595,11 +614,15 @@ function renderSelfPaced(live, who, head, q) {
   }
   const items = q.items || [];
   const done = items.filter((it) => it.answered).length;
-  let html = who + head + intro + (q.ask_variant ? `<p class="muted">Board number: <strong>${q.variant}</strong></p>` : "") +
+  // v25: the board number stays on the screen, above every numeric question: the values to use are those of THIS board
+  const board = q.variant_used != null ? q.variant_used : q.variant;
+  const boardBanner = q.ask_variant ? `<div class="board-banner">🔢 Your board: <strong>${board}</strong> — use the values of board ${board} only.
+      <span>Changed group or board? Tell the teacher now.</span></div>` : "";
+  let html = who + head + boardBanner + (!q.lock_screen ? sharedLinksHtml("Documents given by the teacher") : "") + intro +
     `<p><strong>${done} / ${items.length}</strong> answers saved</p><div class="protected">`;
   items.forEach((it) => {
     const k = key(it.index);
-    html += `<div class="card" id="item${it.index}"><div class="muted">Question ${it.index + 1}${it.answered ? " · <span style='color:#2E7D4F;font-weight:700'>✔ saved</span>" : ""}</div>
+    html += `<div class="card" id="item${it.index}"><div class="muted">Question ${it.index + 1}${it.answered ? " · <span style='color:#2E7D4F;font-weight:700'>✔ saved</span>" : ""}${it.qtype === "number" && q.ask_variant ? ` · <span class="board-tag">board ${board}</span>` : ""}</div>
       <div class="question-text">${esc(it.text)}</div>`;
     if (it.qtype === "number") {
       const val = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(Number(it.my_number)));

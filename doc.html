@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="24">
+<html lang="en" data-version="25">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - document</title>
-<link rel="stylesheet" href="css/style.css?v=24">
+<link rel="stylesheet" href="css/style.css?v=25">
 </head>
 <body class="docview">
 <div class="docbar no-print">
@@ -22,18 +22,19 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=24"></script>
+<script src="js/common.js?v=25"></script>
 <script>
   // Protected document viewer. The page, the PDF and the attached file come from the database:
   // only a registered phone of a class where the document is visible receives them (or the teacher, in preview).
   const q = new URLSearchParams(location.search);
-  const docId = q.get("d"), classId = q.get("c"), previewId = q.get("preview");
+  const docId = q.get("d"), classId = q.get("c"), previewId = q.get("preview"), assistId = q.get("assist");
   let token = null;
 
   function message(html) { $("docMsg").innerHTML = html; $("docMsg").classList.remove("hidden"); $("docFrame").classList.add("hidden"); }
 
   async function fetchPart(part) {
     if (previewId) return rpc("t_document_content", { p_id: previewId, p_part: part });
+    if (assistId) return rpc("a_doc_content", { p_doc: assistId, p_part: part });   // v25: lab assistant of the class
     return rpc("s_doc", { p_device: token, p_id: docId, p_part: part });
   }
 
@@ -119,8 +120,8 @@
   ["contextmenu", "copy", "cut", "dragstart"].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault()));
 
   (async () => {
-    if (previewId) {
-      $("backLink").textContent = "Teacher preview"; $("backLink").removeAttribute("href");
+    if (previewId || assistId) {
+      $("backLink").textContent = previewId ? "Teacher preview" : "Lab assistant"; $("backLink").removeAttribute("href");
     } else {
       try { token = localStorage.getItem("cp_device_" + classId) || localStorage.getItem("cp_reader_" + classId); } catch (e) { token = null; }
       if (!docId || !token) {
@@ -138,8 +139,9 @@
     document.title = doc.title;
     $("docTitle").textContent = doc.title;
     const st = doc.student;
-    const mark = previewId ? "TEACHER PREVIEW" : `${st.first_name} ${st.last_name} · ${st.matricule}`;
-    const hasPdf = previewId ? doc.has_pdf : doc.pdf;
+    const mark = previewId ? "TEACHER PREVIEW" : assistId ? "ASSISTANT · " + doc.mark : `${st.first_name} ${st.last_name} · ${st.matricule}`;
+    const hasPdf = previewId ? doc.has_pdf : assistId ? doc.has_pdf && doc.download : doc.pdf;
+    if (assistId && !doc.download) doc.file_name = null;    // read only: no download button
     if (hasPdf) {
       $("pdfBtn").classList.remove("hidden");
       $("pdfBtn").onclick = async () => {

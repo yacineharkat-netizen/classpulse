@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="24">
+<html lang="en" data-version="25">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=24">
+<link rel="stylesheet" href="css/style.css?v=25">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -23,6 +23,11 @@
     <div id="courseList" class="muted">Loading…</div>
     <a id="checkinLink" href="student.html?checkin=1" style="text-decoration:none"><button id="checkinBtn" class="orange" style="width:100%;margin-top:10px">✅ Check in (scan or type the code)</button></a>
     <p id="deviceNote" class="muted" style="margin:10px 0 0"></p>
+    <div id="mailBox" class="card hidden" style="margin-top:10px;background:#FFF7EC">
+      <strong>Your e-mail</strong><p class="muted" style="margin:4px 0 8px">The teacher may write to you. Given once, for all your courses.</p>
+      <input id="mailInput" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com">
+      <button id="mailBtn" class="small" style="margin-top:8px">Save my e-mail</button>
+    </div>
     <a href="student.html?space=1" style="text-decoration:none"><button id="docsBtn" style="width:100%;margin-top:10px">📚 My documents</button></a>
     <p class="muted" style="margin:12px 0 0">Quizzes and demos open in class, after the check-in. <a href="#" id="signOut">Sign out of this device</a></p>
   </div>
@@ -50,6 +55,8 @@
     <input id="regLast" autocomplete="family-name">
     <label for="regFirst">First name</label>
     <input id="regFirst" autocomplete="given-name">
+    <label for="regEmail">E-mail (the teacher may write to you)</label>
+    <input id="regEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com">
     <label for="regPin">Choose a 4-digit PIN (keep it secret: it is your password)</label>
     <input id="regPin" inputmode="numeric" maxlength="4" type="password" autocomplete="new-password">
     <button id="regBtn" style="margin-top:14px;width:100%">Register</button>
@@ -67,7 +74,7 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=24"></script>
+<script src="js/common.js?v=25"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -97,7 +104,7 @@
     if (!tokens.length) { view("viewSignIn"); return; }
     view("homeIn");
     const rows = [], live = [];
-    let name = "", phone = false, others = [];
+    let name = "", phone = false, others = [], mail = "", anyToken = null;
     for (const t of tokens) {
       try {
         const sp = await rpc("s_space", { p_device: t.token });
@@ -105,7 +112,13 @@
         if (sp.linked && !t.phone) { promoteToken(t.classId); t.phone = true; }   // this device became the class device
         if (!sp.linked && sp.has_device) others.push(sp.device_kind || "device");
         const groups = [sp.td_group, sp.tp_group].filter(Boolean).join(" · ");
-        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${t.phone ? " · class device: this " + deviceKind() : ""}</span></div>`);
+        if (sp.email) mail = sp.email;
+        anyToken = anyToken || t.token;
+        // v25: which device is the class device, and since when (day AND time): the student recognises it for sure
+        const since = sp.device_linked_at ? new Date(sp.device_linked_at).toLocaleString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+        const devLine = sp.linked ? `class device: this ${deviceKind()}${since ? ", linked on " + since : ""}`
+          : sp.has_device ? `class device: your ${esc(sp.device_kind || "other device")}${since ? ", linked on " + since : ""}` : "";
+        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${devLine ? " · " + devLine : ""}</span></div>`);
         if (t.phone) {
           phone = true;
           const s = await rpc("s_live_session", { p_device: t.token });
@@ -119,6 +132,12 @@
     $("hello").textContent = name ? "Hello, " + name : "My courses";
     $("courseList").innerHTML = rows.join("");
     $("liveBox").innerHTML = live.join("");
+    // v25: a student registered before the e-mails gives it once, for all his courses
+    $("mailBox").classList.toggle("hidden", !!mail || !anyToken);
+    $("mailBtn").onclick = async () => {
+      try { await rpc("s_set_email", { p_device: anyToken, p_email: $("mailInput").value }); toast("E-mail saved.", "ok"); showHome(); }
+      catch (e) { toast(e.code === "BAD_EMAIL" ? "This e-mail is not valid." : e.message, "error"); }
+    };
     $("deviceNote").textContent = others.length
       ? "Your documents are available on this device. Attendance and quizzes are done with your class device (your " + others[0] + "). To use this device in class, tap Check in: you can ask the teacher there."
       : phone ? "" : "Your documents are available on this device. The first device you use in class becomes your class device.";
@@ -150,6 +169,7 @@
     $("siBtn").disabled = false;
   };
   $("regBtn").onclick = async () => {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($("regEmail").value.trim())) { toast("Type your e-mail (for example name@gmail.com).", "error"); $("regEmail").focus(); return; }
     $("regBtn").disabled = true;
     try {
       if (nextInfo) {
@@ -157,12 +177,13 @@
         const r = await rpc("s_register", { p_code: nextCode, p_matricule: $("regMat").value, p_first_name: $("regFirst").value,
           p_last_name: $("regLast").value, p_pin: $("regPin").value, p_att_code: nextAtt });
         try { localStorage.setItem("cp_device_" + nextInfo.class_id, r.device_token); localStorage.removeItem("cp_reader_" + nextInfo.class_id); } catch (x) { /* private mode */ }
+        rpc("s_set_email", { p_device: r.device_token, p_email: $("regEmail").value.trim() }).catch(() => {});
         try { await accountLogin($("regMat").value, $("regPin").value, true); } catch (x) { /* the other courses come at the next sign-in */ }
         $("regPin").value = "";
         location.replace("student.html?s=" + encodeURIComponent(nextCode) + (r.checkin ? "&checked=" + encodeURIComponent(r.checkin) : ""));
         return;
       }
-      const r = await accountRegister($("regMat").value, $("regLast").value, $("regFirst").value, $("regPin").value);
+      const r = await accountRegister($("regMat").value, $("regLast").value, $("regFirst").value, $("regPin").value, $("regEmail").value.trim());
       $("regPin").value = "";
       toast(`Registered: ${r.first_name} ${r.last_name}, ${r.classes.length} course(s).`, "ok");
       await showHome();
