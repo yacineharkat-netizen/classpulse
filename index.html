@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="26">
+<html lang="en" data-version="27">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=26">
+<link rel="stylesheet" href="css/style.css?v=27">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -29,7 +29,33 @@
       <button id="mailBtn" class="small" style="margin-top:8px">Save my e-mail</button>
     </div>
     <a href="student.html?space=1" style="text-decoration:none"><button id="docsBtn" style="width:100%;margin-top:10px">📚 My documents</button></a>
+    <div class="row" style="margin-top:10px;flex-wrap:nowrap">
+      <button id="msgBtn" class="secondary" style="flex:1">✉ Messages <span id="stuMsgBadge" class="badge no hidden"></span></button>
+      <button id="teacherBtn" class="secondary" style="flex:1">👤 My teachers</button>
+    </div>
     <p class="muted" style="margin:12px 0 0">Quizzes and demos open in class, after the check-in. <a href="#" id="signOut">Sign out of this device</a></p>
+  </div>
+
+  <!-- v27: messages of all the courses (from the teacher; private answers to the teacher) -->
+  <div id="viewMessages" class="card hidden">
+    <p style="margin-top:0"><a href="#" class="backHome">← My courses</a></p>
+    <h2>Messages</h2>
+    <div id="stuMsgList" class="muted">Loading…</div>
+    <div id="stuCompose" class="card" style="background:#F5F8FB;margin-top:12px">
+      <strong>Write to the teacher</strong>
+      <p class="muted" style="margin:4px 0 8px">Only the teacher of the course reads it. Be brief and polite; give your group if it matters.</p>
+      <select id="stuMsgCourse"></select>
+      <input id="stuMsgSubject" placeholder="Subject (optional)" style="margin-top:6px">
+      <textarea id="stuMsgBody" rows="4" placeholder="Your message" style="margin-top:6px"></textarea>
+      <button id="stuMsgSend" style="margin-top:8px;width:100%">Send</button>
+      <p id="stuReplyNote" class="muted hidden" style="margin:6px 0 0"></p>
+    </div>
+  </div>
+
+  <!-- v27: the teachers of the courses: contact, office hours, supervision proposals, mini-projects -->
+  <div id="viewTeacher" class="card hidden">
+    <p style="margin-top:0"><a href="#" class="backHome">← My courses</a></p>
+    <div id="teacherList" class="muted">Loading…</div>
   </div>
 
   <!-- B. sign in (the only place to sign in) -->
@@ -74,17 +100,19 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=26"></script>
+<script src="js/common.js?v=27"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
-  const view = (id) => ["homeIn", "viewSignIn", "viewRegister"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
+  const view = (id) => ["homeIn", "viewSignIn", "viewRegister", "viewMessages", "viewTeacher"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
 
   // A phone that scanned a session without being signed in arrives here with ?next=<session query>.
   // After the sign-in (or the registration) it goes back to that session.
   const here = new URLSearchParams(location.search);
   const next = new URLSearchParams(here.get("next") || "");
   const nextCode = (next.get("s") || "").toUpperCase(), nextAtt = next.get("a") || null;
+  let wantView = here.get("view");   // v27: ?view=messages or ?view=teacher (links of the personal page, of the messages)
+  let homeCourses = [];               // { token, class_id, class_name, teacher, unread } of every course of this device
   let nextInfo = null;   // { class_id, class_name, title } of the session to go back to
   function goNext() { location.replace("student.html?s=" + encodeURIComponent(nextCode) + (nextAtt ? "&a=" + encodeURIComponent(nextAtt) : "")); }
   // any token of this course: the session page then links the device, or lets the student ask the teacher (v24)
@@ -103,7 +131,7 @@
     const tokens = accountTokens();
     if (!tokens.length) { view("viewSignIn"); return; }
     view("homeIn");
-    const rows = [], live = [];
+    const rows = [], live = [], courses = [];
     let name = "", phone = false, others = [], mail = "", anyToken = null;
     for (const t of tokens) {
       try {
@@ -118,7 +146,10 @@
         const since = sp.device_linked_at ? new Date(sp.device_linked_at).toLocaleString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
         const devLine = sp.linked ? `class device: this ${deviceKind()}${since ? ", linked on " + since : ""}`
           : sp.has_device ? `class device: your ${esc(sp.device_kind || "other device")}${since ? ", linked on " + since : ""}` : "";
-        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${devLine ? " · " + devLine : ""}</span></div>`);
+        const tl = sp.teacher || {};
+        courses.push({ token: t.token, class_id: sp.class_id, class_name: sp.class_name, teacher: tl, unread: Number(sp.unread || 0) });
+        rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${devLine ? " · " + devLine : ""}</span>
+          ${tl.name ? `<div class="course-teacher">👤 ${esc(tl.name)}${tl.affiliation ? " · " + esc(tl.affiliation) : ""}</div>` : ""}</div>`);
         if (t.phone) {
           phone = true;
           const s = await rpc("s_live_session", { p_device: t.token });
@@ -129,6 +160,11 @@
       }
     }
     if (!rows.length) { view("viewSignIn"); return; }
+    homeCourses = courses;
+    const unread = courses.reduce((a, c) => a + c.unread, 0);
+    $("stuMsgBadge").textContent = unread ? String(unread) : "";
+    $("stuMsgBadge").classList.toggle("hidden", !unread);
+    if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } }
     $("hello").textContent = name ? "Hello, " + name : "My courses";
     $("courseList").innerHTML = rows.join("");
     $("liveBox").innerHTML = live.join("");
@@ -155,6 +191,122 @@
     $("siHelp").classList.remove("hidden");
     return true;
   }
+
+  // ------------------------------------------------------------ v27: messages
+  let stuReplyTo = null;
+  function setViewUrl(v) { history.replaceState(null, "", "index.html" + (v ? "?view=" + v : "")); }
+  function msgWhen(t) { return new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); }
+  function fillCourseSelect(classId) {
+    $("stuMsgCourse").innerHTML = homeCourses.map((c) => `<option value="${c.class_id}">${esc(c.class_name)}${c.teacher.name ? " · " + esc(c.teacher.name) : ""}</option>`).join("");
+    if (classId) $("stuMsgCourse").value = classId;
+    $("stuMsgCourse").classList.toggle("hidden", homeCourses.length < 2);
+  }
+  async function showMessages(prefill) {
+    view("viewMessages"); setViewUrl("messages");
+    fillCourseSelect(prefill && prefill.class_id);
+    if (prefill) {
+      $("stuMsgSubject").value = prefill.subject || ""; stuReplyTo = null;
+      $("stuReplyNote").textContent = prefill.note || ""; $("stuReplyNote").classList.toggle("hidden", !prefill.note);
+      $("stuMsgBody").focus();
+    }
+    const all = [];
+    for (const c of homeCourses) {
+      try { (await rpc("s_messages", { p_device: c.token })).messages.forEach((m) => { m.course = c; all.push(m); }); } catch (e) { /* course left: ignore */ }
+    }
+    all.sort((a, b) => new Date(b.at) - new Date(a.at));
+    $("stuMsgList").classList.toggle("muted", !all.length);
+    $("stuMsgList").innerHTML = all.length ? all.map((m) => `<div class="msg-item${!m.mine && !m.read_at ? " unread" : ""}">
+        <div class="msg-head"><span>${m.mine ? "You → " + esc(m.course.teacher.name || "the teacher") : esc(m.from || "")}
+          ${!m.mine && !m.read_at ? ' <span class="badge no">new</span>' : ""}</span><span class="muted">${msgWhen(m.at)}</span></div>
+        <div class="muted" style="font-size:12px">${esc(m.course.class_name)}${!m.mine && m.target && m.target !== "one student" ? " · to " + esc(m.target) : ""}</div>
+        ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}
+        <div class="msg-body">${esc(m.body).replace(/\n/g, "<br>")}</div>
+        ${m.doc ? `<div style="margin-top:4px">📄 <a href="doc.html?d=${m.doc.id}&c=${m.class_id}">${esc(m.doc.title || "document")}</a></div>` : ""}
+        ${m.mine ? "" : `<div class="msg-actions"><button class="small secondary" data-sreply="${m.id}">Reply to the teacher</button></div>`}
+      </div>`).join("") : "No message yet.";
+    $("stuMsgList").querySelectorAll("[data-sreply]").forEach((b) => b.onclick = () => {
+      const m = all.find((x) => x.id === Number(b.dataset.sreply));
+      $("stuMsgCourse").value = m.class_id;
+      $("stuMsgSubject").value = /^re:/i.test(m.subject || "") ? m.subject : ("Re: " + (m.subject || "your message")).slice(0, 200);
+      stuReplyTo = m.id;
+      $("stuReplyNote").textContent = "Answer to the message of " + msgWhen(m.at) + "."; $("stuReplyNote").classList.remove("hidden");
+      $("stuCompose").scrollIntoView({ behavior: "smooth" }); $("stuMsgBody").focus();
+    });
+    // what is shown is read: the teacher sees it
+    const fresh = all.filter((m) => !m.mine && !m.read_at);
+    await Promise.all(fresh.map((m) => rpc("s_message_read", { p_device: m.course.token, p_id: m.id }).catch(() => {})));
+    if (fresh.length) { homeCourses.forEach((c) => { c.unread = 0; }); $("stuMsgBadge").classList.add("hidden"); }
+  }
+  $("stuMsgSend").onclick = async () => {
+    const c = homeCourses.find((x) => x.class_id === $("stuMsgCourse").value) || homeCourses[0];
+    if (!c) return;
+    if (!$("stuMsgBody").value.trim()) { toast("Write your message first.", "error"); $("stuMsgBody").focus(); return; }
+    $("stuMsgSend").disabled = true;
+    try {
+      await rpc("s_message_send", { p_device: c.token, p_subject: $("stuMsgSubject").value, p_body: $("stuMsgBody").value, p_reply_to: stuReplyTo });
+      toast("Message sent to the teacher.", "ok");
+      $("stuMsgSubject").value = ""; $("stuMsgBody").value = ""; stuReplyTo = null; $("stuReplyNote").classList.add("hidden");
+      await showMessages();
+    } catch (e) { toast(e.message, "error"); }
+    $("stuMsgSend").disabled = false;
+  };
+  $("msgBtn").onclick = () => showMessages();
+
+  // ------------------------------------------------------------ v27: teacher space
+  async function showTeachers() {
+    view("viewTeacher"); setViewUrl("teacher");
+    const byTeacher = new Map();   // one card per teacher, with his courses
+    for (const c of homeCourses) {
+      try {
+        const ts = await rpc("s_teacher_space", { p_device: c.token });
+        const key = ts.slug || (ts.teacher && ts.teacher.name) || c.class_id;
+        if (!byTeacher.has(key)) byTeacher.set(key, { ts, courses: [] });
+        byTeacher.get(key).courses.push({ course: c, affiliation: ts.teacher && ts.teacher.affiliation });
+      } catch (e) { /* ignore */ }
+    }
+    const page = personalPageUrl();
+    const abs = (u) => { try { return new URL(u, page).href; } catch (e) { return ""; } };
+    const offers = [];
+    const cards = [...byTeacher.values()].map(({ ts, courses }, ti) => {
+      const p = ts.content || {}, tl = ts.teacher || {};
+      const hours = (p.hours || []).map(triText).filter(Boolean);
+      const blocks = (p.offers || []).map((b) => {
+        const items = (b.items || []).map((it) => {
+          offers.push({ class_id: courses[0].course.class_id, title: triText(it.t), teacher: tl.name });
+          return `<div class="offer"><h4>${esc(triText(it.t))}</h4>${it.level ? `<div class="muted">${esc(triText(it.level))}</div>` : ""}
+            ${triText(it.d) ? `<p style="margin:6px 0">${esc(triText(it.d))}</p>` : ""}
+            <button class="small" data-interest="${offers.length - 1}">I'm interested</button></div>`;
+        }).join("");
+        return `<h3 style="margin-top:14px">${esc(triText(b.title) || (b.kind === "miniproject" ? "Mini-projects" : "Proposals"))}</h3>` +
+          (items || `<p class="muted">Nothing at the moment.</p>`);
+      }).join("");
+      return `<div class="teacher-card"${ti ? ' style="margin-top:14px"' : ""}>
+        <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
+          ${p.photo ? `<img src="${esc(abs(triText(p.photo)))}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover" onerror="this.remove()">` : ""}
+          <div><h2 style="margin:0">${esc(triText(p.name) || tl.name || "Teacher")}</h2>
+            ${p.title ? `<div class="muted">${esc(triText(p.title))}</div>` : ""}
+            <div class="muted">${esc(courses.map((x) => x.affiliation).filter(Boolean)[0] || triText(p.affiliation) || "")}</div></div>
+        </div>
+        <p style="margin:10px 0 4px"><strong>Your courses:</strong> ${courses.map((x) => esc(x.course.class_name)).join(", ")}</p>
+        ${p.email ? `<p style="margin:4px 0">✉ <a href="mailto:${esc(triText(p.email))}">${esc(triText(p.email))}</a></p>` : ""}
+        ${p.office ? `<p style="margin:4px 0">⌂ ${esc(triText(p.office))}</p>` : ""}
+        ${hours.length ? `<p style="margin:4px 0">🕘 Office hours: ${hours.map(esc).join(" · ")}</p>` : ""}
+        <div class="row" style="margin-top:8px">
+          <button class="small" data-write="${courses[0].course.class_id}">✉ Write to the teacher</button>
+          ${ts.slug ? `<a href="${esc(page)}" target="_blank" rel="noopener"><button class="small secondary">🌐 Personal page</button></a>` : ""}
+        </div>${blocks}</div>`;
+    });
+    $("teacherList").classList.toggle("muted", !cards.length);
+    $("teacherList").innerHTML = cards.join("") || "Nothing to show.";
+    $("teacherList").querySelectorAll("[data-write]").forEach((b) => b.onclick = () => showMessages({ class_id: b.dataset.write }));
+    $("teacherList").querySelectorAll("[data-interest]").forEach((b) => b.onclick = () => {
+      const o = offers[Number(b.dataset.interest)];
+      showMessages({ class_id: o.class_id, subject: ("Interested: " + o.title).slice(0, 200),
+        note: "Say who you are (group, speciality), why this subject interests you, and when you are available." });
+    });
+  }
+  $("teacherBtn").onclick = () => showTeachers();
+  document.querySelectorAll(".backHome").forEach((a) => a.onclick = (e) => { e.preventDefault(); setViewUrl(""); showHome(); });
 
   $("goRegister").onclick = (e) => { e.preventDefault(); view("viewRegister"); $("regMat").value = $("siMat").value; };
   $("toSignIn").onclick = (e) => { e.preventDefault(); view("viewSignIn"); $("siMat").value = $("regMat").value; };

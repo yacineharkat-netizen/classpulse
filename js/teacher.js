@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "26"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "27"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -77,7 +77,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults };
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
 });
@@ -94,11 +94,19 @@ async function loadClasses() {
   if (keep && active.some((c) => c.id === keep)) $("classSelect").value = keep;
   const listed = $("showArchived").checked ? classes : active;
   const hiddenCount = classes.length - active.length;
-  $("classesTable").innerHTML = `<table><tr><th>Class</th><th>Year</th><th>Students</th><th>Sessions</th><th></th></tr>` +
+  $("classesTable").innerHTML = `<table><tr><th>Class</th><th>Year</th><th>Students</th><th>Sessions</th><th>Affiliation shown to the students</th><th></th></tr>` +
     listed.map((c) => `<tr><td>${esc(c.name)}${c.role === "assistant" ? ' <span class="badge info">assistant</span>' : ""}${c.archived ? ' <span class="badge closed">archived</span>' : ""}</td><td>${esc(c.year)}</td><td>${c.students}</td><td>${c.sessions}</td>
+      <td>${c.affiliation ? esc(c.affiliation) : '<span class="muted">as on my page</span>'} ${c.role === "assistant" ? "" : `<button class="small secondary" data-caff="${c.id}" title="Change">✏</button>`}</td>
       <td style="white-space:nowrap">${c.role === "assistant" ? "" : `<button class="small secondary" data-carch="${c.id}" data-to="${c.archived ? 0 : 1}">${c.archived ? "Bring back" : "Archive"}</button>
         <button class="small red" data-cdel="${c.id}">Delete</button>`}</td></tr>`).join("") + `</table>` +
     (hiddenCount && !$("showArchived").checked ? `<p class="muted">${hiddenCount} archived class(es) not shown.</p>` : "");
+  $("classesTable").querySelectorAll("[data-caff]").forEach((b) => b.onclick = async () => {
+    const c = classInfo[b.dataset.caff];
+    const v = prompt(`Affiliation shown to the students of "${c.name} ${c.year}" (e.g. Telecommunications Department · FGE · USTHB).\nEmpty = the affiliation of your personal page.`, c.affiliation || "");
+    if (v === null) return;
+    try { await rpc("t_set_class_affiliation", { p_class: c.id, p_affiliation: v }); toast("Affiliation saved.", "ok"); await loadClasses(); }
+    catch (e) { toast(e.message, "error"); }
+  });
   $("classesTable").querySelectorAll("[data-carch]").forEach((b) => b.onclick = async () => {
     try {
       await rpc("t_archive_class", { p_class: b.dataset.carch, p_archived: b.dataset.to === "1" });
@@ -155,6 +163,8 @@ async function selectClass(id) {
   if (changed && activeTab === "space") { $("statsDetail").dataset.doc = ""; $("statsDetail").innerHTML = ""; await loadDocs(); await loadDocStats(); }
   if (activeTab === "classes" && !isAssistant()) loadAssistants();
   if (activeTab === "results") loadResults();
+  if (activeTab === "messages") loadMessages();
+  updateMsgBadge();
 }
 
 $("createClassBtn").onclick = async () => {
@@ -2306,7 +2316,10 @@ function renderResult() {
     const dist = qu.qtype === "choice" ? (qu.options || []).map((o, i) => `<span class="${(qu.correct || []).includes(i) ? "res-good" : ""}" title="${esc(o)}">${RES_LETTERS[i]}: ${(qu.counts || [])[i] || 0}</span>`).join(" ")
       : `<span class="muted">number${qu.unit ? " (" + esc(qu.unit) + ")" : ""}</span>`;
     const pct = qu.answers ? Math.round((100 * qu.full) / qu.answers) : null;
-    return `<tr><td>${qu.n}</td><td>${esc(qu.text)}${qu.ref ? ` <span class="muted">${esc(qu.ref)}</span>` : ""}</td><td>${qu.answers}</td>
+    const fixSel = edit ? `<select class="res-fix" data-q="${qu.id}" style="width:auto;font-size:12px">
+        <option value="none" ${!qu.fix ? "selected" : ""}>as computed</option><option value="full" ${qu.fix === "full" ? "selected" : ""}>full points to all who answered</option>
+        <option value="drop" ${qu.fix === "drop" ? "selected" : ""}>dropped (out of the mark)</option></select>` : (qu.fix ? `<span class="badge info">${qu.fix === "drop" ? "dropped" : "full points"}</span>` : "");
+    return `<tr class="${qu.fix === "drop" ? "res-other" : ""}"><td>${qu.n}</td><td>${esc(qu.text)}${qu.ref ? ` <span class="muted">${esc(qu.ref)}</span>` : ""}<div>${fixSel}</div></td><td>${qu.answers}</td>
       <td>${pct == null ? "-" : `<span class="${pct >= 70 ? "res-good" : pct >= 40 ? "res-part" : "res-bad"}">${pct} %</span>`}</td>
       <td>${qu.avg_pct == null ? "-" : Number(qu.avg_pct) + " %"}</td><td class="res-dist">${dist}</td></tr>`;
   }).join("");
@@ -2355,6 +2368,13 @@ function renderResult() {
     catch (e) { toast(e.message, "error"); }
   });
   if ($("resBoardBtn")) $("resBoardBtn").onclick = () => openBoardCheck(q.id);
+  // v27: a badly worded question: dropped for everybody, or full points to everybody who answered it
+  $("resultsDetail").querySelectorAll(".res-fix").forEach((sel) => sel.onchange = async () => {
+    const what = { none: "back to the computed scores", full: "full points to every student who answered it", drop: "dropped: out of the mark of every student" }[sel.value];
+    if (!confirm(`Question: ${what}?\nThe marks of the whole quiz are recomputed (profiles, averages, export).`)) { reload(); return; }
+    try { await rpc("t_fix_question", { p_quiz: q.id, p_question: sel.dataset.q, p_mode: sel.value }); toast("Marks recomputed.", "ok"); reload(); }
+    catch (e) { toast(e.message, "error"); reload(); }
+  });
 }
 
 // Excel file of one quiz: marks, answers, questions.
@@ -2382,3 +2402,195 @@ $("resultsExport").onclick = () => {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(qs), "Questions");
   XLSX.writeFile(wb, `ClassPulse_${q.date}_${q.title}.xlsx`.replace(/[^\w.-]+/g, "_"));
 };
+
+// ------------------------------------------------------------------ v27: messages
+// Teacher -> students (class, group, chosen students), students -> teacher (private), teacher <-> lab assistants.
+let msgData = null;            // last t_messages result
+let msgStudents = [];          // students of the class (picker)
+let msgPicked = new Set();     // chosen student ids
+let msgReplyTo = null;         // id of the message answered by the compose card
+let staffReplyTo = null;
+
+function msgWhen(t) { return t ? new Date(t).toLocaleString([], { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; }
+function msgBodyHtml(text) { return esc(text || "").replace(/\n/g, "<br>"); }
+function msgDocLink(m) {
+  return m.doc ? `<div style="margin-top:4px">📄 <a href="doc.html?d=${m.doc.id}&c=${m.class_id}" target="_blank" rel="noopener">${esc(m.doc.title || "document")}</a></div>` : "";
+}
+
+async function loadMessages() {
+  if (!classId) { $("msgInbox").innerHTML = ""; $("msgSent").innerHTML = ""; return; }
+  const teacher = !isAssistant();
+  try {
+    msgData = await rpc("t_messages", { p_class: classId });
+    if (teacher) {
+      msgStudents = await rpc("t_list_students", { p_class: classId });
+      const docs = await rpc("t_list_docs", { p_class: classId });
+      const keep = $("msgDoc").value;
+      $("msgDoc").innerHTML = `<option value="">none</option>` +
+        docs.filter((d) => d.visible).map((d) => `<option value="${d.id}">${esc(d.title)}</option>`).join("");
+      if ([...$("msgDoc").options].some((o) => o.value === keep)) $("msgDoc").value = keep;
+    }
+  } catch (e) { toast(e.message, "error"); return; }
+  msgPicked = new Set([...msgPicked].filter((id) => msgStudents.some((s) => s.id === id)));
+  fillMsgGroups();
+  renderMsgPick();
+  renderStaffCard();
+  renderMsgLists();
+  updateMsgBadge();
+}
+
+function fillMsgGroups() {
+  const groups = [...new Set(classGroups.td.concat(classGroups.tp))];
+  const keep = $("msgGroup").value;
+  $("msgGroup").innerHTML = groups.length ? groups.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("")
+                                          : `<option value="">no group in the student list</option>`;
+  if (groups.includes(keep)) $("msgGroup").value = keep;
+}
+
+function syncMsgKind() {
+  const k = $("msgKind").value;
+  $("msgGroup").classList.toggle("hidden", k !== "group");
+  $("msgPick").classList.toggle("hidden", k !== "students");
+}
+$("msgKind").onchange = syncMsgKind;
+$("msgPickSearch").oninput = () => renderMsgPick();
+
+function renderMsgPick() {
+  const f = $("msgPickSearch").value.trim().toLowerCase();
+  const list = msgStudents.filter((s) => !f || `${s.last_name} ${s.first_name} ${s.matricule}`.toLowerCase().includes(f) || msgPicked.has(s.id));
+  $("msgPickList").innerHTML = list.slice(0, 80).map((s) => `<label class="pick-item"><input type="checkbox" data-mpick="${s.id}" ${msgPicked.has(s.id) ? "checked" : ""}>
+      ${esc(s.last_name)} ${esc(s.first_name)} <span class="muted">${esc(s.matricule)}${s.td_group ? " · " + esc(s.td_group) : ""}${s.tp_group ? " · " + esc(s.tp_group) : ""}</span></label>`).join("")
+    + (list.length > 80 ? `<p class="muted">… ${list.length - 80} more: refine the search.</p>` : "");
+  $("msgPickList").querySelectorAll("[data-mpick]").forEach((c) => c.onchange = () => {
+    if (c.checked) msgPicked.add(c.dataset.mpick); else msgPicked.delete(c.dataset.mpick);
+    $("msgPickCount").textContent = `${msgPicked.size} student(s) chosen`;
+  });
+  $("msgPickCount").textContent = `${msgPicked.size} student(s) chosen`;
+}
+
+function renderStaffCard() {
+  const teacher = msgData && msgData.is_teacher;
+  const assistants = (msgData && msgData.assistants) || [];
+  if (teacher) {
+    $("staffTitle").textContent = "Lab assistants of this class";
+    $("staffTo").innerHTML = assistants.length
+      ? `<option value="">all the assistants (${assistants.length})</option>` + assistants.map((a) => `<option value="${a.user_id}">${esc(a.email)}</option>`).join("")
+      : `<option value="">no assistant in this class</option>`;
+    $("staffCard").classList.toggle("hidden", !assistants.length);
+  } else {
+    $("staffTitle").textContent = "Write to the teacher of this class";
+    $("staffTo").innerHTML = `<option value="">the teacher</option>`;
+    $("staffCard").classList.remove("hidden");
+  }
+}
+
+function msgItem(m, sent) {
+  const who = sent
+    ? `To: ${m.target && !/student/.test(m.target) ? esc(m.target) + (m.to_name ? ` (${esc(m.to_name)})` : "") : esc(m.to_name || m.target || "")}${m.recipients > 1 ? ` <span class="muted">· read by ${m.read_by}/${m.recipients}</span>` : m.read_by ? ' <span class="muted">· read</span>' : ' <span class="muted">· not read yet</span>'}`
+    : `${m.from_kind === "student" ? "👤" : "🧑‍🏫"} ${esc(m.from || "")}${m.from_matricule ? ` <span class="muted">${esc(m.from_matricule)}</span>` : ""}
+       ${m.from_kind === "assistant" ? ' <span class="badge info">assistant</span>' : m.from_kind === "teacher" ? ' <span class="badge info">teacher</span>' : ""}`;
+  const unread = !sent && !m.read_at;
+  return `<div class="msg-item${unread ? " unread" : ""}" data-mid="${m.id}">
+    <div class="msg-head"><span>${who}</span><span class="muted">${msgWhen(m.at)}</span></div>
+    ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}
+    <div class="msg-body">${msgBodyHtml(m.body)}</div>${msgDocLink(m)}
+    ${sent ? "" : `<div class="msg-actions">${unread ? `<button class="small secondary" data-mread="${m.id}">Mark as read</button>` : ""}
+      <button class="small" data-mreply="${m.id}">Reply</button></div>`}
+  </div>`;
+}
+
+function renderMsgLists() {
+  const rec = (msgData && msgData.received) || [], sent = (msgData && msgData.sent) || [];
+  const unread = rec.filter((m) => !m.read_at).length;
+  $("msgUnread").textContent = unread ? `${unread} new` : "";
+  $("msgUnread").classList.toggle("hidden", !unread);
+  $("msgInbox").innerHTML = rec.length ? rec.map((m) => msgItem(m, false)).join("") : `<p class="muted">No message received in this class.</p>`;
+  $("msgSent").innerHTML = sent.length ? sent.map((m) => msgItem(m, true)).join("") : `<p class="muted">No message sent in this class.</p>`;
+  $("msgInbox").querySelectorAll("[data-mread]").forEach((b) => b.onclick = () => markMsgRead(Number(b.dataset.mread)));
+  $("msgInbox").querySelectorAll("[data-mreply]").forEach((b) => b.onclick = () => replyTo(rec.find((m) => m.id === Number(b.dataset.mreply))));
+}
+
+async function markMsgRead(id) {
+  try { await rpc("t_message_read", { p_id: id }); } catch (e) { toast(e.message, "error"); return; }
+  const m = msgData.received.find((x) => x.id === id);
+  if (m) m.read_at = new Date().toISOString();
+  renderMsgLists();
+  updateMsgBadge();
+}
+
+function replySubject(m) { const s = m.subject || ""; return /^re:/i.test(s) ? s : ("Re: " + (s || "your message")).slice(0, 200); }
+
+function replyTo(m) {
+  if (!m) return;
+  if (!m.read_at) markMsgRead(m.id);
+  if (m.from_kind === "student") {
+    // answer one student: compose card, that student only
+    $("msgKind").value = "students"; syncMsgKind();
+    msgPicked = new Set([m.from_student]);
+    $("msgPickSearch").value = "";
+    renderMsgPick();
+    $("msgSubject").value = replySubject(m);
+    msgReplyTo = m.id;
+    $("msgReplyNote").textContent = `Answer to ${m.from}.`;
+    $("msgComposeCard").scrollIntoView({ behavior: "smooth" });
+    $("msgBody").focus();
+  } else {
+    // staff: the teacher answers the assistant, the assistant answers the teacher
+    if (msgData.is_teacher && [...$("staffTo").options].some((o) => o.value === m.from_user)) $("staffTo").value = m.from_user;
+    $("staffSubject").value = replySubject(m);
+    staffReplyTo = m.id;
+    $("staffReplyNote").textContent = `Answer to ${m.from}.`;
+    $("staffCard").scrollIntoView({ behavior: "smooth" });
+    $("staffBody").focus();
+  }
+}
+
+$("msgSendBtn").onclick = async () => {
+  const kind = $("msgKind").value;
+  if (kind === "students" && !msgPicked.size) { toast("Choose at least one student.", "error"); return; }
+  if (kind === "group" && !$("msgGroup").value) { toast("No group to choose: import the groups with the student list.", "error"); return; }
+  const what = kind === "class" ? "the whole class" : kind === "group" ? "group " + $("msgGroup").value : `${msgPicked.size} student(s)`;
+  if (kind !== "students" && !confirm(`Send this message to ${what}?`)) return;
+  $("msgSendBtn").disabled = true;
+  try {
+    const r = await rpc("t_send_message", {
+      p_class: classId, p_kind: kind, p_group: kind === "group" ? $("msgGroup").value : null,
+      p_students: kind === "students" ? [...msgPicked] : null, p_subject: $("msgSubject").value, p_body: $("msgBody").value,
+      p_doc: $("msgDoc").value || null, p_reply_to: msgReplyTo });
+    toast(`Message sent to ${r.recipients} student(s).`, "ok");
+    $("msgSubject").value = ""; $("msgBody").value = ""; $("msgDoc").value = "";
+    msgReplyTo = null; $("msgReplyNote").textContent = "";
+    if (kind === "students") { msgPicked = new Set(); renderMsgPick(); }
+    await loadMessages();
+  } catch (e) { toast(e.message, "error"); }
+  $("msgSendBtn").disabled = false;
+};
+
+$("staffSendBtn").onclick = async () => {
+  $("staffSendBtn").disabled = true;
+  try {
+    const r = await rpc("t_send_staff", { p_class: classId, p_to: $("staffTo").value || null, p_subject: $("staffSubject").value,
+      p_body: $("staffBody").value, p_reply_to: staffReplyTo });
+    toast(r.recipients > 1 ? `Message sent to ${r.recipients} assistants.` : "Message sent.", "ok");
+    $("staffSubject").value = ""; $("staffBody").value = "";
+    staffReplyTo = null; $("staffReplyNote").textContent = "";
+    await loadMessages();
+  } catch (e) { toast(e.message, "error"); }
+  $("staffSendBtn").disabled = false;
+};
+
+// Badge of the Messages tab: unread messages of the selected class (other classes: in the title of the badge).
+async function updateMsgBadge() {
+  let counts = {};
+  try { counts = await rpc("t_unread_messages", {}); } catch (e) { return; }
+  const here = (counts && counts[classId]) || 0;
+  const elsewhere = Object.entries(counts || {}).filter(([k]) => k !== classId).reduce((a, [, n]) => a + Number(n), 0);
+  const b = $("msgBadge");
+  b.textContent = here ? String(here) : elsewhere ? "•" : "";
+  b.title = elsewhere ? `${elsewhere} unread message(s) in your other classes` : "";
+  b.classList.toggle("hidden", !here && !elsewhere);
+}
+setInterval(() => { if (classId && document.visibilityState === "visible") updateMsgBadge(); }, 60000);
+
+// The personal page of the teacher, in edit mode.
+$("myPageBtn").onclick = () => window.open(personalPageUrl("?edit"), "_blank", "noopener");

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="26">
+<html lang="en" data-version="27">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=26">
+<link rel="stylesheet" href="css/style.css?v=27">
 </head>
 <body>
 
@@ -26,6 +26,7 @@
     <button data-tab="live" class="active">▶ Live session</button>
     <button data-tab="sessions">📅 Sessions <span id="sessionsBadge" class="badge open hidden"></span></button>
     <button data-tab="students">👥 Students <span id="attemptBadge" class="badge no hidden"></span></button>
+    <button data-tab="messages">✉ Messages <span id="msgBadge" class="badge no hidden"></span></button>
     <button data-tab="questions" class="teacher-only">❓ Questions</button>
     <button data-tab="space" class="teacher-only">📚 Student space</button>
     <button data-tab="content">📂 Course content</button>
@@ -34,6 +35,7 @@
     <button data-tab="results">📊 Results</button>
     <button data-tab="export" class="teacher-only">⬇ Export results</button>
     <button data-tab="classes">＋ Classes</button>
+    <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">🌐 My public page</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
     <div id="whoAmI" style="color:#8FA9C8;font-size:12px;margin-top:8px;word-break:break-all"></div>
   </nav>
@@ -528,6 +530,38 @@
     </section>
 
     <!-- ===================== EXPORT ===================== -->
+    <section id="tab-messages" class="hidden">
+      <div class="card teacher-only" id="msgComposeCard">
+        <h2>Write to students</h2>
+        <p class="muted">The students read it on their home page (✉ Messages), on any device where they are signed in. They can answer you privately;
+          they never see each other's messages.</p>
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+          <label style="margin:0">To <select id="msgKind" style="width:auto">
+            <option value="class">the whole class</option><option value="group">a TD group / TP sub-group</option><option value="students">chosen students</option></select></label>
+          <select id="msgGroup" class="hidden" style="width:auto"></select>
+        </div>
+        <div id="msgPick" class="hidden" style="margin-top:8px">
+          <input id="msgPickSearch" placeholder="Search a student (name or student number)" style="max-width:340px">
+          <div id="msgPickList" class="pick-list"></div><p class="muted" id="msgPickCount" style="margin:4px 0 0"></p>
+        </div>
+        <input id="msgSubject" placeholder="Subject (optional)" style="margin-top:8px">
+        <textarea id="msgBody" rows="4" placeholder="Your message" style="margin-top:6px"></textarea>
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <label style="margin:0">Attach a published document <select id="msgDoc" style="width:auto"><option value="">none</option></select></label>
+          <button id="msgSendBtn" class="green">Send</button> <span id="msgReplyNote" class="muted"></span>
+        </div>
+      </div>
+      <div class="card" id="staffCard">
+        <h2 id="staffTitle">Lab assistants of this class</h2>
+        <div class="row" style="gap:10px;align-items:center"><label style="margin:0">To <select id="staffTo" style="width:auto"></select></label></div>
+        <input id="staffSubject" placeholder="Subject (optional)" style="margin-top:8px">
+        <textarea id="staffBody" rows="3" placeholder="Your message" style="margin-top:6px"></textarea>
+        <button id="staffSendBtn" style="margin-top:6px">Send</button> <span id="staffReplyNote" class="muted"></span>
+      </div>
+      <div class="card"><h2>Received <span id="msgUnread" class="badge no hidden"></span></h2><div id="msgInbox"></div></div>
+      <div class="card"><h2>Sent</h2><div id="msgSent"></div></div>
+    </section>
+
     <section id="tab-results" class="hidden">
       <div class="card" id="resultsListCard">
         <h2>Results of the quizzes</h2>
@@ -622,9 +656,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=26"></script>
-<script src="js/excel.js?v=26"></script>
-<script src="js/teacher.js?v=26"></script>
+<script src="js/common.js?v=27"></script>
+<script src="js/excel.js?v=27"></script>
+<script src="js/teacher.js?v=27"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

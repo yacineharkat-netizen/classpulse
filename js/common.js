@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "26"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "27"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -22,6 +22,11 @@ const ERROR_MESSAGES = {
   NOT_PRESENT: "You are not checked in for this session.",
   QUESTION_CLOSED: "This question is closed.",
   TIME_OVER: "Time is over for this question.",
+  EMPTY_MESSAGE: "Write a message first.",
+  MESSAGE_TOO_LONG: "This message is too long.",
+  NO_RECIPIENT: "Nobody to send this message to.",
+  TOO_MANY_MESSAGES: "Too many messages today. Try again tomorrow, or see the teacher.",
+  BAD_TARGET: "Choose who receives the message.",
   ALREADY_SUBMITTED: "You have already submitted this test: your answers can no longer change.",
   BAD_MARK: "The mark must be between 0 and the maximum of the quiz.",
   BAD_LEVEL: "Unknown access level.",
@@ -197,3 +202,11 @@ function formatSeconds(ms) {
   return Math.max(0, Math.ceil(ms / 1000));
 }
 
+
+// v27: a text of the teacher's page exists in three languages: English first, then French, then Arabic.
+function triText(v) { return v == null ? "" : typeof v === "string" ? v : (v.en || v.fr || v.ar || ""); }
+// v27: the personal page of the teacher, next to ClassPulse (…/classpulse/ -> …/), or CONFIG.personalPage.
+function personalPageUrl(extra) {
+  const base = (typeof CONFIG !== "undefined" && CONFIG.personalPage) || new URL("../", location.href).href;
+  return base + (extra || "");
+}
