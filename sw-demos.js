@@ -100,6 +100,7 @@ async function serve(rel, request) {
       ? await rpc("t_demo_file", { p_prefix: prefix, p_path: path }, access.jwt)
       : await rpc("s_demo_file", { p_device: access.device, p_code: access.code, p_prefix: prefix, p_path: path });
     const ext = (path.split(".").pop() || "").toLowerCase();
+    if (ext === "html" || ext === "htm") return shielded(new TextDecoder().decode(fromBase64(r.data)));
     return new Response(fromBase64(r.data), { status: 200, headers: { "Content-Type": TYPES[ext] || "application/octet-stream", "Cache-Control": "no-store" } });
   } catch (e) {
     if (/NOT_FOUND/.test(e.message)) return text("File not found in this demo: " + path, 404);
@@ -115,7 +116,28 @@ async function fromBucket(rel) {
   try { answer = await fetch(source, { cache: "no-cache" }); } catch (e) { return text("No network: the demo cannot be loaded.", 503); }
   if (!answer.ok) return text("File not found in this demo: " + rel, 404);
   const ext = (rel.split(".").pop() || "").toLowerCase();
+  if (ext === "html" || ext === "htm") return shielded(await answer.text());
   return new Response(answer.body, { status: 200, headers: { "Content-Type": TYPES[ext] || "application/octet-stream", "Cache-Control": "no-cache" } });
+}
+
+// v26: a demo is served from the same address as ClassPulse, so its scripts could read what ClassPulse keeps in the
+// browser (device keys of the students, login of the teacher, demo access proofs). Before any script of the demo,
+// a small script gives it its OWN empty storage, and no access to the stored proofs; frames are refused (a frame of a
+// ClassPulse page would give the real storage back). This protects against careless or curious code, not against a
+// determined author: only publish demos whose code you trust.
+const SHIELD = `<script>(function(){function mem(){var m={};return{getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},` +
+  `setItem:function(k,v){m[String(k)]=String(v)},removeItem:function(k){delete m[String(k)]},clear:function(){m={}},` +
+  `key:function(i){return Object.keys(m)[i]||null},get length(){return Object.keys(m).length}}}` +
+  `try{Object.defineProperty(window,"localStorage",{value:mem(),configurable:false,writable:false})}catch(e){}` +
+  `try{Object.defineProperty(window,"sessionStorage",{value:mem(),configurable:false,writable:false})}catch(e){}` +
+  `try{Object.defineProperty(window,"caches",{value:undefined,configurable:false,writable:false})}catch(e){}` +
+  `try{Object.defineProperty(window,"indexedDB",{value:undefined,configurable:false,writable:false})}catch(e){}` +
+  `})();<\/script>`;
+function shielded(html) {
+  const at = html.search(/<head[^>]*>/i);
+  const page = at >= 0 ? html.replace(/<head[^>]*>/i, (m) => m + SHIELD) : SHIELD + html;
+  return new Response(page, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
+    "Content-Security-Policy": "frame-src 'none'; child-src 'none'" } });
 }
 
 // The gate: a tiny page that looks for a proof of access in this browser (teacher login, or registered phone

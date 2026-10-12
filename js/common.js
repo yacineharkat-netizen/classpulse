@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "25"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "26"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -22,6 +22,9 @@ const ERROR_MESSAGES = {
   NOT_PRESENT: "You are not checked in for this session.",
   QUESTION_CLOSED: "This question is closed.",
   TIME_OVER: "Time is over for this question.",
+  ALREADY_SUBMITTED: "You have already submitted this test: your answers can no longer change.",
+  BAD_MARK: "The mark must be between 0 and the maximum of the quiz.",
+  BAD_LEVEL: "Unknown access level.",
   LOCKED: "You are locked. Ask the teacher.",
   EMPTY_ANSWER: "Choose at least one answer.",
   NOT_LOGGED_IN: "Please log in again.",

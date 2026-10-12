@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "25"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "26"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -531,13 +531,14 @@ function renderQuiz(live, who) {
     html += `<div class="card" style="text-align:center"><strong>${answered ? "✔ Answer recorded" : "No answer"}</strong><br>
       <span class="muted">${q.reveal_mode === "end" ? "The correct answers will be shown at the end of the quiz." : "The correct answers are not shown for this quiz."}</span></div>`;
   } else {
-    html += `<button id="sendBtn" class="orange" style="width:100%;font-size:19px;margin-top:6px">${answered ? "Change my answer" : "Send my answer"}</button>`;
-    if (answered) html += `<p class="muted" style="text-align:center">✔ Answer received. You can change it until the time is over.</p>`;
+    // v26: no Send button: each tap is sent at once; what is ticked when the time is over is the answer.
+    html += `<p class="send-state ${answered ? "ok" : ""}" id="sendState">${answered
+      ? "✔ Saved: " + q.my_answer.map((p) => LETTERS[p]).join(", ") + ". Tap again to change it until the time is over."
+      : "Tap your answer: it is saved at once."}</p>`;
   }
   live.innerHTML = html;
   if (!reveal) {
     live.querySelectorAll(".option").forEach((b) => b.onclick = () => toggleOption(Number(b.dataset.pos), q.multiple !== false));
-    $("sendBtn").onclick = sendAnswer;
     tick();
   }
 }
@@ -565,28 +566,40 @@ function renderLiveNumber(live, who, head, q, key, reveal) {
     html += `<div class="card" style="text-align:center"><strong>${answered ? "✔ Answer recorded" : "No answer"}</strong><br>
       <span class="muted">${q.reveal_mode === "end" ? "The correct answers will be shown at the end of the quiz." : "The correct answers are not shown for this quiz."}</span></div>`;
   } else {
-    html += `<button id="sendBtn" class="orange" style="width:100%;font-size:19px;margin-top:6px">${answered ? "Change my answer" : "Send my answer"}</button>`;
-    if (answered) html += `<p class="muted" style="text-align:center">✔ Answer received: ${esc(saved)} ${esc(q.unit || "")}. You can change it until the time is over.</p>`;
+    // v26: no Send button: the number is saved while typing (short pause), and once more just before the end of the time.
+    html += `<p class="send-state ${answered ? "ok" : ""}" id="sendState">${answered
+      ? `✔ Saved: ${esc(saved)} ${esc(q.unit || "")}. You can change it until the time is over.` : "Type your answer: it is saved automatically."}</p>`;
   }
   live.innerHTML = html;
   if (!reveal) {
-    $("liveNum").oninput = () => { liveNumDraft = $("liveNum").value; };
-    $("sendBtn").onclick = sendNumber;
+    $("liveNum").oninput = () => {
+      liveNumDraft = $("liveNum").value;
+      clearTimeout(numTimer); numTimer = setTimeout(() => sendNumber(true), 700);
+      if ($("sendState")) { $("sendState").textContent = "…"; $("sendState").classList.remove("ok"); }
+    };
+    $("liveNum").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); sendNumber(false); } };
     tick();
   }
 }
-async function sendNumber() {
-  if (sending) return;
+let numTimer = null, numSentFor = "";
+async function sendNumber(quiet) {
+  if (sending) { clearTimeout(numTimer); numTimer = setTimeout(() => sendNumber(quiet), 300); return; }
   const v = parseFloat(String(liveNumDraft).trim().replace(",", "."));
-  if (String(liveNumDraft).trim() === "" || isNaN(v)) { toast("Type a number (for example 2.5).", "error"); return; }
+  if (String(liveNumDraft).trim() === "" || isNaN(v)) { if (!quiet) toast("Type a number (for example 2.5).", "error"); return; }
+  if (!state || !state.quiz) return;
+  numSentFor = state.quiz.quiz_id + ":" + state.quiz.index + ":" + v;
   sending = true;
   try {
     await rpc("s_answer_number", { p_device: deviceToken, p_code: sessionCode, p_quiz: state.quiz.quiz_id, p_index: state.quiz.index, p_number: v });
-    if (document.activeElement) document.activeElement.blur();
+    const el = $("sendState");
+    if (el) { el.textContent = `✔ Saved: ${v} ${state.quiz.unit || ""}. You can change it until the time is over.`; el.classList.add("ok"); }
+    if (!quiet && document.activeElement) document.activeElement.blur();
     lastRendered = "";
     await fetchState();
-  } catch (e) { toast(e.message, "error"); lastRendered = ""; await fetchState(); }
-  finally { sending = false; }
+  } catch (e) {
+    if (!quiet || !["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) toast(e.message, "error");
+    lastRendered = ""; await fetchState();
+  } finally { sending = false; }
 }
 
 // ------------------------------------------------------------------ self-paced quiz (lab test)
@@ -597,7 +610,8 @@ const drafts = {};            // quiz id + index -> unsaved value typed or ticke
 function renderSelfPaced(live, who, head, q) {
   const key = (i) => q.quiz_id + ":" + i;
   const intro = `<div class="card"><strong>${q.kind === "tp" ? "Lab test" : "Test"} · at your own pace</strong>
-    <div class="muted">Answer in any order. Each answer is saved when you tap <em>Save</em> and can be changed until the teacher closes the test.
+    <div class="muted">Answer in any order. Each answer is saved as soon as you choose it (numbers: after a short pause). You can change it until you tap
+    <em>Submit my answers</em> at the bottom, or until the teacher closes the test.
     ${q.graded ? "Marked out of " + Number(q.total_points) + "." : "Not graded."} Numbers: use a dot or a comma (2.5 or 2,5).</div></div>`;
   if (q.ask_variant && q.variant == null) {
     live.innerHTML = who + head + intro + `<div class="card"><strong>Number of your board</strong>
@@ -618,7 +632,10 @@ function renderSelfPaced(live, who, head, q) {
   const board = q.variant_used != null ? q.variant_used : q.variant;
   const boardBanner = q.ask_variant ? `<div class="board-banner">🔢 Your board: <strong>${board}</strong> — use the values of board ${board} only.
       <span>Changed group or board? Tell the teacher now.</span></div>` : "";
-  let html = who + head + boardBanner + (!q.lock_screen ? sharedLinksHtml("Documents given by the teacher") : "") + intro +
+  const handed = !!q.submitted_at;
+  const handedBanner = handed ? `<div class="card submitted-banner">✔ Answers handed in at ${new Date(q.submitted_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+      They can no longer change. You may leave this page.</div>` : "";
+  let html = who + head + boardBanner + (!q.lock_screen ? sharedLinksHtml("Documents given by the teacher") : "") + intro + handedBanner +
     `<p><strong>${done} / ${items.length}</strong> answers saved</p><div class="protected">`;
   items.forEach((it) => {
     const k = key(it.index);
@@ -626,61 +643,93 @@ function renderSelfPaced(live, who, head, q) {
       <div class="question-text">${esc(it.text)}</div>`;
     if (it.qtype === "number") {
       const val = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(Number(it.my_number)));
-      html += `<div class="row" style="gap:8px;align-items:center"><input class="numAnswer" data-index="${it.index}" inputmode="decimal" value="${esc(val)}" style="font-size:20px;max-width:180px">
+      html += `<div class="row" style="gap:8px;align-items:center"><input class="numAnswer" data-index="${it.index}" inputmode="decimal" value="${esc(val)}" style="font-size:20px;max-width:180px" ${handed ? "disabled" : ""}>
         <span style="font-size:18px">${esc(it.unit || "")}</span></div>`;
     } else {
       const sel = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
       if (!it.survey) html += `<div class="answer-kind ${it.multiple === false ? "single" : "multi"}" style="display:inline-block;margin-bottom:6px">${it.multiple === false ? "Only one correct answer" : "One or more answers may be correct"}</div>`;
       html += (it.options || []).map((o, pos) => `<div class="option ${sel.includes(pos) ? "selected" : ""}" data-index="${it.index}" data-pos="${pos}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`).join("");
     }
-    html += `<button class="saveBtn orange" data-index="${it.index}" style="width:100%;margin-top:8px">${it.answered ? "Save my new answer" : "Save"}</button></div>`;
+    html += `<div class="item-state" id="itemState${it.index}">${handed ? "" : it.answered ? "✔ saved" : "not answered yet"}</div></div>`;
   });
-  live.innerHTML = html + watermark() + `</div>`;
-  live.querySelectorAll(".numAnswer").forEach((inp) => inp.oninput = () => { drafts[key(inp.dataset.index)] = inp.value; });
+  html += watermark() + `</div>`;
+  if (!handed) html += `<div class="card"><button id="submitQuizBtn" class="green" style="width:100%;font-size:19px">Submit my answers</button>
+      <p class="muted" style="margin:6px 0 0">When you submit, your answers are final. Until then they are saved anyway and the teacher receives them when he closes the test.</p></div>`;
+  live.innerHTML = html;
+  if (handed) { live.querySelectorAll(".option[data-pos]").forEach((b) => b.classList.add("disabled")); return; }
+  // v26: every change is saved at once (numbers: after a short pause, or when the field is left)
+  const saveItem = async (it) => {
+    const k = key(it.index), st = $("itemState" + it.index);
+    const args = { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_index: it.index, p_positions: null, p_number: null };
+    if (it.qtype === "number") {
+      const raw = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(it.my_number));
+      const v = parseFloat(String(raw).trim().replace(",", "."));
+      if (String(raw).trim() === "" || isNaN(v)) { if (st) st.textContent = "type a number (for example 2.5)"; return; }
+      args.p_number = v;
+    } else {
+      args.p_positions = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
+      if (!args.p_positions.length) { if (st) st.textContent = "nothing ticked: your last saved answer is kept"; return; }
+    }
+    if (st) st.textContent = "saving…";
+    try {
+      await rpc("s_answer_self", args);
+      if (it.qtype !== "number") delete drafts[k];      // a number stays as the student typed it (2,5 not 2.5)
+      if (st) st.textContent = "✔ saved";
+      lastRendered = "";
+      await fetchState();
+    } catch (e) { if (st) st.textContent = "not saved: " + e.message; toast(e.message, "error"); }
+  };
+  const numTimers = {};
+  live.querySelectorAll(".numAnswer").forEach((inp) => {
+    const it = items[Number(inp.dataset.index)];
+    inp.oninput = () => {
+      drafts[key(inp.dataset.index)] = inp.value;
+      const st = $("itemState" + it.index); if (st) st.textContent = "…";
+      clearTimeout(numTimers[it.index]); numTimers[it.index] = setTimeout(() => saveItem(it), 900);
+    };
+    inp.onchange = () => { clearTimeout(numTimers[it.index]); saveItem(it); };
+  });
   live.querySelectorAll(".option[data-pos]").forEach((b) => b.onclick = () => {
     const it = items[Number(b.dataset.index)], k = key(it.index), pos = Number(b.dataset.pos);
     const cur = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []).slice();
     drafts[k] = it.multiple === false ? [pos] : (cur.includes(pos) ? cur.filter((p) => p !== pos) : cur.concat(pos));
     b.parentElement.querySelectorAll(".option").forEach((o) => o.classList.toggle("selected", drafts[k].includes(Number(o.dataset.pos))));
+    clearTimeout(numTimers["c" + it.index]); numTimers["c" + it.index] = setTimeout(() => saveItem(it), 250);
   });
-  live.querySelectorAll(".saveBtn").forEach((b) => b.onclick = async () => {
-    const it = items[Number(b.dataset.index)], k = key(it.index);
-    const args = { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_index: it.index, p_positions: null, p_number: null };
-    if (it.qtype === "number") {
-      const raw = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(it.my_number));
-      const v = parseFloat(String(raw).trim().replace(",", "."));
-      if (raw === "" || isNaN(v)) { toast("Type a number (for example 2.5).", "error"); return; }
-      args.p_number = v;
-    } else {
-      args.p_positions = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
-      if (!args.p_positions.length) { toast("Choose an answer first.", "error"); return; }
-    }
-    b.disabled = true;
-    try {
-      await rpc("s_answer_self", args);
-      delete drafts[k];
-      toast(`Answer ${it.index + 1} saved.`, "ok");
-      lastRendered = "";
-      await fetchState();
-    } catch (e) { toast(e.message, "error"); b.disabled = false; }
-  });
+  $("submitQuizBtn").onclick = async () => {
+    // pending numbers are saved first
+    for (const it of items) if (drafts[key(it.index)] !== undefined) await saveItem(it);
+    const fresh = (state.quiz && state.quiz.items) || items;
+    const missing = fresh.filter((it) => !it.answered).length;
+    if (!confirm((missing ? `${missing} question(s) not answered.\n\n` : "") + "Submit your answers now? You will not be able to change them.")) return;
+    try { await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id }); toast("Answers handed in.", "ok"); lastRendered = ""; await fetchState(); }
+    catch (e) { toast(e.message, "error"); }
+  };
 }
 
 function toggleOption(pos, multiple) {
   if (multiple) selection = selection.includes(pos) ? selection.filter((p) => p !== pos) : selection.concat(pos);
   else selection = [pos];
   render();
+  // v26: sent at once (a short pause groups several quick taps on a multiple-answer question)
+  clearTimeout(answerTimer);
+  answerTimer = setTimeout(sendAnswer, 250);
 }
+let answerTimer = null;
 
 async function sendAnswer() {
-  if (sending) return;
-  if (selection.length === 0) { toast("Choose an answer first.", "error"); return; }
+  if (sending) { clearTimeout(answerTimer); answerTimer = setTimeout(sendAnswer, 300); return; }
+  if (selection.length === 0 || !state || !state.quiz) return;     // nothing ticked: the last saved answer stays
+  const el = $("sendState");
+  if (el) { el.textContent = "Saving…"; el.classList.remove("ok"); }
   sending = true;
   try {
     await rpc("s_answer", { p_device: deviceToken, p_code: sessionCode, p_quiz: state.quiz.quiz_id, p_index: state.quiz.index, p_positions: selection });
+    lastRendered = "";
     await fetchState();
   } catch (e) {
-    toast(e.message, "error");
+    if (!["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) toast(e.message, "error");
+    lastRendered = "";
     await fetchState();
   } finally {
     sending = false;
@@ -694,8 +743,12 @@ function tick() {
   if (t) t.textContent = formatSeconds(left) + " s";
   const bar = $("bar");
   if (bar) bar.style.width = Math.max(0, Math.min(100, (left / Math.max(state.quiz.duration_ms || 1, 1)) * 100)) + "%";
-  const btn = $("sendBtn");
-  if (btn) btn.disabled = left <= 0;
+  // v26: a number typed but not yet saved is sent just before the end of the time
+  const q = state.quiz;
+  if (q.qtype === "number" && left > 0 && left < 1500 && liveNumKey === q.quiz_id + ":" + q.index && String(liveNumDraft).trim() !== "") {
+    const v = parseFloat(String(liveNumDraft).trim().replace(",", "."));
+    if (!isNaN(v) && Number(q.my_number) !== v && numSentFor !== q.quiz_id + ":" + q.index + ":" + v) { clearTimeout(numTimer); sendNumber(true); }
+  }
 }
 
 // Name and student number printed across the question: a screenshot or a photo shows who took it.

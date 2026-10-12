@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "25"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "26"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -176,6 +176,9 @@ function downloadResults(exp) {
     penaltyOf[k] = Number(s.penalty || 0);                       // v25: board corrected by the teacher, penalty on the quiz scale
     if (s.board_used != null) boardOf[k] = { from: s.board_declared, to: s.board_used, penalty: Number(s.penalty || 0) };
   });
+  // v26: marks corrected by the teacher (on the scale of the quiz): they replace the computed mark
+  const overrideOf = {};
+  (exp.overrides || []).forEach((o) => { overrideOf[o.quiz_id + "|" + o.student_id] = Number(o.mark); });
   const sessionLabel = (s) => `${s.date}${s.time ? " " + s.time : ""} ${KIND[s.kind] || ""} ${s.title}`.replace(/\s+/g, " ");
 
   // v24: groups. A session may be for one TD group / TP sub-group; the sessions of the same unit (e.g. TP1,
@@ -242,6 +245,12 @@ function downloadResults(exp) {
     exp.students.forEach((st) => {
       const on20 = [];
       const cells = groups.map((g) => {
+        const corrected = g.quizzes.find((q) => overrideOf[q.id + "|" + st.id] !== undefined);
+        if (corrected) {
+          const scale = Number(corrected.total_points || 20), mark = overrideOf[corrected.id + "|" + st.id];
+          on20.push((mark / scale) * 20);
+          return mark;
+        }
         const done = g.quizzes.find((q) => pts[q.id + "|" + st.id] !== undefined);
         if (done) {
           const key = done.id + "|" + st.id, scale = Number(done.total_points || 20);
@@ -315,6 +324,10 @@ function downloadResults(exp) {
   add(sRows, "Surveys", [11, 24, 50, 9, 30, 8, 6]);
   add(lRows, "Left the quiz", [12, 18, 16, 26, 12]);
   if (bfRows.length > 1) add(bfRows, "Board corrections", [12, 18, 16, 26, 12, 22, 22]);
+  // v26: marks corrected by hand
+  const ovRows = [["Matricule", "Last name", "First name", "Quiz", "Computed mark", "Corrected mark", "Reason"]];
+  (exp.overrides || []).forEach((o) => { const s = nameOf[o.student_id] || {}; ovRows.push([s.matricule, s.last_name, s.first_name, quizTitle[o.quiz_id], o.computed == null ? "" : Number(o.computed), Number(o.mark), o.reason || ""]); });
+  if (ovRows.length > 1) add(ovRows, "Corrected marks", [12, 18, 16, 26, 14, 14, 40]);
   const safe = exp.class.name.replace(/[^\w-]+/g, "_");
   XLSX.writeFile(wb, `ClassPulse_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

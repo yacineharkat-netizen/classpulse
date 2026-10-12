@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "25"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "26"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -77,7 +77,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent };
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
 });
@@ -154,6 +154,7 @@ async function selectClass(id) {
   if (changed && activeTab === "students") await loadStudents();
   if (changed && activeTab === "space") { $("statsDetail").dataset.doc = ""; $("statsDetail").innerHTML = ""; await loadDocs(); await loadDocStats(); }
   if (activeTab === "classes" && !isAssistant()) loadAssistants();
+  if (activeTab === "results") loadResults();
 }
 
 $("createClassBtn").onclick = async () => {
@@ -1941,7 +1942,7 @@ $("addAssistantBtn").onclick = async () => {
 $("logRefreshBtn").onclick = loadAssistants;
 
 async function openProfile(studentId) {
-  if (isAssistant()) return;
+  // v26: the lab assistants open the profile too, when the teacher allows it (Course content tab)
   try { profileData = await rpc("t_student_profile", { p_student: studentId }); } catch (e) { toast(e.message, "error"); return; }
   const p = profileData, st = p.student;
   const present = p.sessions.filter((x) => x.status === "present" || x.status === "late").length;
@@ -1963,7 +1964,8 @@ async function openProfile(studentId) {
       <td>${x.status === "absent" ? '<span class="badge no">absent</span>' : x.status === "other group" ? '<span class="muted">- (not his group)</span>' : esc(x.status) + (x.guest ? ' <span class="badge info">with another group</span>' : "")}</td></tr>`).join("") + `</table>
     <h3 style="margin-top:14px">Quizzes and tests</h3><table><tr><th>Date</th><th>Type</th><th>Title</th><th>Mark</th><th>Board</th><th>Left the screen</th></tr>` +
     p.quizzes.map((q) => `<tr><td>${q.date}</td><td>${KIND_LABEL[q.kind] || q.kind}${q.graded ? "" : " (not graded)"}</td><td>${esc(q.title)}</td>
-      <td>${q.kind === "survey" ? "-" : q.mark == null ? '<span class="badge no">no answer</span>' : `${Number(q.mark)} / ${Number(q.total_points)}`}</td>
+      <td>${q.kind === "survey" ? "-" : quizStatusCell(q)}
+        ${q.kind !== "survey" && !isAssistant() && q.status !== "other group" ? `<button class="small secondary" data-pmark="${q.quiz_id}" title="Correct this mark">✏</button>` : ""}</td>
       <td>${q.board ? (q.board.includes("->") ? `<span class="badge info">${esc(q.board)}</span>` : esc(q.board)) : ""}</td><td>${q.left_screen || ""}</td></tr>`).join("") + `</table>
     <h3 style="margin-top:14px">Documents (course notes, lab sheets, code)</h3>` + ((p.documents || []).filter((d) => d.stored).length === 0 ? `<p class="muted">No document in this class yet.</p>` :
     `<table><tr><th>Document</th><th>First opened</th><th>Last seen</th><th>Times opened</th><th>Reading time</th><th>Read up to</th><th>PDF downloaded</th><th>File downloaded</th></tr>` +
@@ -1979,6 +1981,13 @@ async function openProfile(studentId) {
     catch (e) { toast(e.message, "error"); }
   };
 }
+$("profileBody").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-pmark]");
+  if (!b || !profileData) return;
+  const q = profileData.quizzes.find((x) => x.quiz_id === b.dataset.pmark), st = profileData.student;
+  editMark({ quizId: q.quiz_id, title: q.title, total: q.total_points, studentId: st.id, name: `${st.last_name} ${st.first_name}`,
+             mark: q.mark, computed: q.computed, corrected: q.corrected }, () => openProfile(st.id));
+});
 $("profileClose").onclick = () => $("profileBox").classList.add("hidden");
 $("profileBox").onclick = (ev) => { if (ev.target === $("profileBox")) $("profileBox").classList.add("hidden"); };
 $("profileExport").onclick = () => {
@@ -1986,7 +1995,8 @@ $("profileExport").onclick = () => {
   const wb = XLSX.utils.book_new();
   const a = [["Date", "Time", "Type", "Session", "Status"], ...p.sessions.map((x) => [x.date, x.time || "", SESSION_KIND[x.kind], x.title, x.status])];
   const q = [["Date", "Type", "Graded", "Title", "Mark", "Out of", "Left the screen"],
-    ...p.quizzes.map((x) => [x.date, KIND_LABEL[x.kind], x.graded ? "yes" : "no", x.title, x.mark == null ? "" : Number(x.mark), Number(x.total_points), x.left_screen || 0])];
+    ...p.quizzes.map((x) => [x.date, KIND_LABEL[x.kind], x.graded ? "yes" : "no", x.title,
+      x.mark == null ? (x.status === "absent" || x.status === "no answer" ? 0 : x.status) : Number(x.mark), Number(x.total_points), x.left_screen || 0])];
   const b = [["Category", "Bonus points"], ...p.bonus.map((x) => [SESSION_KIND[x.category] || x.category, Number(x.points)])];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["Name", "Matricule", "Class", "TD group", "TP sub-group", "E-mail"],
     [`${st.last_name} ${st.first_name}`, st.matricule, p.class, st.td_group || "", st.tp_group || "", st.email || ""]]), "Student");
@@ -2005,6 +2015,7 @@ function renderContent() {
   if (teacher) {
     if (document.activeElement !== $("caLevel")) $("caLevel").value = cc.access;
     $("caPrepublish").checked = !!cc.prepublish;
+    loadAssistantRules();
   }
   const levelSelect = (kind, id, own) => `<select class="ca-item" data-kind="${kind}" data-id="${id}" style="width:auto">
       <option value="" ${!own ? "selected" : ""}>as the class (${LEVEL[cc.access]})</option>
@@ -2080,6 +2091,18 @@ $("caLevel").onchange = async () => {
   catch (e) { toast(e.message, "error"); }
 };
 $("caPrepublish").onchange = $("caLevel").onchange;
+// v26: what the assistants see of the results and of the student profiles
+async function loadAssistantRules() {
+  try {
+    const r = await rpc("t_results_list", { p_class: classId });
+    if (document.activeElement !== $("caResults")) $("caResults").value = r.class_rule || "view";
+    if (document.activeElement !== $("caProfiles")) $("caProfiles").value = r.profile_rule || "view";
+  } catch (e) { /* not the teacher */ }
+}
+$("caResults").onchange = $("caProfiles").onchange = async () => {
+  try { await rpc("t_set_assistant_results", { p_class: classId, p_results: $("caResults").value, p_profiles: $("caProfiles").value }); toast("Saved for this class.", "ok"); }
+  catch (e) { toast(e.message, "error"); }
+};
 
 // ------------------------------------------------------------------ v25: board check of a lab test
 let boardQuiz = null, boardData = null;
@@ -2159,3 +2182,203 @@ $("exportBtn").onclick = async () => {
 };
 
 init();
+
+
+// ------------------------------------------------------------------ v26: results of the finished quizzes
+// The list of the finished quizzes of the class; one quiz in detail: success rate of each question, answers and mark
+// of each student. The teacher corrects a mark (with a reason); the corrected mark is used everywhere.
+const RES_LETTERS = "ABCDEFGH";
+const RES_LEVEL = { none: "nothing", view: "read only", export: "read and download" };
+const STATUS_TEXT = { "absent": "absent", "no answer": "present, no answer", "excused": "excused", "other group": "- (not his group)" };
+let resultsList = null, resultsData = null;
+
+// The mark cell of a quiz in the profile: mark, corrected mark, or why there is none.
+function quizStatusCell(q) {
+  if (q.mark != null) return `${Number(q.mark)} / ${Number(q.total_points)}` +
+    (q.corrected ? ` <span class="badge info" title="Computed from the answers: ${q.computed == null ? "none" : Number(q.computed)}">corrected</span>` : "");
+  if (q.status === "other group") return '<span class="muted">- (not his group)</span>';
+  if (q.status === "excused") return '<span class="badge closed">excused</span>';
+  return `<span class="badge no">${q.status === "absent" ? "absent" : "no answer"}</span> <span class="muted">(0)</span>`;
+}
+
+// Correct one mark: new mark (empty = back to the computed mark), then an optional reason.
+async function editMark(m, after) {
+  const total = Number(m.total);
+  const v = prompt(`${m.name} · "${m.title}" (out of ${total})\nComputed from the answers: ${m.computed == null ? "no answer" : Number(m.computed)}\n\n` +
+    `New mark (for example 3.5).\nLeave EMPTY to go back to the computed mark.`, m.corrected ? String(Number(m.mark)) : "");
+  if (v === null) return;
+  const raw = v.trim().replace(",", ".");
+  let mark = null, reason = null;
+  if (raw !== "") {
+    mark = Number(raw);
+    if (isNaN(mark) || mark < 0 || mark > total) { toast(`Type a number between 0 and ${total}.`, "error"); return; }
+    reason = prompt("Reason (kept with the mark, optional):", "");
+    if (reason === null) return;
+  }
+  try {
+    await rpc("t_set_mark", { p_quiz: m.quizId, p_student: m.studentId, p_mark: mark, p_reason: reason });
+    toast(mark === null ? "Back to the computed mark." : `Mark corrected: ${mark} / ${total}.`, "ok");
+    if (after) after();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function loadResults() {
+  $("resultsDetailCard").classList.add("hidden");
+  $("resultsListCard").classList.remove("hidden");
+  if (!classId) { $("resultsList").innerHTML = `<p class="muted">Choose a class.</p>`; return; }
+  try { resultsList = await rpc("t_results_list", { p_class: classId }); } catch (e) { $("resultsList").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+  renderResultsList();
+}
+function renderResultsList() {
+  const r = resultsList;
+  if (!r) return;
+  const f = norm($("resultsSearch").value);
+  const list = r.quizzes.filter((q) => !f || norm(`${q.title} ${q.session} ${q.date} ${q.unit || ""}`).includes(f));
+  if (!r.quizzes.length) { $("resultsList").innerHTML = `<p class="muted">No finished quiz in this class yet.</p>`; return; }
+  const ruleSelect = (q) => `<select class="res-rule" data-id="${q.id}" style="width:auto;font-size:13px">
+      <option value="" ${!q.own_rule ? "selected" : ""}>as the class (${RES_LEVEL[r.class_rule] || "read only"})</option>
+      ${["none", "view", "export"].map((l) => `<option value="${l}" ${q.own_rule === l ? "selected" : ""}>${RES_LEVEL[l]}</option>`).join("")}</select>`;
+  $("resultsList").innerHTML = `<table><tr><th>Date</th><th>Quiz</th><th>Type</th><th>Session</th><th>Answered</th><th>Mean</th>
+      ${r.is_teacher ? "<th>Assistants</th>" : ""}<th></th></tr>` + list.map((q) => `<tr>
+      <td style="white-space:nowrap">${esc(q.date)}${q.time ? " " + esc(q.time) : ""}</td>
+      <td><strong>${esc(q.title)}</strong>${q.graded ? "" : ' <span class="muted">(not graded)</span>'}${q.empty ? ' <span class="badge no">empty: nobody answered</span>' : ""}
+        ${q.corrected ? ` <span class="badge info">${q.corrected} corrected</span>` : ""}</td>
+      <td>${KIND_LABEL[q.kind] || esc(q.kind)}${q.pace === "self" ? " · own pace" : ""}</td>
+      <td>${esc(q.session)}${q.unit ? ` <span class="muted">(${esc(q.unit)})</span>` : ""}</td>
+      <td>${q.answered} / ${q.expected}</td>
+      <td>${q.mean == null || q.kind === "survey" ? "-" : `${Number(q.mean)} / ${Number(q.total_points)}`}</td>
+      ${r.is_teacher ? `<td>${q.session_kind === "tp" ? ruleSelect(q) : '<span class="muted">teacher only</span>'}</td>` : ""}
+      <td style="white-space:nowrap"><button class="small green" data-ropen="${q.id}">Open</button>
+        ${r.is_teacher && q.empty ? `<button class="small red" data-rdel="${q.id}">Delete</button>` : ""}</td></tr>`).join("") + `</table>`;
+  $("resultsList").querySelectorAll("[data-ropen]").forEach((b) => b.onclick = () => openResult(b.dataset.ropen));
+  $("resultsList").querySelectorAll("[data-rdel]").forEach((b) => b.onclick = async () => {
+    const q = r.quizzes.find((x) => x.id === b.dataset.rdel);
+    if (!confirm(`Delete the empty quiz "${q.title}" (${q.date})?\nNobody answered it.`)) return;
+    try { await rpc("t_quiz_delete", { p_quiz: q.id }); toast("Quiz deleted.", "ok"); loadResults(); } catch (e) { toast(e.message, "error"); }
+  });
+  $("resultsList").querySelectorAll(".res-rule").forEach((sel) => sel.onchange = async () => {
+    try { await rpc("t_set_quiz_assistant_results", { p_quiz: sel.dataset.id, p_level: sel.value }); toast("Saved for this quiz.", "ok"); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+$("resultsSearch").oninput = renderResultsList;
+$("resultsBack").onclick = () => { $("resultsDetailCard").classList.add("hidden"); $("resultsListCard").classList.remove("hidden"); loadResults(); };
+
+// What a student answered to one question, as a short text: "B, C" or "3.2 V".
+function answerText(qu, a) {
+  if (!a) return "";
+  if (qu.qtype === "number") return a.number == null ? "" : String(Number(a.number)) + (qu.unit ? " " + qu.unit : "");
+  return (a.choice || []).map((i) => RES_LETTERS[i] || "?").join(", ");
+}
+function scoreClass(qu, a) {
+  if (!a) return "";
+  const pts = Number(qu.points);
+  if (!(pts > 0)) return "res-neutral";
+  return Number(a.score) >= pts ? "res-good" : Number(a.score) > 0 ? "res-part" : "res-bad";
+}
+
+async function openResult(quizId) {
+  try { resultsData = await rpc("t_results_quiz", { p_quiz: quizId }); } catch (e) { toast(e.message, "error"); return; }
+  renderResult();
+  $("resultsListCard").classList.add("hidden");
+  $("resultsDetailCard").classList.remove("hidden");
+  window.scrollTo(0, 0);
+}
+function renderResult() {
+  const d = resultsData, q = d.quiz, edit = d.level === "edit";
+  $("resultsTitle").textContent = q.title;
+  $("resultsExport").classList.toggle("hidden", !(edit || d.level === "export"));
+  const qById = {};
+  d.questions.forEach((qu) => { qById[qu.id] = qu; });
+  const answeredSt = d.students.filter((s) => s.status === "answered");
+  const marks = answeredSt.map((s) => Number(s.mark)).filter((x) => !isNaN(x));
+  const mean = marks.length ? Math.round((marks.reduce((x, y) => x + y, 0) / marks.length) * 100) / 100 : null;
+  const head = `<p class="muted">${esc(q.date)}${q.time ? " " + esc(q.time) : ""} · ${esc(q.session)}${q.unit ? " (" + esc(q.unit) + ")" : ""} ·
+      ${KIND_LABEL[q.kind] || esc(q.kind)} · ${q.graded ? "marked out of " + Number(q.total_points) : "not graded"}${q.pace === "self" ? " · at own pace" : ""}
+      ${q.per_student ? " · different questions for each student" : ""}</p>
+    <div class="row" style="gap:30px;margin:8px 0 14px">
+      <div><div class="stat">${answeredSt.length} / ${d.students.filter((s) => s.status !== "other group").length}</div><div class="muted">answered</div></div>
+      <div><div class="stat">${mean == null || q.kind === "survey" ? "-" : mean + " / " + Number(q.total_points)}</div><div class="muted">mean mark</div></div>
+      <div><div class="stat">${d.students.filter((s) => s.override != null).length}</div><div class="muted">corrected marks</div></div>
+    </div>`;
+  // ---- questions
+  const qRows = d.questions.map((qu) => {
+    const dist = qu.qtype === "choice" ? (qu.options || []).map((o, i) => `<span class="${(qu.correct || []).includes(i) ? "res-good" : ""}" title="${esc(o)}">${RES_LETTERS[i]}: ${(qu.counts || [])[i] || 0}</span>`).join(" ")
+      : `<span class="muted">number${qu.unit ? " (" + esc(qu.unit) + ")" : ""}</span>`;
+    const pct = qu.answers ? Math.round((100 * qu.full) / qu.answers) : null;
+    return `<tr><td>${qu.n}</td><td>${esc(qu.text)}${qu.ref ? ` <span class="muted">${esc(qu.ref)}</span>` : ""}</td><td>${qu.answers}</td>
+      <td>${pct == null ? "-" : `<span class="${pct >= 70 ? "res-good" : pct >= 40 ? "res-part" : "res-bad"}">${pct} %</span>`}</td>
+      <td>${qu.avg_pct == null ? "-" : Number(qu.avg_pct) + " %"}</td><td class="res-dist">${dist}</td></tr>`;
+  }).join("");
+  // ---- students: one column per question (in the order of the quiz)
+  const cols = d.questions;
+  const sRows = d.students.map((s) => {
+    const byQ = {};
+    (s.answers || []).forEach((a) => { byQ[a.question_id] = a; });
+    const markCell = s.status === "answered"
+      ? `<strong>${s.mark == null ? "-" : Number(s.mark)}</strong>${s.override != null ? ` <span class="badge info" title="${esc((s.override_reason || "no reason") + " · " + (s.override_by || "") + " " + fmtWhen(s.override_at))}">corrected</span>` : ""}`
+      : `<span class="muted">${STATUS_TEXT[s.status] || esc(s.status)}</span>`;
+    return `<tr class="${s.status === "other group" ? "res-other" : ""}"><td><button class="linklike" data-profile="${s.id}">${esc(s.last_name)} ${esc(s.first_name)}</button>
+        <div class="muted">${esc(s.matricule)}${s.tp_group ? " · " + esc(s.tp_group) : ""}</div></td>` +
+      cols.map((qu) => { const a = byQ[qu.id]; return `<td class="${scoreClass(qu, a)}" title="${a ? "score " + Number(a.score) + " / " + Number(qu.points) : "no answer"}">${esc(answerText(qu, a))}</td>`; }).join("") +
+      `<td>${s.points == null ? "" : Number(s.points)}</td>
+       <td>${s.computed == null ? "" : Number(s.computed)}</td>
+       <td>${markCell}</td>
+       <td>${s.left_screen || ""}${s.locked ? ' <span class="badge no">locked</span>' : ""}</td>
+       <td>${s.submitted_at ? fmtWhen(s.submitted_at) : ""}${s.board != null ? `<div class="muted">board ${s.board}${s.board_used != null ? " → " + s.board_used : ""}</div>` : ""}</td>
+       <td style="white-space:nowrap">${edit && s.status !== "other group" ? `<button class="small secondary" data-rmark="${s.id}" title="Correct this mark">✏ Mark</button>` : ""}
+         ${edit && s.override != null ? `<button class="small secondary" data-rundo="${s.id}" title="Back to the computed mark">↺</button>` : ""}
+         ${edit && s.submitted_at && q.status !== "finished" ? `<button class="small secondary" data-rreopen="${s.id}">Let him change</button>` : ""}</td></tr>`;
+  }).join("");
+  $("resultsDetail").innerHTML = head +
+    (edit && q.ask_variant ? `<p><button class="small secondary" id="resBoardBtn">🔢 Board check</button></p>` : "") +
+    `<h3>Questions</h3><div class="table-scroll"><table><tr><th>#</th><th>Question</th><th>Answers</th><th>Full marks</th><th>Average score</th><th>Choices (✓ in green)</th></tr>${qRows}</table></div>
+    <h3 style="margin-top:14px">Students</h3>
+    <p class="muted">Cells: the letters chosen (or the number typed). Green = full marks, orange = part of the points, red = 0. Hover a cell for its score.
+      <em>Computed</em> = mark from the answers (penalty of a board correction included); <em>Mark</em> = the mark used everywhere.</p>
+    <div class="table-scroll"><table class="res-students"><tr><th>Student</th>${cols.map((qu) => `<th title="${esc(qu.text)}">Q${qu.n}</th>`).join("")}
+      <th>Points</th><th>Computed</th><th>Mark /${Number(q.total_points)}</th><th>Left</th><th>Handed in</th><th></th></tr>${sRows}</table></div>`;
+  const stOf = (id) => d.students.find((x) => x.id === id);
+  const reload = () => openResult(q.id);
+  $("resultsDetail").querySelectorAll("[data-rmark]").forEach((b) => b.onclick = () => {
+    const s = stOf(b.dataset.rmark);
+    editMark({ quizId: q.id, title: q.title, total: q.total_points, studentId: s.id, name: `${s.last_name} ${s.first_name}`,
+               mark: s.mark, computed: s.computed, corrected: s.override != null }, reload);
+  });
+  $("resultsDetail").querySelectorAll("[data-rundo]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Go back to the mark computed from the answers?")) return;
+    try { await rpc("t_set_mark", { p_quiz: q.id, p_student: b.dataset.rundo, p_mark: null, p_reason: null }); toast("Back to the computed mark.", "ok"); reload(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  $("resultsDetail").querySelectorAll("[data-rreopen]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_reopen_submission", { p_quiz: q.id, p_student: b.dataset.rreopen }); toast("The student can change his answers again.", "ok"); reload(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  if ($("resBoardBtn")) $("resBoardBtn").onclick = () => openBoardCheck(q.id);
+}
+
+// Excel file of one quiz: marks, answers, questions.
+$("resultsExport").onclick = () => {
+  const d = resultsData, q = d.quiz;
+  if (!d) return;
+  const qById = {};
+  d.questions.forEach((qu) => { qById[qu.id] = qu; });
+  const wb = XLSX.utils.book_new();
+  const marks = [["Matricule", "Last name", "First name", "TD group", "TP group", "Status", "Points", "Computed mark", `Mark /${Number(q.total_points)}`, "Corrected", "Reason", "Left the screen", "Handed in"]];
+  d.students.forEach((s) => marks.push([s.matricule, s.last_name, s.first_name, s.td_group || "", s.tp_group || "", s.status,
+    s.points == null ? "" : Number(s.points), s.computed == null ? "" : Number(s.computed),
+    s.status === "answered" ? (s.mark == null ? "" : Number(s.mark)) : (s.status === "absent" || s.status === "no answer" ? 0 : ""),
+    s.override != null ? "yes" : "", s.override_reason || "", s.left_screen || 0, s.submitted_at ? fmtWhen(s.submitted_at) : ""]));
+  const ans = [["Matricule", "Last name", "First name", "Question", "Ref", "Answer", "Score", "Out of"]];
+  d.students.forEach((s) => (s.answers || []).forEach((a) => {
+    const qu = qById[a.question_id] || {};
+    ans.push([s.matricule, s.last_name, s.first_name, qu.n || "", qu.ref || "", answerText(qu, a), Number(a.score), Number(qu.points || 0)]);
+  }));
+  const qs = [["#", "Ref", "Question", "Answers", "Full marks", "Full marks %", "Average score %", "Correct"]];
+  d.questions.forEach((qu) => qs.push([qu.n, qu.ref || "", qu.text, qu.answers, qu.full, qu.answers ? Math.round((100 * qu.full) / qu.answers) : "",
+    qu.avg_pct == null ? "" : Number(qu.avg_pct), qu.qtype === "choice" ? (qu.correct || []).map((i) => RES_LETTERS[i]).join(", ") : "number"]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(marks), "Marks");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ans), "Answers");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(qs), "Questions");
+  XLSX.writeFile(wb, `ClassPulse_${q.date}_${q.title}.xlsx`.replace(/[^\w.-]+/g, "_"));
+};

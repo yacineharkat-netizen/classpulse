@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="25">
+<html lang="en" data-version="26">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - document</title>
-<link rel="stylesheet" href="css/style.css?v=25">
+<link rel="stylesheet" href="css/style.css?v=26">
 </head>
 <body class="docview">
 <div class="docbar no-print">
@@ -22,7 +22,7 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=25"></script>
+<script src="js/common.js?v=26"></script>
 <script>
   // Protected document viewer. The page, the PDF and the attached file come from the database:
   // only a registered phone of a class where the document is visible receives them (or the teacher, in preview).
@@ -55,6 +55,13 @@
     const tile = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="170"><text x="12" y="120" transform="rotate(-24 12 120)"
       font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#0B2545" fill-opacity="0.11">${esc(mark)}</text></svg>`;
     return `<style>
+      /* v26: Safari (iPhone) sizes a frame to its content: nothing may be wider than the screen */
+      html, body { max-width: 100%; overflow-x: hidden; }
+      img, svg, video, canvas, figure, iframe { max-width: 100% !important; height: auto; }
+      figure { margin-left: 0; margin-right: 0; }
+      table { display: block; max-width: 100%; overflow-x: auto; }
+      pre, code { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+      .doc, main, article, section { max-width: 100%; box-sizing: border-box; }
       html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       body { position: relative; }
       .cp-mark { position: absolute; inset: 0; pointer-events: none; z-index: 9999; background-image: url("data:image/svg+xml,${encodeURIComponent(tile)}"); }

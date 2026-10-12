@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="25">
+<html lang="en" data-version="26">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=25">
+<link rel="stylesheet" href="css/style.css?v=26">
 </head>
 <body>
 
@@ -31,6 +31,7 @@
     <button data-tab="content">📂 Course content</button>
     <button data-tab="demos" class="teacher-only">🎬 Demos</button>
     <button data-tab="resources" class="teacher-only">📎 Resources</button>
+    <button data-tab="results">📊 Results</button>
     <button data-tab="export" class="teacher-only">⬇ Export results</button>
     <button data-tab="classes">＋ Classes</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
@@ -362,7 +363,14 @@
             <option value="none">nothing</option><option value="view">read only</option><option value="download">read and download</option></select></label>
           <label style="margin:0"><input type="checkbox" id="caPrepublish" style="width:auto"> they also see the documents <strong>not yet published</strong> to the students (to prepare the lab)</label>
         </div>
-        <p class="muted" style="margin-top:8px">Each line below can differ from the class setting (for example: answers hidden, code downloadable).</p>
+        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <label style="margin:0">Results of the lab quizzes (Results tab): <select id="caResults" style="width:auto">
+            <option value="none">nothing</option><option value="view">read only</option><option value="export">read and download</option></select></label>
+          <label style="margin:0">Student profiles (click on a name): <select id="caProfiles" style="width:auto">
+            <option value="none">nothing</option><option value="view">read only</option></select></label>
+        </div>
+        <p class="muted" style="margin-top:8px">Each line below can differ from the class setting (for example: answers hidden, code downloadable).
+          Each quiz can also differ (Results tab).</p>
       </div>
       <div class="card">
         <h2 id="contentTitle">Course content</h2>
@@ -520,6 +528,25 @@
     </section>
 
     <!-- ===================== EXPORT ===================== -->
+    <section id="tab-results" class="hidden">
+      <div class="card" id="resultsListCard">
+        <h2>Results of the quizzes</h2>
+        <p class="muted">Every finished quiz and test of the selected class. Open one to see the success rate of each question and the answers
+          and mark of each student. <span class="teacher-only">You can correct a mark (with a reason): the corrected mark replaces the computed one
+          in the profile, the averages and the Excel export. A quiz nobody answered is marked <strong>empty</strong>: it is left out of the marks.</span>
+          <span class="assistant-only">You see the lab quizzes the teacher shares with you.</span></p>
+        <input id="resultsSearch" placeholder="Search a quiz (title, session, date)" style="max-width:320px">
+        <div id="resultsList"></div>
+      </div>
+      <div class="card hidden" id="resultsDetailCard">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <h2 id="resultsTitle" style="margin:0"></h2>
+          <div><button id="resultsExport" class="small green">Download this quiz (Excel)</button> <button id="resultsBack" class="small secondary">◀ All the quizzes</button></div>
+        </div>
+        <div id="resultsDetail"></div>
+      </div>
+    </section>
+
     <section id="tab-export" class="hidden">
       <div class="card">
         <h2>Export results</h2>
@@ -595,9 +622,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=25"></script>
-<script src="js/excel.js?v=25"></script>
-<script src="js/teacher.js?v=25"></script>
+<script src="js/common.js?v=26"></script>
+<script src="js/excel.js?v=26"></script>
+<script src="js/teacher.js?v=26"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

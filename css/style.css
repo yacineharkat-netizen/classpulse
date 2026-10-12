@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "25";
+:root { --cp-version: "26";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -272,7 +272,7 @@ label.tick input[type=checkbox] { position: absolute; left: 0; top: 1px; width: 
 .docbar .back { color: var(--ice2); text-decoration: none; font-weight: 700; white-space: nowrap; }
 .docbar .t { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .docbar .actions { display: flex; gap: 6px; }
-#docFrame { display: block; width: 100%; border: 0; min-height: 70vh; background: #fff; }
+#docFrame { display: block; width: 1px; min-width: 100%; max-width: 100%; border: 0; min-height: 70vh; background: #fff; }  /* v26: width 1px + min-width: Safari keeps the frame inside the screen */
 .print-only { display: none; }
 @media print { .docview > *:not(.print-only) { display: none !important; } .print-only { display: block; padding: 40px; font-size: 18px; } }
 .doc-parts { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -376,3 +376,18 @@ img, svg, video, iframe { max-width: 100%; }
 .badge.new { background: #E8741E; color: #fff; }
 .session-docs p { margin: 6px 0; }
 .profile-groups { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ---------------------------------------------------------------- v26: results, automatic saving, handed-in test */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.res-students td, .res-students th { white-space: nowrap; }
+.res-good { background: #E3F4EA; color: #1F6B3A; font-weight: 600; }
+.res-part { background: #FFF3DC; color: #8A5A00; }
+.res-bad { background: #FBE4E4; color: #9B2222; }
+.res-neutral { background: #EEF2F7; }
+.res-other { opacity: .55; }
+.res-dist span { display: inline-block; padding: 1px 5px; border-radius: 6px; margin: 1px 2px; font-size: 13px; }
+.send-state { text-align: center; color: var(--muted); margin: 8px 0 0; }
+.send-state.ok { color: #2E7D4F; font-weight: 700; }
+.item-state { font-size: 13px; color: var(--muted); margin-top: 6px; text-align: end; }
+.submitted-banner { background: #E3F4EA; color: #1F6B3A; font-weight: 700; }
+.option.disabled { pointer-events: none; opacity: .75; }
