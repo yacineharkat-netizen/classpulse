@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="27">
+<html lang="en" data-version="28">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=27">
+<link rel="stylesheet" href="css/style.css?v=28">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -100,7 +100,7 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=27"></script>
+<script src="js/common.js?v=28"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -153,6 +153,8 @@
         if (t.phone) {
           phone = true;
           const s = await rpc("s_live_session", { p_device: t.token });
+          // v28: a quiz is running in this session: straight back into it (the student was disconnected)
+          if (s && s.quiz_running) { location.replace("student.html?s=" + encodeURIComponent(s.code)); return; }
           if (s) live.push(`<a href="student.html?s=${encodeURIComponent(s.code)}" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:10px">▶ Session in progress: ${esc(sp.class_name)} · ${esc(s.title)}</button></a>`);
         }
       } catch (e) {

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="27">
+<html lang="en" data-version="28">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - projector</title>
-<link rel="stylesheet" href="css/style.css?v=27">
+<link rel="stylesheet" href="css/style.css?v=28">
 </head>
 <body class="projector" id="screen">
   <div class="row" style="justify-content:space-between">
@@ -18,7 +18,7 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=27"></script>
+<script src="js/common.js?v=28"></script>
 <script>
   // Projector window: opened from the teacher console (same browser, already logged in).
   const sessionId = new URLSearchParams(location.search).get("session");
@@ -46,6 +46,15 @@
 
   async function refresh() {
     try { live = await rpc("t_live", { p_session: sessionId }); } catch (e) { $("content").innerHTML = `<h1>${esc(e.message)}</h1>`; return; }
+    afterLive();
+  }
+  // v28.1: the small preview inside the console does not ask the server: the console sends it what it already has.
+  if (mini) window.addEventListener("message", (e) => {
+    if (e.origin !== location.origin || !e.data || e.data.type !== "cp-live") return;
+    if (e.data.att) { att = e.data.att; render(true); }
+    if (e.data.live && e.data.live.session && e.data.live.session.id === sessionId) { live = e.data.live; afterLive(); }
+  });
+  async function afterLive() {
     if (live.quiz && live.quiz.phase === "question") localDeadline = Date.now() + live.quiz.remaining_ms;
     $("topLeft").textContent = live.session.title;
     followTeacher();
@@ -62,6 +71,7 @@
     try { att = await rpc("t_attendance_code", { p_session: sessionId }); } catch (e) { att = null; }
     render(true);
     if (overlayMode === "join") showJoin();      // keep the big QR code in step with the rotating attendance code
+    if (mini) return;                             // v28.1: the console sends the new codes to its preview
     // Next refresh right after the code changes on the server.
     setTimeout(refreshAttendanceCode, att ? Math.min(20000, Math.max(500, att.next_change_ms + 300)) : 5000);   // at most 20 s: the teacher may change the setting
   }
@@ -274,7 +284,7 @@
     if (!data.session) { $("content").innerHTML = "<h1>Open this window from the teacher console.</h1>"; return; }
     await refresh();
     refreshAttendanceCode();
-    setInterval(refresh, mini ? 2000 : 1000);
+    if (!mini) poller(refresh, 1000);             // v28.1: never two calls at the same time; slower on a slow network
     setInterval(updateTimer, 250);
   })();
 </script>

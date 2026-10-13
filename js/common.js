@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "27"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "28"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -7,6 +7,13 @@ const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
 
 // Error codes raised by the database functions -> message shown to the user.
 const ERROR_MESSAGES = {
+  CONFIRM_TITLE: "Type the exact name to confirm the deletion.",
+  SAME_QUESTION_TWICE: "The same question is twice in the quiz.",
+  SESSION_ENDED: "This session is ended: reopen it first.",
+  NOT_YOURS: "Only the person who created it can change it.",
+  UNKNOWN_GROUP: "No student of this class is in this group.",
+  BAD_KEY: "A locked part has a wrong name (letters, digits, - and _ only).",
+  BAD_POINTS: "Points: at least 0.25.",
   SESSION_NOT_FOUND: "Unknown session code. Check the code on the screen.",
   UNKNOWN_DEVICE: "This phone is not registered for this class.",
   ALREADY_REGISTERED: "This student number is already linked to another device. Use \"Sign in\": you can then ask the teacher to allow this device.",
@@ -71,14 +78,72 @@ function errorText(err) {
 }
 
 // Call a database function. Returns the data, or throws an Error with a readable message.
+// v28.1: every call is timed (window.CP_NET), so that a slow network can be told from a slow server.
+const CP_NET = window.CP_NET = { calls: [], inFlight: 0, maxInFlight: 0 };
 async function rpc(fn, args) {
-  const { data, error } = await db.rpc(fn, args || {});
+  const t0 = performance.now();
+  CP_NET.inFlight++; CP_NET.maxInFlight = Math.max(CP_NET.maxInFlight, CP_NET.inFlight);
+  let result;
+  try { result = await db.rpc(fn, args || {}); }
+  finally {
+    CP_NET.inFlight--;
+    CP_NET.calls.push({ fn, ms: Math.round(performance.now() - t0), at: Date.now() });
+    if (CP_NET.calls.length > 300) CP_NET.calls.splice(0, 100);
+  }
+  const { data, error } = result;
   if (error) {
     const e = new Error(errorText(error));
     e.code = (error.message || "").split(":")[0].trim();
     throw e;
   }
   return data;
+}
+// Summary of the last calls: median and slowest time, per function.
+function netSummary(lastMs) {
+  const since = Date.now() - (lastMs || 120000);
+  const list = CP_NET.calls.filter((c) => c.at >= since);
+  const med = (a) => { if (!a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+  const per = {};
+  list.forEach((c) => (per[c.fn] = per[c.fn] || []).push(c.ms));
+  return { count: list.length, median: med(list.map((c) => c.ms)), max: list.reduce((m, c) => Math.max(m, c.ms), 0),
+    inFlight: CP_NET.inFlight, maxInFlight: CP_NET.maxInFlight,
+    perFunction: Object.entries(per).map(([fn, a]) => ({ fn, n: a.length, median: med(a), max: Math.max(...a) })).sort((a, b) => b.median * b.n - a.median * a.n) };
+}
+
+// v28.1: a repeated refresh that never piles up. The next call starts only when the previous one is over;
+// it waits longer when the network is slow (at least twice the last duration), and pauses while the page is hidden
+// or while when() says no. run() refreshes now: if a call is already running, one more call follows it (never two
+// at the same time) and run() resolves when that fresh call is over.
+function poller(fn, everyMs, when) {
+  const p = { busy: false, timer: null, stopped: false, next: null };
+  const schedule = (lastMs) => {
+    clearTimeout(p.timer);
+    if (!p.stopped) p.timer = setTimeout(tick, Math.max(everyMs, 2 * (lastMs || 0)));
+  };
+  async function tick() {
+    if (document.visibilityState === "hidden" || (when && !when())) { schedule(0); return; }
+    await p.run();
+  }
+  async function exec() {
+    p.busy = true;
+    clearTimeout(p.timer);
+    const t0 = performance.now();
+    try { await fn(); } catch (e) { /* the next round tries again */ }
+    p.busy = false;
+    if (p.next) { const n = p.next; p.next = null; await exec(); n.resolve(); return; }
+    schedule(performance.now() - t0);
+  }
+  p.run = () => {
+    if (!p.busy) return exec();
+    if (!p.next) { let resolve; const promise = new Promise((r) => (resolve = r)); p.next = { promise, resolve }; }
+    return p.next.promise;
+  };
+  p.stop = () => { p.stopped = true; clearTimeout(p.timer); };
+  p.start = () => { p.stopped = false; schedule(0); return p; };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !p.stopped && !p.busy && (!when || when())) p.run();
+  });
+  return p.start();
 }
 
 function $(id) { return document.getElementById(id); }

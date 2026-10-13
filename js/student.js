@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "27"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "28"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -270,12 +270,39 @@ async function fetchState() {
   }
   const q = state.quiz;
   if (q && q.phase === "question") localDeadline = Date.now() + q.remaining_ms;
-  // After a leave, if the report could not be sent, send it now.
+  // After a leave, if the report could not be confirmed, send it again. v28: with the time of the leave, so that the
+  // server ignores it when the first report did arrive (or the teacher unlocked the student since): no second lock.
   const pending = sessionStorage.getItem("cp_pending_leave");
-  if (pending && q && q.quiz_id === pending && !q.locked) reportLeave("late_report");
   sessionStorage.removeItem("cp_pending_leave");
+  if (pending && q && !q.locked) {
+    const [pQuiz, pAt] = pending.split("@");
+    if (q.quiz_id === pQuiz) sendLeave(pQuiz, "late_report@" + (pAt || Date.now()));
+  }
   if (!q || q.phase === "finished" || q.quiz_id !== armedQuiz) disarm(q);
+  // v28: a student who already read the rules of this quiz (back after a lock, a reload, a new sign-in)
+  // goes straight to where the class is now. What was asked while he was away is missed.
+  if (q && q.ready && !q.locked && armedQuiz !== q.quiz_id && ["lobby", "question", "reveal", "self"].includes(q.phase)) {
+    armedQuiz = q.quiz_id;
+    autoArmed = true;
+    keepScreenOn();
+  }
   render();
+  updateFullscreenBar();
+}
+
+// v28: after an automatic return to the quiz the browser does not allow full screen without a tap: offer it.
+let autoArmed = false;
+function updateFullscreenBar() {
+  let bar = document.getElementById("fsBar");
+  const want = autoArmed && guardActive() && !document.fullscreenElement && document.documentElement.requestFullscreen;
+  if (!want) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("button");
+    bar.id = "fsBar"; bar.className = "fs-bar";
+    bar.textContent = "⛶ Back to full screen";
+    bar.onclick = async () => { try { await document.documentElement.requestFullscreen({ navigationUI: "hide" }); } catch (e) { /* refused */ } updateFullscreenBar(); };
+    document.body.appendChild(bar);
+  }
 }
 
 function render() {
@@ -557,7 +584,8 @@ function renderLiveNumber(live, who, head, q, key, reveal) {
       (q.expected ? `<div class="muted">Accepted: ${esc(withUnit(q.expected, q.unit || ""))}</div>` : "");
   } else {
     html += `<div class="row" style="gap:8px;align-items:center"><input id="liveNum" inputmode="decimal" autocomplete="off" value="${esc(liveNumDraft)}" style="font-size:22px;max-width:200px">
-      <span style="font-size:18px">${esc(q.unit || "")}</span></div><p class="muted">Use a dot or a comma (2.5 or 2,5).</p>`;
+      <button type="button" class="sign-btn small secondary" title="Change the sign (the phone keyboard may have no minus key)">±</button>
+      <span style="font-size:18px">${esc(q.unit || "")}</span></div><p class="muted">Use a dot or a comma (2.5 or 2,5). ± changes the sign.</p>`;
   }
   html += watermark() + `</div>`;
   if (reveal && q.reveal_mode === "each") {
@@ -644,6 +672,7 @@ function renderSelfPaced(live, who, head, q) {
     if (it.qtype === "number") {
       const val = drafts[k] !== undefined ? drafts[k] : (it.my_number == null ? "" : String(Number(it.my_number)));
       html += `<div class="row" style="gap:8px;align-items:center"><input class="numAnswer" data-index="${it.index}" inputmode="decimal" value="${esc(val)}" style="font-size:20px;max-width:180px" ${handed ? "disabled" : ""}>
+        ${handed ? "" : `<button type="button" class="sign-btn small secondary" title="Change the sign">±</button>`}
         <span style="font-size:18px">${esc(it.unit || "")}</span></div>`;
     } else {
       const sel = drafts[k] !== undefined ? drafts[k] : (it.my_answer || []);
@@ -763,6 +792,7 @@ function watermark() {
 // ------------------------------------------------------------------ anti-leave guard
 async function enterQuiz() {
   armedQuiz = state.quiz.quiz_id;
+  autoArmed = false;
   rpc("s_quiz_ready", { p_device: deviceToken, p_code: sessionCode, p_quiz: armedQuiz }).catch(() => {});
   const el = document.documentElement;
   // Full screen exists on Android/desktop browsers, not on iPhone: we still guard with visibility.
@@ -781,6 +811,7 @@ async function keepScreenOn() {
 function disarm(q) {
   if (armedQuiz && (!q || q.phase === "finished" || q.quiz_id !== armedQuiz)) {
     armedQuiz = null;
+    autoArmed = false;
     selectionKey = ""; selection = [];   // a reset quiz keeps its id: start again with nothing ticked
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
@@ -792,18 +823,23 @@ function guardActive() {
     (state.quiz.phase === "question" || state.quiz.phase === "reveal" || state.quiz.phase === "self") && !state.quiz.locked;
 }
 
-function reportLeave(kind) {
-  const quizId = state.quiz.quiz_id;
-  sessionStorage.setItem("cp_pending_leave", quizId);
+function sendLeave(quizId, kind) {
   // keepalive: the request is still sent while the browser puts the page in background.
-  fetch(CONFIG.supabaseUrl + "/rest/v1/rpc/s_report_leave", {
+  return fetch(CONFIG.supabaseUrl + "/rest/v1/rpc/s_report_leave", {
     method: "POST", keepalive: true,
     headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseAnonKey, Authorization: "Bearer " + CONFIG.supabaseAnonKey },
     body: JSON.stringify({ p_device: deviceToken, p_code: sessionCode, p_quiz: quizId, p_kind: kind }),
   }).then((r) => { if (r.ok) sessionStorage.removeItem("cp_pending_leave"); }).catch(() => {});
+}
+function reportLeave(kind) {
+  const quizId = state.quiz.quiz_id;
+  sessionStorage.setItem("cp_pending_leave", quizId + "@" + Date.now());
+  sendLeave(quizId, kind);
   state.quiz.locked = true;
+  autoArmed = false;
   lastRendered = "";
   render();
+  updateFullscreenBar();
 }
 
 document.addEventListener("visibilitychange", () => {
@@ -815,7 +851,22 @@ function onPrintScreen(e) { if (e.key === "PrintScreen" && guardActive()) report
 document.addEventListener("keyup", onPrintScreen);
 document.addEventListener("keydown", onPrintScreen);
 document.addEventListener("fullscreenchange", () => {
-  if (!document.fullscreenElement && guardActive()) reportLeave("exit_fullscreen");
+  if (!document.fullscreenElement && guardActive() && !autoArmed) reportLeave("exit_fullscreen");
+  if (document.fullscreenElement) autoArmed = false;
+  updateFullscreenBar();
+});
+
+// v28: the minus sign. On an iPhone the decimal keyboard has no minus key: the ± button changes the sign of the field next to it.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest && e.target.closest(".sign-btn");
+  if (!b) return;
+  const inp = b.parentElement.querySelector("input");
+  if (!inp || inp.disabled) return;
+  const v = inp.value.trim();
+  inp.value = v.startsWith("-") ? v.slice(1) : "-" + v;
+  inp.dispatchEvent(new Event("input", { bubbles: true }));
+  inp.dispatchEvent(new Event("change", { bubbles: true }));
+  inp.focus();
 });
 
 start();

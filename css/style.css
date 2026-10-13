@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "27";
+:root { --cp-version: "28";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -406,3 +406,42 @@ img, svg, video, iframe { max-width: 100%; }
 .offer { border: 1px solid var(--ice2); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
 .offer h4 { margin: 0 0 4px; }
 .course-teacher { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* v28: offered after an automatic return to a quiz (full screen needs a tap) */
+.fs-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 50; width: auto;
+  background: #1F3A5F; color: #fff; border: none; border-radius: 22px; padding: 10px 18px; font-size: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+
+/* v28: question browser (bank and quiz editor) */
+.qb { display: grid; grid-template-columns: 230px 1fr; gap: 12px; align-items: start; margin-top: 8px; }
+.qb-tree { max-height: 70vh; overflow: auto; border-right: 1px solid #DDE5EE; padding-right: 6px; position: sticky; top: 8px; }
+.qb-node { display: block; width: 100%; text-align: left; background: none; color: #1F3A5F; border: none; padding: 4px 6px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.qb-node:hover { background: #EEF3F8; }
+.qb-node.active { background: #1F3A5F; color: #fff; }
+.qb-node.active .muted { color: #CFE0F2; }
+.qb-mod { display: flex; flex-wrap: wrap; align-items: center; }
+.qb-mod > .qb-node { flex: 1; width: auto; }
+.qb-toggle { background: none; border: none; color: #5B6F86; width: 22px; padding: 0; cursor: pointer; }
+.qb-chs { flex-basis: 100%; padding-left: 22px; }
+.qb-table td { vertical-align: top; }
+.qb-opts { font-size: 12px; }
+.qb-ok { color: #1E7B45; font-weight: 600; }
+.qb-in td { background: #F1F7EF; }
+.qb-bulk { background: #F5F8FB; padding: 6px; border-radius: 8px; margin: 8px 0; }
+.qb-bulk input { padding: 4px 6px; }
+@media (max-width: 760px) { .qb { grid-template-columns: 1fr; } .qb-tree { position: static; max-height: 30vh; border-right: none; } }
+.tpl-folder { margin: 14px 0 4px; }
+.tpl-runs summary { cursor: pointer; font-size: 12px; }
+.tpl-runs div { font-size: 12px; color: #5B6F86; }
+.tpl-picked td { vertical-align: top; }
+.ct-name { font-family: monospace; background: #F5F8FB; padding: 1px 4px; border-radius: 4px; user-select: all; }
+
+/* v28: the attendance list scrolls inside its own zone: the top of the live page stays in view */
+.att-scroll { max-height: 55vh; overflow: auto; border: 1px solid #DDE5EE; border-radius: 8px; }
+.att-scroll table th { position: sticky; top: 0; background: #F5F8FB; z-index: 1; }
+
+/* v28.1: answer time of the server, at the bottom of the menu */
+.net-info { margin-top: 8px; background: transparent; border: 1px solid #2B4A70; color: #8FA9C8; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 8px; }
+.net-info.ok { color: #7FD6A0; border-color: #2E7D4F; }
+.net-info.slow { color: #F2B36B; border-color: #E8741E; }
+.net-info.bad { color: #FF8A80; border-color: #B83227; }
+button.pending { opacity: .55; }
