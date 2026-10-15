@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="28">
+<html lang="en" data-version="30">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="stylesheet" href="css/style.css?v=30">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -100,7 +100,7 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=28"></script>
+<script src="js/common.js?v=30"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -131,7 +131,7 @@
     const tokens = accountTokens();
     if (!tokens.length) { view("viewSignIn"); return; }
     view("homeIn");
-    const rows = [], live = [], courses = [];
+    const rows = [], live = [], courses = [], anns = new Map();
     let name = "", phone = false, others = [], mail = "", anyToken = null;
     for (const t of tokens) {
       try {
@@ -147,6 +147,7 @@
         const devLine = sp.linked ? `class device: this ${deviceKind()}${since ? ", linked on " + since : ""}`
           : sp.has_device ? `class device: your ${esc(sp.device_kind || "other device")}${since ? ", linked on " + since : ""}` : "";
         const tl = sp.teacher || {};
+        (sp.announcements || []).forEach((a) => { if (!anns.has(a.id)) anns.set(a.id, Object.assign({ who: tl.name }, a)); });   // v30
         courses.push({ token: t.token, class_id: sp.class_id, class_name: sp.class_name, teacher: tl, unread: Number(sp.unread || 0) });
         rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${devLine ? " · " + devLine : ""}</span>
           ${tl.name ? `<div class="course-teacher">👤 ${esc(tl.name)}${tl.affiliation ? " · " + esc(tl.affiliation) : ""}</div>` : ""}</div>`);
@@ -175,7 +176,7 @@
     if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } }
     $("hello").textContent = name ? "Hello, " + name : "My courses";
     $("courseList").innerHTML = rows.join("");
-    $("liveBox").innerHTML = live.join("");
+    $("liveBox").innerHTML = [...anns.values()].map((a) => `<div class="ann-banner">📌 ${esc(a.body)}<div class="muted" style="font-size:12px">${esc(a.who || "")}</div></div>`).join("") + live.join("");
     // v25: a student registered before the e-mails gives it once, for all his courses
     $("mailBox").classList.toggle("hidden", !!mail || !anyToken);
     $("mailBtn").onclick = async () => {
@@ -201,7 +202,7 @@
   }
 
   // ------------------------------------------------------------ v27: messages
-  let stuReplyTo = null;
+  let stuReplyTo = null, stuProposal = null;   // v30: the proposal the message is about
   function setViewUrl(v) { history.replaceState(null, "", "index.html" + (v ? "?view=" + v : "")); }
   function msgWhen(t) { return new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); }
   function fillCourseSelect(classId) {
@@ -213,7 +214,7 @@
     view("viewMessages"); setViewUrl("messages");
     fillCourseSelect(prefill && prefill.class_id);
     if (prefill) {
-      $("stuMsgSubject").value = prefill.subject || ""; stuReplyTo = null;
+      $("stuMsgSubject").value = prefill.subject || ""; stuReplyTo = null; stuProposal = prefill.proposal || null;
       $("stuReplyNote").textContent = prefill.note || ""; $("stuReplyNote").classList.toggle("hidden", !prefill.note);
       $("stuMsgBody").focus();
     }
@@ -230,13 +231,22 @@
         ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}
         <div class="msg-body">${esc(m.body).replace(/\n/g, "<br>")}</div>
         ${m.doc ? `<div style="margin-top:4px">📄 <a href="doc.html?d=${m.doc.id}&c=${m.class_id}">${esc(m.doc.title || "document")}</a></div>` : ""}
-        ${m.mine ? "" : `<div class="msg-actions"><button class="small secondary" data-sreply="${m.id}">Reply to the teacher</button></div>`}
+        ${m.mine ? "" : `<div class="msg-actions"><button class="small secondary" data-sreply="${m.id}">Reply to the teacher</button>
+          <button class="small secondary" data-sflag="archive" data-id="${m.id}" title="Hide it from this list">🗄 Archive</button>
+          <button class="small red" data-sflag="delete" data-id="${m.id}">Delete</button></div>`}
       </div>`).join("") : "No message yet.";
+    // v29: archive / delete a message (for this student only)
+    $("stuMsgList").querySelectorAll("[data-sflag]").forEach((b) => b.onclick = async () => {
+      const m = all.find((x) => x.id === Number(b.dataset.id));
+      if (b.dataset.sflag === "delete" && !confirm("Delete this message?")) return;
+      try { await rpc("s_msg_flag", { p_device: m.course.token, p_id: m.id, p_action: b.dataset.sflag }); b.closest(".msg-item").remove(); }
+      catch (e) { toast(e.message, "error"); }
+    });
     $("stuMsgList").querySelectorAll("[data-sreply]").forEach((b) => b.onclick = () => {
       const m = all.find((x) => x.id === Number(b.dataset.sreply));
       $("stuMsgCourse").value = m.class_id;
       $("stuMsgSubject").value = /^re:/i.test(m.subject || "") ? m.subject : ("Re: " + (m.subject || "your message")).slice(0, 200);
-      stuReplyTo = m.id;
+      stuReplyTo = m.id; stuProposal = null;
       $("stuReplyNote").textContent = "Answer to the message of " + msgWhen(m.at) + "."; $("stuReplyNote").classList.remove("hidden");
       $("stuCompose").scrollIntoView({ behavior: "smooth" }); $("stuMsgBody").focus();
     });
@@ -251,7 +261,9 @@
     if (!$("stuMsgBody").value.trim()) { toast("Write your message first.", "error"); $("stuMsgBody").focus(); return; }
     $("stuMsgSend").disabled = true;
     try {
-      await rpc("s_message_send", { p_device: c.token, p_subject: $("stuMsgSubject").value, p_body: $("stuMsgBody").value, p_reply_to: stuReplyTo });
+      if (stuProposal) await rpc("s_interest", { p_device: c.token, p_proposal: stuProposal, p_body: $("stuMsgBody").value });
+      else await rpc("s_message_send", { p_device: c.token, p_subject: $("stuMsgSubject").value, p_body: $("stuMsgBody").value, p_reply_to: stuReplyTo });
+      stuProposal = null;
       toast("Message sent to the teacher.", "ok");
       $("stuMsgSubject").value = ""; $("stuMsgBody").value = ""; stuReplyTo = null; $("stuReplyNote").classList.add("hidden");
       await showMessages();
@@ -277,17 +289,23 @@
     const offers = [];
     const cards = [...byTeacher.values()].map(({ ts, courses }, ti) => {
       const p = ts.content || {}, tl = ts.teacher || {};
-      const hours = (p.hours || []).map(triText).filter(Boolean);
-      const blocks = (p.offers || []).map((b) => {
-        const items = (b.items || []).map((it) => {
-          offers.push({ class_id: courses[0].course.class_id, title: triText(it.t), teacher: tl.name });
-          return `<div class="offer"><h4>${esc(triText(it.t))}</h4>${it.level ? `<div class="muted">${esc(triText(it.level))}</div>` : ""}
-            ${triText(it.d) ? `<p style="margin:6px 0">${esc(triText(it.d))}</p>` : ""}
-            <button class="small" data-interest="${offers.length - 1}">I'm interested</button></div>`;
-        }).join("");
-        return `<h3 style="margin-top:14px">${esc(triText(b.title) || (b.kind === "miniproject" ? "Mini-projects" : "Proposals"))}</h3>` +
-          (items || `<p class="muted">Nothing at the moment.</p>`);
+      // v30: office hours of the next two weeks, announcements and proposals come from the teacher's "My space"
+      const KIND = { pfe: "Final-year project", master: "Master thesis", licence: "Licence project", mini: "Mini-project", other: "Other" };
+      const day = (d) => new Date(d + "T12:00:00").toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short" });
+      const office = (ts.office || []).map((o) => `<div class="office-day ${o.cancelled ? "cancelled" : ""}"><span class="d">${esc(day(o.date))}</span>
+          <span class="t">${esc(o.start)}–${esc(o.end)}${o.place ? " · " + esc(o.place) : ""}</span>
+          ${o.cancelled ? `<span class="badge no">cancelled</span> <span class="muted">${esc(o.reason || "")}</span>` : o.extra ? `<span class="badge open">extra</span>` : ""}</div>`).join("");
+      const anns = (ts.announcements || []).map((a) => `<div class="ann-banner">📌 ${esc(a.body)}</div>`).join("");
+      const mine = new Set(ts.interested || []);
+      const props = (ts.proposals || []).map((x) => {
+        offers.push({ class_id: courses[0].course.class_id, title: x.title, proposal: x.id, token: courses[0].course.token });
+        return `<div class="offer"><h4>${esc(x.title)}</h4><div class="muted">${esc(KIND[x.kind] || x.kind)}${x.level ? " · " + esc(x.level) : ""} · ${x.places} place(s)</div>
+          ${x.description ? `<p style="margin:6px 0;white-space:pre-line">${esc(x.description)}</p>` : ""}${x.keywords ? `<div class="muted">${esc(x.keywords)}</div>` : ""}
+          ${mine.has(x.id) ? `<span class="badge ok">you said you are interested</span> ` : ""}<button class="small" data-interest="${offers.length - 1}">I'm interested</button></div>`;
       }).join("");
+      const blocks = (anns ? `<div style="margin-top:10px">${anns}</div>` : "") +
+        `<h3 style="margin-top:14px">🕘 Office hours (next two weeks)</h3>` + (office || `<p class="muted">None announced.</p>`) +
+        `<h3 style="margin-top:14px">🎓 Proposals and mini-projects</h3>` + (props || `<p class="muted">Nothing at the moment.</p>`);
       return `<div class="teacher-card"${ti ? ' style="margin-top:14px"' : ""}>
         <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
           ${p.photo ? `<img src="${esc(abs(triText(p.photo)))}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover" onerror="this.remove()">` : ""}
@@ -298,7 +316,6 @@
         <p style="margin:10px 0 4px"><strong>Your courses:</strong> ${courses.map((x) => esc(x.course.class_name)).join(", ")}</p>
         ${p.email ? `<p style="margin:4px 0">✉ <a href="mailto:${esc(triText(p.email))}">${esc(triText(p.email))}</a></p>` : ""}
         ${p.office ? `<p style="margin:4px 0">⌂ ${esc(triText(p.office))}</p>` : ""}
-        ${hours.length ? `<p style="margin:4px 0">🕘 Office hours: ${hours.map(esc).join(" · ")}</p>` : ""}
         <div class="row" style="margin-top:8px">
           <button class="small" data-write="${courses[0].course.class_id}">✉ Write to the teacher</button>
           ${ts.slug ? `<a href="${esc(page)}" target="_blank" rel="noopener"><button class="small secondary">🌐 Personal page</button></a>` : ""}
@@ -309,7 +326,7 @@
     $("teacherList").querySelectorAll("[data-write]").forEach((b) => b.onclick = () => showMessages({ class_id: b.dataset.write }));
     $("teacherList").querySelectorAll("[data-interest]").forEach((b) => b.onclick = () => {
       const o = offers[Number(b.dataset.interest)];
-      showMessages({ class_id: o.class_id, subject: ("Interested: " + o.title).slice(0, 200),
+      showMessages({ class_id: o.class_id, subject: ("Interested: " + o.title).slice(0, 200), proposal: o.proposal,
         note: "Say who you are (group, speciality), why this subject interests you, and when you are available." });
     });
   }

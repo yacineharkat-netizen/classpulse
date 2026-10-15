@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "28"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "30"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -210,7 +210,13 @@ function showCheckinResult(result) {
 function pollLoop() {
   // Always poll every few seconds: the live channel (instant update) is not reliable on every network,
   // and a phone that misses "show the rules" would only see the quiz once the timer is already running.
-  const delay = Math.min(CONFIG.studentPollMs || 4000, 3000);
+  // v29: every 3 s during a quiz; every 10 s otherwise (the live channel already brings changes at once). Saves the
+  // monthly traffic of the free database plan.
+  const q = state && state.quiz;
+  const inQuiz = q && ["lobby", "question", "reveal", "self"].includes(q.phase);
+  // Only when the live channel is connected: it brings every change at once, polling is just a safety net.
+  const live = channel && channel.connected;
+  const delay = inQuiz || !live ? 3000 : (document.visibilityState === "hidden" ? 20000 : 10000);
   setTimeout(async () => { await fetchState(); pollLoop(); }, delay);
 }
 

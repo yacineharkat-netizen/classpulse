@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "28";
+:root { --cp-version: "30";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -439,6 +439,36 @@ img, svg, video, iframe { max-width: 100%; }
 .att-scroll { max-height: 55vh; overflow: auto; border: 1px solid #DDE5EE; border-radius: 8px; }
 .att-scroll table th { position: sticky; top: 0; background: #F5F8FB; z-index: 1; }
 
+/* v30: My space */
+.prop-row { border: 1px solid var(--ice2); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.prop-row.closed { opacity: .6; }
+.office-day { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--ice2); }
+.office-day .d { min-width: 120px; font-weight: 600; }
+.office-day.cancelled .t { text-decoration: line-through; color: var(--muted); }
+.ann-banner { background: #FFF6E5; border: 1px solid #F2C27A; border-left: 5px solid var(--orange); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+/* v29: permissions of an assistant (an element with data-perm is shown only to who has that permission) */
+.assistant [data-perm]:not(.perm-on) { display: none !important; }
+.asst-card { border: 1px solid var(--ice2); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.asst-card .perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 14px; margin-top: 6px; }
+.asst-card .perms label { margin: 0; color: var(--ink); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.asst-card .perms input { width: auto; }
+.asst-card h4 { margin: 8px 0 2px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+/* v29: mailbox */
+.mail-tools { justify-content: space-between; }
+.mail-boxes { display: flex; gap: 6px; flex-wrap: wrap; }
+.mail-list { margin-top: 10px; border-top: 1px solid var(--ice2); }
+.mail-row { display: grid; grid-template-columns: 24px minmax(120px, 200px) 1fr auto; gap: 10px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--ice2); cursor: pointer; }
+.mail-row:hover { background: #F3F7FB; }
+.mail-row.unread { font-weight: 700; background: #F3FAFB; }
+.mail-row .who, .mail-row .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-row .what .snip { color: var(--muted); font-weight: normal; }
+.mail-row .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.mail-row .star { background: none; border: 0; padding: 0; font-size: 16px; color: #C9A227; }
+.mail-open { padding: 10px 12px; border-bottom: 1px solid var(--ice2); background: #fff; }
+.mail-open .msg-actions { flex-wrap: wrap; }
+@media (max-width: 700px) { .mail-row { grid-template-columns: 24px 1fr auto; } .mail-row .what { grid-column: 2 / 4; } }
+.stu-check { width: auto !important; }
+.bulk-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 8px; background: #F3F7FB; border-radius: 8px; margin: 6px 0; }
 /* v28.2: phones without contact (teacher, Live) */
 .silent-alert { background: #FFF6E5; border: 1px solid #F2C27A; border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
 .silent-alert .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -456,3 +486,4 @@ img, svg, video, iframe { max-width: 100%; }
 button.pending { opacity: .55; }
 /* v28.3: confirmation inside the page (no browser dialog during a quiz) */
 .ask-box { border: 2px solid var(--orange); background: #FFF7EC; }
+@media (max-width: 600px) { .office-day { flex-wrap: wrap; gap: 4px 10px; } .office-day .d { min-width: 0; width: 100%; } .office-day .badge { padding: 1px 8px; font-size: 12px; } }

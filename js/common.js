@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "28"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "30"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -60,10 +60,16 @@ const ERROR_MESSAGES = {
   QUIZ_NOT_FINISHED: "This quiz is not finished: its results do not exist yet.",
   ANOTHER_QUIZ_RUNNING: "Another quiz is running in this session: finish it before showing these results.",
   TEACHER_ONLY: "Only the teacher of the class can do this (lab assistants cannot).",
-  ASSISTANT_TP_ONLY: "A lab assistant can only work on lab (TP) sessions and lab tests.",
+  ASSISTANT_TP_ONLY: "Your assistant role does not cover this type of session or quiz.",
   NO_SUCH_ACCOUNT: "No ClassPulse account with this e-mail. Create it first in Supabase (Authentication > Users > Add user).",
   BAD_QUESTIONS: "Select at least one question.",
   NAME_DOES_NOT_MATCH: "The name typed is not the name of the class: nothing was deleted.",
+  NOT_ALLOWED: "Your assistant role does not include this. Ask the teacher of the class.",
+  ACCOUNT_NOT_ALLOWED: "This account has no class yet. An assistant types his invitation code (login page, or Classes tab).",
+  NOT_A_TEACHER: "Only a teacher account creates classes. Assistants join a class with an invitation code.",
+  BAD_INVITE: "This invitation code is not valid (wrong, already used, or expired). Ask the teacher for a new one.",
+  BAD_ROLE: "Unknown role.",
+  BAD_PERMISSION: "Unknown permission.",
   NO_MAKEUP: "No make-up for you in this quiz.",
   MAKEUP_EXPIRED: "The time for this make-up is over. See the teacher.",
   CLASS_DEVICE_ONLY: "A make-up is taken on your class device (the phone or computer you use in class).",

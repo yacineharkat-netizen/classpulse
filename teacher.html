@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="28">
+<html lang="en" data-version="30">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="stylesheet" href="css/style.css?v=30">
 </head>
 <body>
 
@@ -16,6 +16,17 @@
     <label for="password">Password</label><input id="password" type="password" autocomplete="current-password">
     <button id="loginBtn" style="margin-top:14px;width:100%">Log in</button>
   </div>
+  <!-- v29: an assistant invited by a teacher creates his account himself -->
+  <details class="card" id="inviteCard">
+    <summary><strong>I am an assistant and I have an invitation code</strong></summary>
+    <p class="muted">The teacher gave you a code (8 characters). Type your e-mail, choose a password (8 characters or more) and type the code.
+      If you already have a ClassPulse account, use its password: the class is added to it.</p>
+    <label for="invEmail">E-mail</label><input id="invEmail" type="email" autocomplete="username">
+    <label for="invPassword">Password</label><input id="invPassword" type="password" autocomplete="new-password">
+    <label for="invCode">Invitation code</label><input id="invCode" autocomplete="off" style="text-transform:uppercase">
+    <button id="invBtn" class="green" style="margin-top:14px;width:100%">Create my account and join the class</button>
+    <p id="invNote" class="muted hidden" style="margin-top:10px"></p>
+  </details>
 </div>
 
 <div id="appView" class="teacher hidden">
@@ -29,12 +40,13 @@
     <button data-tab="messages">✉ Messages <span id="msgBadge" class="badge no hidden"></span></button>
     <button data-tab="questions" class="teacher-only">❓ Questions</button>
     <button data-tab="quizzes">📝 Quizzes</button>
-    <button data-tab="space" class="teacher-only">📚 Student space</button>
+    <button data-tab="space" data-perm="docs_publish">📚 Student space</button>
     <button data-tab="content">📂 Course content</button>
     <button data-tab="demos" class="teacher-only">🎬 Demos</button>
     <button data-tab="resources" class="teacher-only">📎 Resources</button>
     <button data-tab="results">📊 Results</button>
-    <button data-tab="export" class="teacher-only">⬇ Export results</button>
+    <button data-tab="export" data-perm="export_all">⬇ Export results</button>
+    <button data-tab="myspace" class="teacher-only hidden" id="mySpaceTab">🌐 My space</button>
     <button data-tab="classes">＋ Classes</button>
     <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">🌐 My public page</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
@@ -46,7 +58,7 @@
     <div id="classBanner" class="class-banner">
       <span class="dot"></span><span>Class: <a href="#" id="bannerName" title="Open the classes tab">-</a></span>
       <span id="bannerNote" class="note"></span>
-      <span id="rolePill" class="badge info assistant-only">Lab assistant: lab (TP) sessions only</span>
+      <span id="rolePill" class="badge info assistant-only">Assistant</span>
       <span id="nowPill" class="now-pill hidden"></span>
     </div>
     <!-- ===================== LIVE ===================== -->
@@ -166,7 +178,7 @@
             <button id="quizRenameBtn" class="small secondary">✏ Rename</button>
             <button id="quizAgainBtn" class="small secondary" title="A new run of the same prepared quiz in this session (the answers of this run are kept)">↻ Run again</button>
             <button id="quizResultsBtn" class="small secondary" title="Marks of the class for the selected finished quiz, on the projector (no question, no name)">📊 Results on projector</button>
-            <button id="quizBoardBtn" class="small secondary teacher-only" title="Lab test with board numbers: find the students who computed with the values of another board, and correct">🔢 Board check</button>
+            <button id="quizBoardBtn" class="small secondary" data-perm="marks_edit" title="Lab test with board numbers: find the students who computed with the values of another board, and correct">🔢 Board check</button>
             <button id="quizResetBtn" class="small secondary teacher-only" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
             <button id="quizDeleteBtn" class="small red teacher-only">🗑 Delete</button>
           </div>
@@ -566,7 +578,21 @@
 
     <!-- ===================== EXPORT ===================== -->
     <section id="tab-messages" class="hidden">
-      <div class="card teacher-only" id="msgComposeCard">
+      <!-- v29: a mailbox: one line per message, opened on a click; folders, search, star, archive, delete (for me) -->
+      <div class="card" id="mailCard">
+        <div class="row mail-tools">
+          <div class="mail-boxes" id="mailBoxes">
+            <button class="small" data-box="inbox">📥 Received <span id="msgUnread" class="badge no hidden"></span></button>
+            <button class="small secondary" data-box="starred">⭐ Starred</button>
+            <button class="small secondary" data-box="archived">🗄 Archived</button>
+            <button class="small secondary" data-box="sent">📤 Sent</button>
+          </div>
+          <input id="mailSearch" placeholder="🔍 Search (name, subject, text)" style="max-width:280px">
+        </div>
+        <div id="mailList" class="mail-list"></div>
+        <div class="row" style="margin-top:8px"><button id="mailMore" class="small secondary hidden">Show more</button><span id="mailCount" class="muted"></span></div>
+      </div>
+      <div class="card" data-perm="messages" id="msgComposeCard">
         <h2>Write to students</h2>
         <p class="muted">The students read it on their home page (✉ Messages), on any device where they are signed in. They can answer you privately;
           they never see each other's messages.</p>
@@ -587,14 +613,12 @@
         </div>
       </div>
       <div class="card" id="staffCard">
-        <h2 id="staffTitle">Lab assistants of this class</h2>
+        <h2 id="staffTitle">Assistants of this class</h2>
         <div class="row" style="gap:10px;align-items:center"><label style="margin:0">To <select id="staffTo" style="width:auto"></select></label></div>
         <input id="staffSubject" placeholder="Subject (optional)" style="margin-top:8px">
         <textarea id="staffBody" rows="3" placeholder="Your message" style="margin-top:6px"></textarea>
         <button id="staffSendBtn" style="margin-top:6px">Send</button> <span id="staffReplyNote" class="muted"></span>
       </div>
-      <div class="card"><h2>Received <span id="msgUnread" class="badge no hidden"></span></h2><div id="msgInbox"></div></div>
-      <div class="card"><h2>Sent</h2><div id="msgSent"></div></div>
     </section>
 
     <section id="tab-results" class="hidden">
@@ -626,8 +650,75 @@
     </section>
 
     <!-- ===================== CLASSES ===================== -->
-    <section id="tab-classes" class="hidden">
+    <!-- ===================== v30: MY SPACE (the teacher, all his classes) ===================== -->
+    <section id="tab-myspace" class="hidden">
       <div class="card">
+        <h2>📌 Announcement to the students</h2>
+        <p class="muted">A short message pinned on the home page of your students (and in « My teachers ») until the date you choose, then it disappears by itself.</p>
+        <textarea id="annBody" rows="2" maxlength="500" placeholder="e.g. Absent on Thursday 16: office hours moved to Monday 10:00."></textarea>
+        <div class="row" style="margin-top:6px">
+          <label style="margin:0">Classes <select id="annClasses" multiple size="3" style="width:auto;min-width:200px"></select></label>
+          <label style="margin:0">Until <input type="datetime-local" id="annUntil" style="width:auto"></label>
+          <label class="tick" style="margin:0"><input type="checkbox" id="annPublic" style="width:auto"> also on my public page</label>
+          <button id="annSaveBtn" class="green">Publish</button>
+        </div>
+        <p class="muted" style="margin:4px 0 0">No class selected = all your classes.</p>
+        <div id="annList" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <h2>🕘 Office hours</h2>
+        <p class="muted">Your weekly slots; then, for one date, cancel or add office hours. The students see the next two weeks (cancelled ones crossed out, with the reason); past dates go away by themselves.</p>
+        <h3>Weekly slots</h3>
+        <div id="slotList"></div>
+        <div class="row" style="margin-top:6px">
+          <select id="slotDay" style="width:auto"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="7">Sunday</option></select>
+          <input type="time" id="slotStart" value="10:00" style="width:auto"> – <input type="time" id="slotEnd" value="12:00" style="width:auto">
+          <input id="slotPlace" placeholder="place, e.g. Lab 101" style="max-width:180px">
+          <label style="margin:0">from <input type="date" id="slotFrom" style="width:auto"></label><label style="margin:0">until <input type="date" id="slotUntil" style="width:auto"></label>
+          <button id="slotAddBtn">Add the slot</button>
+        </div>
+        <h3 style="margin-top:14px">A date: cancel or add</h3>
+        <div class="row">
+          <input type="date" id="exDay" style="width:auto">
+          <select id="exKind" style="width:auto"><option value="cancel">cancel the office hours of that day</option><option value="extra">add office hours that day</option></select>
+          <span id="exExtra" class="hidden"><input type="time" id="exStart" value="10:00" style="width:auto"> – <input type="time" id="exEnd" value="11:00" style="width:auto">
+            <input id="exPlace" placeholder="place" style="max-width:140px"></span>
+          <input id="exReason" placeholder="reason (optional)" style="max-width:220px">
+          <label class="tick" style="margin:0"><input type="checkbox" id="exNotify" style="width:auto" checked> tell my students (message)</label>
+          <button id="exAddBtn" class="orange">Save</button>
+        </div>
+        <h3 style="margin-top:14px">What the students see (next 2 weeks)</h3>
+        <div id="officePreview"></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎓 Proposals (final-year projects, master theses, mini-projects)</h2>
+          <button id="propNewBtn" class="green">＋ New proposal</button></div>
+        <p class="muted">Open proposals are shown to your students (« My teachers », with « I'm interested ») and, when ticked public, on your personal page.</p>
+        <div id="propForm" class="card hidden" style="background:#F8FAFC">
+          <input id="propTitle" placeholder="Title" maxlength="200">
+          <div class="row" style="margin-top:6px">
+            <select id="propKind" style="width:auto"><option value="pfe">Final-year project (engineering)</option><option value="master">Master thesis</option><option value="licence">Licence project</option><option value="mini">Mini-project</option><option value="other">Other</option></select>
+            <input id="propLevel" placeholder="level, e.g. M2 RT" style="max-width:160px">
+            <label style="margin:0">places <input type="number" id="propPlaces" min="1" max="10" value="2" style="width:70px"></label>
+            <select id="propStatus" style="width:auto"><option value="open">open</option><option value="assigned">assigned</option><option value="closed">closed</option></select>
+            <label class="tick" style="margin:0"><input type="checkbox" id="propPublic" style="width:auto" checked> public page</label>
+          </div>
+          <textarea id="propDesc" rows="4" placeholder="Description: context, what the students will build, tools, prerequisites" style="margin-top:6px"></textarea>
+          <input id="propKeywords" placeholder="keywords, e.g. LoRa, ESP32, Node-RED" style="margin-top:6px">
+          <input id="propNote" placeholder="note when assigned (e.g. names of the students)" style="margin-top:6px">
+          <div class="row" style="margin-top:6px"><button id="propSaveBtn" class="green">Save</button><button id="propCancelBtn" class="secondary">Cancel</button></div>
+        </div>
+        <div id="propList"></div>
+      </div>
+    </section>
+
+    <section id="tab-classes" class="hidden">
+      <!-- v29: an account with an invitation code joins a class as assistant -->
+      <div class="card" id="joinCard">
+        <h2>Join a class as assistant</h2>
+        <div class="row"><input id="joinCode" placeholder="invitation code (8 characters)" style="max-width:260px;text-transform:uppercase"><button id="joinBtn">Join</button></div>
+      </div>
+      <div class="card hidden" id="newClassCard">
         <h2>New class</h2>
         <div class="row">
           <input id="className" placeholder="e.g. IoT - 4th year engineering" style="max-width:320px">
@@ -641,13 +732,22 @@
         <p class="muted"><strong>Archive</strong>: the class leaves your lists, nothing is lost, and you can bring it back. <strong>Delete</strong> erases its students, sessions, attendance and marks for ever.</p>
       </div>
       <div class="card teacher-only">
-        <h2>Lab assistants of this class</h2>
-        <p class="muted">An assistant runs the <strong>lab (TP) sessions</strong> of this class with his own account: attendance, lab tests, random draw, bonus,
-          pushing demos, viewing the students. He cannot delete anything, import lists, edit students, see the course sessions,
-          the question bank, the exports or the student space. Everything he does is recorded below.</p>
-        <p class="muted">1. Create his account in Supabase (Authentication › Users › <strong>Add user</strong>, with his e-mail and a password).
-          2. Type the same e-mail here.</p>
-        <div class="row" style="gap:8px"><input id="assistantEmail" placeholder="assistant e-mail" style="max-width:300px"><button id="addAssistantBtn">Add assistant</button></div>
+        <h2>Assistants of this class</h2>
+        <p class="muted">An assistant works with his own account. Choose his <strong>role</strong> (TP, TD, course, co-teacher): it ticks a set of
+          permissions; then tick or untick any permission, whenever you want, and limit him to some groups if needed. Everything he does is recorded below.</p>
+        <h3>Invite an assistant (he creates his account himself)</h3>
+        <div class="row" style="gap:8px">
+          <select id="inviteRole" style="width:auto"><option value="tp">TP assistant</option><option value="td">TD assistant</option><option value="course">Course assistant</option><option value="co">Co-teacher</option></select>
+          <input id="inviteGroups" placeholder="groups (empty = all), e.g. G11 G12" style="max-width:240px">
+          <button id="inviteBtn" class="green">Create an invitation code</button>
+        </div>
+        <div id="invitesTable" style="margin-top:8px"></div>
+        <p class="muted" style="margin-top:6px">Give him the code and the address of the teacher page. On the login screen he opens
+          « I am an assistant and I have an invitation code ». A code is valid 14 days, once.</p>
+        <h3>Or add an existing account</h3>
+        <div class="row" style="gap:8px"><input id="assistantEmail" placeholder="assistant e-mail" style="max-width:300px">
+          <select id="assistantRole" style="width:auto"><option value="tp">TP assistant</option><option value="td">TD assistant</option><option value="course">Course assistant</option><option value="co">Co-teacher</option></select>
+          <button id="addAssistantBtn">Add assistant</button></div>
         <div id="assistantsTable" style="margin-top:10px"></div>
         <h3 style="margin-top:18px">What the assistants did <button id="logRefreshBtn" class="small secondary">↻ Refresh</button></h3>
         <div id="activityLog" style="max-height:360px;overflow:auto"></div>
@@ -691,9 +791,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=28"></script>
-<script src="js/excel.js?v=28"></script>
-<script src="js/teacher.js?v=28"></script>
+<script src="js/common.js?v=30"></script>
+<script src="js/excel.js?v=30"></script>
+<script src="js/teacher.js?v=30"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
