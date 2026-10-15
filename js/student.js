@@ -260,6 +260,20 @@ async function checkinFromHome(text) {
 }
 
 // ------------------------------------------------------------------ state
+// v28.2: a banner when the phone has had no answer from the server for 7 s (it used to stay frozen without a word).
+setInterval(() => {
+  const b = $("netBanner");
+  if (!b || !deviceToken || !sessionInfo) return;
+  const lastOk = CP_NET.lastOk || 0, lost = Date.now() - lastOk > 7000 && (CP_NET.lastFail || 0) > lastOk - 1000;
+  b.classList.toggle("hidden", !lost);
+}, 1000);
+// v28.2: an answer that could not reach the server is sent again while the question is still open.
+function retryOnNetwork(e, again) {
+  if (!e || !e.network) return false;
+  if (state && state.quiz && state.quiz.phase === "question" && localDeadline + 3000 < Date.now()) return false;
+  setTimeout(again, 1500);
+  return true;
+}
 async function fetchState() {
   if (!deviceToken) return;
   try {
@@ -625,8 +639,12 @@ async function sendNumber(quiet) {
     lastRendered = "";
     await fetchState();
   } catch (e) {
-    if (!quiet || !["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) toast(e.message, "error");
-    lastRendered = ""; await fetchState();
+    if (retryOnNetwork(e, () => { numSentFor = ""; sendNumber(true); })) {
+      const el = $("sendState"); if (el) { el.textContent = "⏳ Not sent yet (network) — trying again…"; el.classList.remove("ok"); }
+    } else {
+      if (!quiet || !["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) toast(e.message, "error");
+      lastRendered = ""; await fetchState();
+    }
   } finally { sending = false; }
 }
 
@@ -648,7 +666,9 @@ function renderSelfPaced(live, who, head, q) {
       <button id="variantBtn" class="orange" style="width:100%;margin-top:10px">Confirm</button></div>`;
     $("variantBtn").onclick = async () => {
       const v = Number($("variantInput").value);
-      if (!v || !confirm(`Board number ${v}?\nAll your numeric answers will be checked with the values of board ${v}.`)) return;
+      if (!v) { toast("Type the number of your board.", "error"); return; }
+      // v28.3: confirmation inside the page. A browser dialog (confirm) leaves the full screen: the student was locked.
+      if (!(await askInPage($("variantBtn"), `Board number <strong>${v}</strong>? All your numeric answers will be checked with the values of board ${v}.`))) return;
       try { await rpc("s_set_variant", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_variant: v }); await fetchState(); }
       catch (e) { toast(e.message, "error"); }
     };
@@ -706,7 +726,10 @@ function renderSelfPaced(live, who, head, q) {
       if (st) st.textContent = "✔ saved";
       lastRendered = "";
       await fetchState();
-    } catch (e) { if (st) st.textContent = "not saved: " + e.message; toast(e.message, "error"); }
+    } catch (e) {
+      if (e.network) { if (st) st.textContent = "⏳ not sent yet (network) — trying again…"; setTimeout(() => saveItem(it), 2000); return; }
+      if (st) st.textContent = "not saved: " + e.message; toast(e.message, "error");
+    }
   };
   const numTimers = {};
   live.querySelectorAll(".numAnswer").forEach((inp) => {
@@ -730,7 +753,7 @@ function renderSelfPaced(live, who, head, q) {
     for (const it of items) if (drafts[key(it.index)] !== undefined) await saveItem(it);
     const fresh = (state.quiz && state.quiz.items) || items;
     const missing = fresh.filter((it) => !it.answered).length;
-    if (!confirm((missing ? `${missing} question(s) not answered.\n\n` : "") + "Submit your answers now? You will not be able to change them.")) return;
+    if (!(await askInPage($("submitQuizBtn"), (missing ? `<strong>${missing} question(s) not answered.</strong> ` : "") + "Submit your answers now? You will not be able to change them."))) return;
     try { await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id }); toast("Answers handed in.", "ok"); lastRendered = ""; await fetchState(); }
     catch (e) { toast(e.message, "error"); }
   };
@@ -757,9 +780,13 @@ async function sendAnswer() {
     lastRendered = "";
     await fetchState();
   } catch (e) {
-    if (!["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) toast(e.message, "error");
-    lastRendered = "";
-    await fetchState();
+    if (retryOnNetwork(e, sendAnswer)) {
+      if (el) { el.textContent = "⏳ Not sent yet (network) — trying again…"; el.classList.remove("ok"); }
+    } else {
+      if (!["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) toast(e.message, "error");
+      lastRendered = "";
+      await fetchState();
+    }
   } finally {
     sending = false;
   }
@@ -870,3 +897,22 @@ document.addEventListener("click", (e) => {
 });
 
 start();
+
+// v28.3: a question asked inside the page (Confirm / Cancel) instead of the browser dialog, which leaves the full
+// screen and so locked the student during a locked quiz. Resolves true or false.
+function askInPage(anchor, html) {
+  return new Promise((resolve) => {
+    const old = document.getElementById("askBox");
+    if (old) old.remove();
+    const box = document.createElement("div");
+    box.id = "askBox"; box.className = "card ask-box";
+    box.innerHTML = `<p style="margin:0 0 10px">${html}</p><div class="row" style="flex-wrap:nowrap">
+      <button class="green" id="askYes" style="flex:1">Confirm</button><button class="secondary" id="askNo" style="flex:1">Cancel</button></div>`;
+    anchor.insertAdjacentElement("afterend", box);
+    anchor.classList.add("hidden");
+    const done = (v) => { box.remove(); anchor.classList.remove("hidden"); resolve(v); };
+    box.querySelector("#askYes").onclick = () => done(true);
+    box.querySelector("#askNo").onclick = () => done(false);
+    box.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}

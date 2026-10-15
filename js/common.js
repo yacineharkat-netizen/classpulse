@@ -64,6 +64,11 @@ const ERROR_MESSAGES = {
   NO_SUCH_ACCOUNT: "No ClassPulse account with this e-mail. Create it first in Supabase (Authentication > Users > Add user).",
   BAD_QUESTIONS: "Select at least one question.",
   NAME_DOES_NOT_MATCH: "The name typed is not the name of the class: nothing was deleted.",
+  NO_MAKEUP: "No make-up for you in this quiz.",
+  MAKEUP_EXPIRED: "The time for this make-up is over. See the teacher.",
+  CLASS_DEVICE_ONLY: "A make-up is taken on your class device (the phone or computer you use in class).",
+  BAD_DATE: "Choose a date and time in the future.",
+  NETWORK: "Network problem. Check your connection.",
   NOT_YOUR_SESSION: "A lab assistant can only edit or delete the sessions he created himself.",
 };
 
@@ -84,8 +89,18 @@ async function rpc(fn, args) {
   const t0 = performance.now();
   CP_NET.inFlight++; CP_NET.maxInFlight = Math.max(CP_NET.maxInFlight, CP_NET.inFlight);
   let result;
-  try { result = await db.rpc(fn, args || {}); }
+  // v28.2: a call never hangs: after 12 s without an answer it is given up (the next poll tries again).
+  // Without this, one request lost on a bad network froze the phone on the same screen.
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), RPC_TIMEOUT_MS) : null;
+  try {
+    const call = db.rpc(fn, args || {});
+    result = await (ctl && call.abortSignal ? call.abortSignal(ctl.signal) : call);
+  } catch (err) {
+    result = { data: null, error: { message: "Network problem: " + (err && err.message || err) } };
+  }
   finally {
+    clearTimeout(timer);
     CP_NET.inFlight--;
     CP_NET.calls.push({ fn, ms: Math.round(performance.now() - t0), at: Date.now() });
     if (CP_NET.calls.length > 300) CP_NET.calls.splice(0, 100);
@@ -94,10 +109,15 @@ async function rpc(fn, args) {
   if (error) {
     const e = new Error(errorText(error));
     e.code = (error.message || "").split(":")[0].trim();
+    // v28.2: no answer from the server (network down, timeout): the caller may try again
+    e.network = !error.code && /fetch|network|abort|timeout|load failed/i.test(error.message || "");
+    if (e.network) { CP_NET.lastFail = Date.now(); e.code = "NETWORK"; } else CP_NET.lastOk = Date.now();
     throw e;
   }
+  CP_NET.lastOk = Date.now();
   return data;
 }
+const RPC_TIMEOUT_MS = 12000;
 // Summary of the last calls: median and slowest time, per function.
 function netSummary(lastMs) {
   const since = Date.now() - (lastMs || 120000);

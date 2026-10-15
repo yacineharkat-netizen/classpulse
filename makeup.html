@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-version="28">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ClassPulse · Make-up</title>
+<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B2545">
+</head>
+<body>
+<div class="student">
+  <header>
+    <a href="index.html" class="home-link">⌂ Home</a>
+    <div class="brand">Make-up</div>
+  </header>
+  <div id="netBanner" class="net-banner hidden" role="status">⚠ Connection lost — reconnecting…</div>
+  <div id="view" class="protected"><p class="muted">Loading…</p></div>
+</div>
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=28"></script>
+<script>
+// v28.2: make-up of a quiz. The questions this student did not answer, one at a time, with the time of the quiz.
+// The clock of a question starts when he taps "Start"; leaving the page during a question ends that question.
+const params = new URLSearchParams(location.search);
+const quizId = params.get("q"), classId = params.get("c");
+let token = null, view = null, deadline = 0, selection = [], busy = false, timer = null;
+try { token = localStorage.getItem("cp_device_" + classId); } catch (e) { token = null; }
+
+function watermark(st) {
+  const tag = esc(`${st.last_name} ${st.first_name} · ${st.matricule}`);
+  return `<div class="watermark" aria-hidden="true">${Array(14).fill(`<span>${tag}</span>`).join("")}</div>`;
+}
+const until = (t) => new Date(t).toLocaleString([], { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" });
+
+async function call(fn, extra) {
+  if (busy) return;
+  busy = true;
+  try { view = await rpc(fn, Object.assign({ p_device: token, p_quiz: quizId }, extra || {})); render(); }
+  catch (e) {
+    if (e.network && fn === "s_makeup_answer") { toast("Not sent yet (network): trying again…", "error"); busy = false; setTimeout(() => call(fn, extra), 1500); return; }
+    if (["TIME_OVER", "QUESTION_CLOSED"].includes(e.code)) { busy = false; return call("s_makeup_state"); }
+    $("view").innerHTML = `<div class="card"><p>${esc(e.message)}</p><a href="index.html"><button style="width:100%">Back to the home page</button></a></div>`;
+  }
+  busy = false;
+}
+
+function render() {
+  clearInterval(timer);
+  const v = view, box = $("view");
+  if (v.state === "done") {
+    box.innerHTML = `<div class="card"><h2>✔ Make-up finished</h2><p>${esc(v.title)}: your answers are saved and count in this quiz.</p>
+      <a href="index.html"><button style="width:100%">Back to the home page</button></a></div>`;
+    return;
+  }
+  if (v.state === "expired") {
+    box.innerHTML = `<div class="card"><h2>Time is over</h2><p>This make-up was open until ${esc(until(v.until))}. See the teacher.</p></div>`;
+    return;
+  }
+  if (v.state === "next") {
+    box.innerHTML = `<div class="card"><h2>${esc(v.title)}</h2>
+      <p><strong>Question ${v.pos + 1} of ${v.count}</strong> to make up · open until ${esc(until(v.until))}</p>
+      <ul><li>The clock of each question starts when you tap <strong>Start</strong>, with the time of the quiz.</li>
+        <li>One answer per question: once sent, the next question comes.</li>
+        <li><strong>Do not leave this page during a question</strong> (other app, other tab): that question would end with no answer.</li></ul>
+      <button id="startBtn" class="orange" style="width:100%">▶ Start question ${v.pos + 1}</button></div>`;
+    $("startBtn").onclick = () => { selection = []; call("s_makeup_start"); };
+    return;
+  }
+  // a question on screen
+  deadline = Date.now() + v.remaining_ms;
+  const multi = v.multiple !== false;
+  const body = v.qtype === "number"
+    ? `<input id="numIn" inputmode="decimal" placeholder="your answer${v.unit ? " (" + esc(v.unit) + ")" : ""}" autocomplete="off">`
+    : (v.options || []).map((o, pos) => `<div class="option ${selection.includes(pos) ? "selected" : ""}" data-pos="${pos}"><strong>${LETTERS[pos]}.</strong> ${esc(o)}</div>`).join("");
+  box.innerHTML = `<div class="card" style="position:relative;overflow:hidden">${watermark(v.student)}
+      <div class="row" style="justify-content:space-between"><strong>Question ${v.pos + 1} / ${v.count}</strong><span class="timer" id="timer"></span></div>
+      <div class="progress"><div id="bar"></div></div>
+      <p style="font-size:18px">${esc(v.question)}</p>
+      ${v.qtype === "choice" ? `<p class="muted">${v.multiple === false ? "Only one correct answer" : v.multiple ? "Several correct answers: tick all" : "One or more answers may be correct"}</p>` : ""}
+      ${body}
+      <button id="sendBtn" class="green" style="width:100%;margin-top:10px">Send and go on</button></div>`;
+  box.querySelectorAll(".option").forEach((o) => o.onclick = () => {
+    const pos = Number(o.dataset.pos);
+    selection = !multi ? [pos] : selection.includes(pos) ? selection.filter((p) => p !== pos) : selection.concat(pos);
+    box.querySelectorAll(".option").forEach((x) => x.classList.toggle("selected", selection.includes(Number(x.dataset.pos))));
+  });
+  $("sendBtn").onclick = () => {
+    if (v.qtype === "number") {
+      const n = parseFloat(String($("numIn").value).trim().replace(",", "."));
+      if (isNaN(n)) { toast("Type a number (for example 2.5).", "error"); return; }
+      call("s_makeup_answer", { p_positions: null, p_number: n });
+    } else {
+      if (!selection.length) { toast("Tick an answer first.", "error"); return; }
+      call("s_makeup_answer", { p_positions: selection, p_number: null });
+    }
+  };
+  const tick = () => {
+    const left = deadline - Date.now();
+    if ($("timer")) $("timer").textContent = formatSeconds(left) + " s";
+    if ($("bar")) $("bar").style.width = Math.max(0, Math.min(100, (left / Math.max(v.duration_ms || 1, 1)) * 100)) + "%";
+    if (left < -1500) { clearInterval(timer); call("s_makeup_state"); }
+  };
+  tick(); timer = setInterval(tick, 250);
+}
+
+// Leaving the page during a question ends that question (as a locked quiz would).
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && view && view.state === "question") {
+    rpc("s_makeup_leave", { p_device: token, p_quiz: quizId }).then((v) => { view = v; render(); }).catch(() => {});
+  }
+});
+["copy", "cut", "contextmenu", "selectstart", "dragstart"].forEach((ev) =>
+  document.addEventListener(ev, (e) => { if (e.target.closest && e.target.closest(".protected")) e.preventDefault(); }));
+setInterval(() => { $("netBanner").classList.toggle("hidden", !((CP_NET.lastFail || 0) > (CP_NET.lastOk || 0))); }, 1000);
+
+if (!token || !quizId) $("view").innerHTML = `<div class="card"><p>Open the make-up from the home page of your class device.</p><a href="index.html"><button style="width:100%">Home page</button></a></div>`;
+else call("s_makeup_state");
+</script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.CP_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    if (wrong.length) document.body.insertAdjacentHTML("afterbegin", '<div style="background:#B83227;color:#fff;padding:10px;font-weight:600">Version problem: ' + wrong.join(", ") + ". Reload the page (Ctrl+F5).</div>");
+  });
+})();
+</script>
+</body>
+</html>

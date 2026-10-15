@@ -761,7 +761,7 @@ $("bannerName").onclick = (e) => { e.preventDefault(); document.querySelector("n
 function renderQuizLive() {
   const q = live.quiz;
   const box = $("quizLive");
-  if (!q) { box.innerHTML = `<p class="muted">No quiz running.</p>`; $("lockedBox").classList.add("hidden"); return; }
+  if (!q) { box.innerHTML = `<p class="muted">No quiz running.</p>`; $("lockedBox").classList.add("hidden"); renderSilent(null); return; }
   let left = "";
   const self = q.pace === "self";
   ["startBtn", "revealBtn", "nextBtn", "addTimeBtn"].forEach((id) => { $(id).disabled = self; });
@@ -792,7 +792,7 @@ function renderQuizLive() {
       <p><span class="stat">${q.ready}</span> / ${live.present} ready</p><p class="muted">When enough students are ready, click <strong>2. Start question 1</strong>.</p></div>`;
   } else {
     left = `<div><p><strong>${esc(q.title)}</strong></p><p>${q.phase === "finished" ? "Finished." : "Not started."}</p></div>`;
-    if (q.phase === "finished" && q.results) { box.innerHTML = resultsPanel(q); bindResultsToggle(q); $("lockedBox").classList.add("hidden"); return; }
+    if (q.phase === "finished" && q.results) { box.innerHTML = resultsPanel(q); bindResultsToggle(q); $("lockedBox").classList.add("hidden"); renderSilent(null); return; }
   }
   const right = `<div><div class="stat">${q.answers} / ${live.present}</div><div class="muted">answers to this question</div>
     ${q.survey ? `<div class="muted" style="margin-top:10px">survey: no right answer</div>` : `<div class="stat" style="margin-top:10px">${q.success_rate == null ? "-" : q.success_rate + " %"}</div><div class="muted">full marks</div>`}</div>`;
@@ -806,7 +806,16 @@ function awayText(away, q) {
     a.back == null ? `out from Q${a.left} to the end` : a.back === a.left ? `out during Q${a.left}` : `out Q${a.left} → back at Q${a.back}`).filter(Boolean).join("<br>") + `</div>`;
 }
 // Students locked because they left the quiz screen (live quizzes, and self-paced tests created with the lock).
+// v28.2: phones without contact for 10 s or more while a question is open
+function renderSilent(q) {
+  const list = (q && q.silent) || [];
+  $("silentBox").classList.toggle("hidden", list.length === 0);
+  $("silentCount").textContent = list.length;
+  $("silentList").innerHTML = list.length ? `<div class="chips">` + list.map((x) =>
+    `<span class="chip">${esc(x.name)} <span class="muted">${x.silent_s == null ? "never seen" : fmtSince(x.silent_s)}</span></span>`).join("") + `</div>` : "";
+}
 function renderLocked(q) {
+  renderSilent(q);
   const list = q.locked || [];
   $("lockedBox").classList.toggle("hidden", list.length === 0);
   $("lockedCount").textContent = list.length;
@@ -2342,7 +2351,7 @@ function renderResult() {
       ? `<strong>${s.mark == null ? "-" : Number(s.mark)}</strong>${s.override != null ? ` <span class="badge info" title="${esc((s.override_reason || "no reason") + " · " + (s.override_by || "") + " " + fmtWhen(s.override_at))}">corrected</span>` : ""}`
       : `<span class="muted">${STATUS_TEXT[s.status] || esc(s.status)}</span>`;
     return `<tr class="${s.status === "other group" ? "res-other" : ""}"><td><button class="linklike" data-profile="${s.id}">${esc(s.last_name)} ${esc(s.first_name)}</button>
-        <div class="muted">${esc(s.matricule)}${s.tp_group ? " · " + esc(s.tp_group) : ""}</div></td>` +
+        <div class="muted">${esc(s.matricule)}${s.tp_group ? " · " + esc(s.tp_group) : ""}</div>${makeupBadge(s.makeup)}</td>` +
       cols.map((qu) => { const a = byQ[qu.id]; return `<td class="${scoreClass(qu, a)}" title="${a ? "score " + Number(a.score) + " / " + Number(qu.points) : "no answer"}">${esc(answerText(qu, a))}</td>`; }).join("") +
       `<td>${s.points == null ? "" : Number(s.points)}</td>
        <td>${s.computed == null ? "" : Number(s.computed)}</td>
@@ -2355,6 +2364,7 @@ function renderResult() {
   }).join("");
   $("resultsDetail").innerHTML = head +
     (edit && q.ask_variant ? `<p><button class="small secondary" id="resBoardBtn">🔢 Board check</button></p>` : "") +
+    (edit && q.status === "finished" ? `<p><button class="small orange" id="resMakeupBtn">📝 Make-up for late or cut-off students…</button></p><div id="makeupPanel"></div>` : "") +
     `<h3>Questions</h3><div class="table-scroll"><table><tr><th>#</th><th>Question</th><th>Answers</th><th>Full marks</th><th>Average score</th><th>Choices (✓ in green)</th></tr>${qRows}</table></div>
     <h3 style="margin-top:14px">Students</h3>
     <p class="muted">Cells: the letters chosen (or the number typed). Green = full marks, orange = part of the points, red = 0. Hover a cell for its score.
@@ -2378,6 +2388,7 @@ function renderResult() {
     catch (e) { toast(e.message, "error"); }
   });
   if ($("resBoardBtn")) $("resBoardBtn").onclick = () => openBoardCheck(q.id);
+  if ($("resMakeupBtn")) $("resMakeupBtn").onclick = () => openMakeupPanel(q.id, reload);
   // v27: a badly worded question: dropped for everybody, or full points to everybody who answered it
   $("resultsDetail").querySelectorAll(".res-fix").forEach((sel) => sel.onchange = async () => {
     const what = { none: "back to the computed scores", full: "full points to every student who answered it", drop: "dropped: out of the mark of every student" }[sel.value];
@@ -2984,6 +2995,62 @@ async function openLockPanel(classDocId, title, after) {
     if (!confirm(`${open ? "Open" : "Lock again"} ${what} for ${g ? "group " + g : "the whole class"}?`)) return;
     try { await rpc("t_set_doc_unlock", { p_class_doc: classDocId, p_key: b.dataset.lk || null, p_group: g, p_open: open });
           toast(open ? "Opened: the students see it the next time they open the page." : "Locked again.", "ok"); openLockPanel(classDocId, title, after); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
+// ------------------------------------------------------------------ v28.2: make-up of a quiz
+// After the quiz, chosen students get the questions THEY did not answer, one at a time, with the time of the quiz,
+// on their class device, until a date. Their answers count in the same quiz.
+const MAKEUP_KIND = { missed: "missed questions (network?)", late: "arrived late", left: "left the screen", absent: "absent", complete: "answered everything" };
+function makeupBadge(m) {
+  if (!m) return "";
+  if (m.done) return `<span class="badge info" title="make-up done ${fmtWhen(m.done)}">make-up ✓</span>`;
+  if (new Date(m.until) < new Date()) return `<span class="badge closed" title="not done in time">make-up expired</span>`;
+  return `<span class="badge open" title="until ${fmtWhen(m.until)}">make-up ${m.pos}/${m.count}</span>`;
+}
+function localDateTime(d) { const z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; }
+async function openMakeupPanel(quizId, after) {
+  const box = $("makeupPanel");
+  box.innerHTML = `<p class="muted">Loading…</p>`;
+  let d;
+  try { d = await rpc("t_makeup_candidates", { p_quiz: quizId }); } catch (e) { box.innerHTML = ""; toast(e.message, "error"); return; }
+  const today = new Date(); today.setHours(23, 59, 0, 0);
+  const rows = d.students.filter((x) => x.kind !== "complete" || x.makeup);
+  box.innerHTML = `<div class="makeup-panel"><strong>Make-up: ${esc(d.quiz.title)}</strong>
+    <p class="muted" style="margin:4px 0 8px">Each student chosen gets only the questions he did not answer (never one he answered), one at a time, with the time of the quiz,
+      on his class device (home page › 📝 Make-up). His answers count in this quiz. Ticked by default: late, missed questions, left the screen.</p>
+    ${rows.length ? `<div class="table-scroll"><table><tr><th></th><th>Student</th><th>Why</th><th>Questions to do</th><th>Make-up</th></tr>` + rows.map((x) => {
+      const can = x.missing > 0 && !(x.makeup && !x.makeup.done);
+      const pre = can && ["missed", "late", "left"].includes(x.kind);
+      return `<tr><td><input type="checkbox" class="mk-pick" data-s="${x.student_id}" ${pre ? "checked" : ""} ${can ? "" : "disabled"} style="width:auto"></td>
+        <td>${esc(x.name)} <span class="muted">${esc(x.matricule)}${x.group ? " · " + esc(x.group) : ""}</span></td>
+        <td>${MAKEUP_KIND[x.kind] || esc(x.kind)}${x.kind === "late" && x.checked_at ? ` <span class="muted">(${new Date(x.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>` : ""}</td>
+        <td>${x.missing} / ${d.quiz.count}</td>
+        <td>${makeupBadge(x.makeup)} ${x.makeup && !x.makeup.done ? `<button class="small secondary" data-mk-cancel="${x.student_id}">Cancel</button>` : ""}</td></tr>`;
+    }).join("") + `</table></div>` : `<p>Everybody answered every question.</p>`}
+    <div class="row" style="margin-top:8px">
+      <label style="margin:0">Until <input type="datetime-local" id="mkUntil" value="${localDateTime(today)}" style="width:auto"></label>
+      <button class="green small" id="mkGrant">Give the make-up</button>
+      <button class="secondary small" id="mkClose">Close</button>
+      <span class="muted" id="mkCount"></span>
+    </div></div>`;
+  const count = () => { $("mkCount").textContent = box.querySelectorAll(".mk-pick:checked").length + " student(s) chosen"; };
+  box.querySelectorAll(".mk-pick").forEach((c) => c.onchange = count); count();
+  $("mkClose").onclick = () => { box.innerHTML = ""; };
+  $("mkGrant").onclick = async () => {
+    const ids = [...box.querySelectorAll(".mk-pick:checked")].map((c) => c.dataset.s);
+    if (!ids.length) { toast("Tick at least one student.", "error"); return; }
+    const until = new Date($("mkUntil").value);
+    if (isNaN(until) || until <= new Date()) { toast("Choose a date and time in the future.", "error"); return; }
+    try {
+      const r = await rpc("t_makeup_grant", { p_quiz: quizId, p_students: ids, p_until: until.toISOString() });
+      toast(`Make-up given to ${r.granted} student(s), until ${until.toLocaleString([], { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}.`, "ok");
+      if (after) after(); else openMakeupPanel(quizId);
+    } catch (e) { toast(e.message, "error"); }
+  };
+  box.querySelectorAll("[data-mk-cancel]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_makeup_cancel", { p_quiz: quizId, p_student: b.dataset.mkCancel }); toast("Make-up cancelled.", "ok"); openMakeupPanel(quizId, after); }
     catch (e) { toast(e.message, "error"); }
   });
 }
