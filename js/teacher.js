@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "28"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "31"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -14,6 +14,13 @@ let classNames = {};          // class id -> "name year"
 let classRoles = {};          // class id -> "teacher" | "assistant"
 let classInfo = {};           // class id -> row of t_list_classes (registration settings...)
 function isAssistant() { return classId && classRoles[classId] === "assistant"; }
+// v29: may the account do this in the selected class? (teacher: everything; assistant: the permissions the teacher gave him)
+function can(perm) {
+  if (!isAssistant()) return true;
+  const c = classInfo[classId];
+  return !!(c && (c.perms || []).includes(perm));
+}
+const ROLE_LABEL = { tp: "TP assistant", td: "TD assistant", course: "Course assistant", co: "Co-teacher" };
 
 // Each class gets its own colour, always the same, so that the current class is obvious on every tab.
 const CLASS_COLORS = ["#1B7F8C", "#E8741E", "#6A4C93", "#2E7D4F", "#B83227", "#1F5FA8", "#8A6D0B", "#C2185B"];
@@ -32,8 +39,10 @@ function updateBanner() {
     questions: "The question bank is shared by all your classes (sorted by module).",
     resources: "Resources are shared by all your classes.",
     classes: "",
+    supervision: "Supervision: your projects, outside the classes.",
   };
   $("bannerNote").textContent = notes[activeTab] || "";
+  $("classBanner").classList.toggle("hidden", activeTab === "supervision");   // v31: a project is not a class
 }
 
 // ------------------------------------------------------------------ login
@@ -57,10 +66,36 @@ $("loginBtn").onclick = async () => {
 
 $("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
 
+// v29: an assistant with an invitation code creates his account (or uses his existing one), then joins the class.
+$("invBtn").onclick = async () => {
+  const email = $("invEmail").value.trim(), password = $("invPassword").value, code = $("invCode").value.trim().toUpperCase();
+  const note = (t) => { $("invNote").textContent = t; $("invNote").classList.remove("hidden"); };
+  if (!email || password.length < 8 || code.length < 6) { toast("E-mail, a password of 8 characters or more, and the code.", "error"); return; }
+  $("invBtn").disabled = true;
+  try {
+    let { data, error } = await db.auth.signUp({ email, password });
+    if (error && /already|registered|exists/i.test(error.message)) ({ data, error } = await db.auth.signInWithPassword({ email, password }));
+    if (error) { toast(error.message, "error"); return; }
+    if (!data.session) {
+      const r = await db.auth.signInWithPassword({ email, password });
+      if (r.error) { note("Account created. Open the confirmation e-mail sent to you, then come back here and click this button again (same e-mail, password and code)."); return; }
+    }
+    await rpc("t_claim_invite", { p_code: code });
+    $("loginView").classList.add("hidden");
+    await showApp();
+    toast("Welcome: you are now assistant of this class.", "ok");
+  } catch (e) { toast(e.message, "error"); }
+  finally { $("invBtn").disabled = false; }
+};
+
 async function showApp() {
   $("appView").classList.remove("hidden");
   const { data } = await db.auth.getUser();
   $("whoAmI").textContent = data && data.user ? data.user.email : "";
+  // v29: "New class" for the teachers' accounts only; an assistant joins a class with a code
+  try { const me = await rpc("t_me"); $("newClassCard").classList.toggle("hidden", !me.is_teacher); $("mySpaceTab").classList.toggle("hidden", !me.is_teacher); }
+  catch (e) { $("newClassCard").classList.add("hidden"); }
+  initSupervision();   // v31
   await loadClasses();
   poller(loadAttempts, 20000);   // v28.1: never two at the same time
   await loadResources();
@@ -75,7 +110,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages,
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects,
       quizzes: () => { $("tplEditorCard").classList.add("hidden"); $("tplListCard").classList.remove("hidden"); return loadTemplates(); } };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
@@ -138,13 +173,20 @@ $("classSelect").onchange = () => selectClass($("classSelect").value);
 function applyRole() {
   const a = !!isAssistant();
   document.body.classList.toggle("assistant", a);
+  // v29: what an assistant sees follows his permissions (data-perm="...")
+  document.querySelectorAll("[data-perm]").forEach((el) => el.classList.toggle("perm-on", can(el.dataset.perm)));
+  const kinds = ["course", "td", "tp"].filter((k) => can("kind_" + k));
+  [...$("newSessionKind").options].forEach((o) => { o.disabled = !kinds.includes(o.value); });
+  if (kinds.length && !kinds.includes($("newSessionKind").value)) $("newSessionKind").value = kinds[kinds.length - 1];
+  [...$("quizKind").options].forEach((o) => { o.disabled = o.value === "tp" ? !can("kind_tp") : !(can("kind_course") || can("kind_td")); });
+  const qk = $("quizKind").selectedOptions[0];
+  if (qk && qk.disabled) { const ok = [...$("quizKind").options].find((o) => !o.disabled); if (ok) $("quizKind").value = ok.value; }
   if (a) {
-    $("newSessionKind").value = "tp"; $("quizKind").value = "tp";
+    const c = classInfo[classId] || {};
+    $("rolePill").textContent = `${ROLE_LABEL[c.asst_role] || "Assistant"}${(c.asst_groups || []).length ? " · " + c.asst_groups.join(", ") : ""}`;
     const active = document.querySelector("nav button[data-tab].active");
-    if (active && active.classList.contains("teacher-only")) document.querySelector("nav button[data-tab=live]").click();
+    if (active && (active.classList.contains("teacher-only") || (active.dataset.perm && !can(active.dataset.perm)))) document.querySelector("nav button[data-tab=live]").click();
   }
-  $("newSessionKind").disabled = a;
-  $("quizKind").disabled = a;
 }
 
 async function selectClass(id) {
@@ -310,7 +352,7 @@ $("createSessionBtn").onclick = async () => {
 
 async function selectSession(id) {
   sessionId = id || null;
-  attCodeDue = 0; attLastHtml = "";
+  attCodeDue = 0; attLastHtml = ""; attHash = "";
   $("liveArea").classList.toggle("hidden", !sessionId);
   $("sessionCodeBox").classList.toggle("hidden", !sessionId);
   $("sessionOptions").classList.toggle("hidden", !sessionId);
@@ -817,15 +859,20 @@ function renderSilent(q) {
 function renderLocked(q) {
   renderSilent(q);
   const list = q.locked || [];
-  $("lockedBox").classList.toggle("hidden", list.length === 0);
+  $("lockedBox").classList.toggle("hidden", list.length === 0 && !q.dismissed);
   $("lockedCount").textContent = list.length;
   // v25: since when he is out of the quiz (counted by the server, then ticking here every second)
   const now = Date.now();
-  $("lockedList").innerHTML = list.length === 0 ? "" : `<table>` + list.map((l) =>
+  $("lockedList").innerHTML = (list.length > 1 ? `<p style="margin:4px 0"><button class="small secondary" data-dismiss="all" title="Take them all off this list: they stay locked">✕ Clear the list</button></p>` : "") +
+    (list.length === 0 ? "" : `<table>` + list.map((l) =>
     `<tr><td>${esc(l.name)}</td><td>left ${l.leaves} time(s)</td>
       <td>${l.left_s == null ? "" : `out for <strong class="left-since" data-since="${now - l.left_s * 1000}">${fmtSince(l.left_s)}</strong>
         <span class="muted">(since ${new Date(l.left_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })})</span>`}</td>
-      <td><button class="small green" data-unlock="${l.student_id}">Unlock</button></td></tr>`).join("") + `</table>`;
+      <td><button class="small green" data-unlock="${l.student_id}">Unlock</button>
+        <button class="small secondary" data-dismiss="${l.student_id}" title="Take him off this list: he stays locked (his answers stay frozen)">✕</button></td></tr>`).join("") + `</table>`) +
+    (q.dismissed ? `<p class="muted" style="margin:4px 0 0">${q.dismissed} other locked student(s) taken off this list.</p>` : "");
+  $("lockedList").querySelectorAll("[data-dismiss]").forEach((b) => b.onclick = () =>
+    act("t_dismiss_locked", { p_quiz: q.id, p_student: b.dataset.dismiss === "all" ? null : b.dataset.dismiss }, "Taken off the list (still locked)."));
   $("lockedList").querySelectorAll("[data-unlock]").forEach((b) => b.onclick = () =>
     act("t_unlock", { p_quiz: q.id, p_student: b.dataset.unlock }, "Student unlocked."));
 }
@@ -1106,7 +1153,7 @@ function renderLiveRequests() {
 // ------------------------------------------------------------------ attendance list
 // v28.1: one poller for the attendance list, only while the Live tab is shown. The table is rebuilt only when
 // something changed, and never while the teacher is pressing a button in it (a click is never lost).
-let attLastHtml = "", attPointerDown = false, attLastAt = 0;
+let attLastHtml = "", attPointerDown = false, attLastAt = 0, attHash = "", attForce = false;
 const attendancePoll = poller(refreshAttendanceNow, 5000, () => !!sessionId && activeTab === "live");
 function refreshAttendance() { return sessionId ? attendancePoll.run() : Promise.resolve(); }
 $("attendanceTable").addEventListener("pointerdown", () => { attPointerDown = true; });
@@ -1114,10 +1161,14 @@ document.addEventListener("pointerup", () => { if (attPointerDown) { attPointerD
 async function refreshAttendanceNow() {
   if (!sessionId) return;
   const sid = sessionId;
-  let list;
-  try { list = await rpc("t_attendance_list", { p_session: sid }); } catch (e) { return; }
+  let r;
+  // v29: the server sends the list only when it changed (it compares with the hash of the list we have)
+  try { r = await rpc("t_attendance_list_if", { p_session: sid, p_hash: attHash }); } catch (e) { return; }
   if (sid !== sessionId) return;
-  lastAttendance = list; attLastAt = Date.now();
+  attLastAt = Date.now();
+  if (r.same && !attForce) return;
+  attForce = false;
+  if (!r.same) { attHash = r.hash; lastAttendance = r.list; }
   updateDrawInfo();
   renderAttendanceTable();
 }
@@ -1215,7 +1266,7 @@ setupCollapsible();
 // ------------------------------------------------------------------ registration settings of the class
 function renderRegistration() {
   const c = classInfo[classId];
-  if (!c || isAssistant()) return;
+  if (!c || !can("students_edit")) return;
   $("regSessionBtn").textContent = c.reg_session ? "✓ Open" : "✕ Closed";
   $("regSessionBtn").className = "small " + (c.reg_session ? "green" : "red");
   $("regOpenBtn").textContent = c.reg_open ? "✓ Open" : "✕ Closed";
@@ -1296,26 +1347,56 @@ async function loadAttempts() {
   });
 }
 
+let stuGroupFilter = "", stuPicked = new Set();
 async function loadStudents() {
   renderRegistration();
   loadAttempts();
   if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const all = await rpc("t_list_students", { p_class: classId });
   const f = norm($("studentSearch").value);
-  const list = all.filter((s) => !f || norm(`${s.matricule} ${s.last_name} ${s.first_name}`).includes(f));
+  // v29: filter by group, tick students, move them to a group (or out of it)
+  const allGroups = [...new Set(all.map((s) => s.td_group).concat(all.map((s) => s.tp_group)).filter(Boolean))].sort();
+  if (stuGroupFilter && !allGroups.includes(stuGroupFilter) && stuGroupFilter !== "-") stuGroupFilter = "";
+  const list = all.filter((s) => (!f || norm(`${s.matricule} ${s.last_name} ${s.first_name}`).includes(f))
+    && (!stuGroupFilter || (stuGroupFilter === "-" ? !s.td_group && !s.tp_group : s.td_group === stuGroupFilter || s.tp_group === stuGroupFilter)));
+  stuPicked = new Set([...stuPicked].filter((id) => all.some((s) => s.id === id)));
+  const edit = can("students_edit");
   lockedPins = all.filter((s) => s.pin_locked).length;
   updateStudentsBadge();
-  $("studentsTable").innerHTML = `<p class="muted">${all.length} students${f ? ` · ${list.length} shown` : ""} · ${list.filter((s) => s.registered).length} with a class device${lockedPins ? ` · <span class="badge no">${lockedPins} PIN locked</span>` : ""}</p>
-    <table><tr><th>Matricule</th><th>Last name</th><th>First name</th><th>TD</th><th>TP</th><th>E-mail</th><th>Official list</th><th>Class device</th><th></th></tr>` + list.map((s) =>
-    `<tr data-id="${s.id}"><td class="c-mat">${esc(s.matricule)}</td><td class="c-last"><button class="linklike" data-profile="${s.id}">${esc(s.last_name)}</button></td><td class="c-first">${esc(s.first_name)}</td><td class="c-td">${esc(s.td_group || "")}</td><td class="c-tp">${esc(s.tp_group || "")}</td>
+  $("studentsTable").innerHTML = `<div class="row" style="gap:8px"><label style="margin:0">Group <select id="stuGroupFilter" style="width:auto">
+      <option value="">all</option>${allGroups.map((g) => `<option value="${esc(g)}" ${g === stuGroupFilter ? "selected" : ""}>${esc(g)}</option>`).join("")}
+      <option value="-" ${stuGroupFilter === "-" ? "selected" : ""}>without group</option></select></label>
+      <span class="muted">${all.length} students${f || stuGroupFilter ? ` · ${list.length} shown` : ""} · ${list.filter((s) => s.registered).length} with a class device${lockedPins ? ` · <span class="badge no">${lockedPins} PIN locked</span>` : ""}</span></div>
+    ${edit ? `<div class="bulk-bar"><strong id="stuSelCount">${stuPicked.size} ticked</strong>
+      <input id="bulkGroup" list="bulkGroupList" placeholder="group, e.g. G11" style="width:150px"><datalist id="bulkGroupList">${allGroups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
+      <button class="small" data-bulk="td">→ TD group</button><button class="small" data-bulk="tp">→ TP sub-group</button>
+      <button class="small secondary" data-bulk="out-td">Out of TD group</button><button class="small secondary" data-bulk="out-tp">Out of TP sub-group</button></div>` : ""}
+    <table><tr>${edit ? `<th><input type="checkbox" class="stu-check" id="stuAll" title="Tick all shown"></th>` : ""}<th>Matricule</th><th>Last name</th><th>First name</th><th>TD</th><th>TP</th><th>E-mail</th><th>Official list</th><th>Class device</th><th></th></tr>` + list.map((s) =>
+    `<tr data-id="${s.id}">${edit ? `<td><input type="checkbox" class="stu-check" data-pick="${s.id}" ${stuPicked.has(s.id) ? "checked" : ""}></td>` : ""}<td class="c-mat">${esc(s.matricule)}</td><td class="c-last"><button class="linklike" data-profile="${s.id}">${esc(s.last_name)}</button></td><td class="c-first">${esc(s.first_name)}</td><td class="c-td">${esc(s.td_group || "")}</td><td class="c-tp">${esc(s.tp_group || "")}</td>
      <td class="c-mail">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : ""}</td>
-     <td>${isAssistant() ? (s.official ? "yes" : '<span class="badge no">no</span>') : `<button class="small ${s.official ? "green" : "red"}" data-official="${s.id}" data-val="${s.official ? 1 : 0}" title="Click to change">${s.official ? "✓ yes" : "✗ no"}</button>`}</td>
+     <td>${!edit ? (s.official ? "yes" : '<span class="badge no">no</span>') : `<button class="small ${s.official ? "green" : "red"}" data-official="${s.id}" data-val="${s.official ? 1 : 0}" title="Click to change">${s.official ? "✓ yes" : "✗ no"}</button>`}</td>
      <td>${s.registered ? `${esc(s.device_kind || "linked")}${s.device_linked_at ? ` <span class="muted" title="Linked on">${fmtWhen(s.device_linked_at)}</span>` : ""}` : (s.has_pin ? "PIN only" : "-")}${s.reset_allowed ? ' <span class="badge info">new device allowed</span>' : ""}${s.pin_locked ? ' <span class="badge no">PIN locked</span>' : ""}</td>
-     <td style="white-space:nowrap"><button class="small secondary teacher-only" data-edit="${s.id}" title="Correct the student number or the name">✏ Edit</button>
+     <td style="white-space:nowrap"><button class="small secondary ${edit ? "" : "hidden"}" data-edit="${s.id}" title="Correct the student number or the name">✏ Edit</button>
        <button class="small red teacher-only" data-del="${s.id}">Delete</button>
        ${s.pin_locked ? `<button class="small green" data-unlockpin="${s.id}">Unlock PIN</button>` : ""}
        ${s.registered ? `<button class="small secondary" data-reset="${s.id}">Allow a new device</button>` : ""}
        ${s.registered || s.has_pin ? `<button class="small red" data-resetall="${s.id}" title="Erase the PIN and the class device of this student: he registers again">Reset PIN</button>` : ""}</td></tr>`).join("") + `</table>`;
+  $("stuGroupFilter").onchange = () => { stuGroupFilter = $("stuGroupFilter").value; loadStudents(); };
+  const countPicked = () => { if ($("stuSelCount")) $("stuSelCount").textContent = stuPicked.size + " ticked"; };
+  $("studentsTable").querySelectorAll("[data-pick]").forEach((c) => c.onchange = () => { if (c.checked) stuPicked.add(c.dataset.pick); else stuPicked.delete(c.dataset.pick); countPicked(); });
+  if ($("stuAll")) $("stuAll").onchange = () => {
+    list.forEach((x) => { if ($("stuAll").checked) stuPicked.add(x.id); else stuPicked.delete(x.id); });
+    $("studentsTable").querySelectorAll("[data-pick]").forEach((c) => { c.checked = stuPicked.has(c.dataset.pick); }); countPicked();
+  };
+  $("studentsTable").querySelectorAll("[data-bulk]").forEach((b) => b.onclick = async () => {
+    if (!stuPicked.size) { toast("Tick the students first.", "error"); return; }
+    const k = b.dataset.bulk, g = ($("bulkGroup").value || "").trim().toUpperCase();
+    if ((k === "td" || k === "tp") && !g) { toast("Type the group first (e.g. G11).", "error"); $("bulkGroup").focus(); return; }
+    const args = { p_class: classId, p_students: [...stuPicked], p_td: null, p_tp: null };
+    if (k === "td") args.p_td = g; if (k === "tp") args.p_tp = g; if (k === "out-td") args.p_td = ""; if (k === "out-tp") args.p_tp = "";
+    try { const r = await rpc("t_move_students", args); toast(`${r.updated} student(s) updated. Past attendance is not changed.`, "ok"); stuPicked = new Set(); await loadGroups(); loadStudents(); }
+    catch (e) { toast(e.message, "error"); }
+  });
   $("studentsTable").querySelectorAll("[data-unlockpin]").forEach((b) => b.onclick = async () => {
     try { await rpc("t_unlock_pin", { p_student: b.dataset.unlockpin }); toast("PIN unlocked: the student can sign in now.", "ok"); loadStudents(); }
     catch (e) { toast(e.message, "error"); }
@@ -1749,7 +1830,7 @@ const MAX_DOC_MB = 4;
 let myDocuments = [];
 
 async function loadDocs() {
-  if (!classId || isAssistant()) return;
+  if (!classId || !can("docs_publish")) return;
   let docs = [];
   try { myDocuments = await rpc("t_list_documents"); docs = await rpc("t_list_docs", { p_class: classId }); }
   catch (e) { toast(e.message, "error"); return; }
@@ -1814,7 +1895,7 @@ function fmtDuration(s) {
 function fmtWhen(t) { return t ? new Date(t).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; }
 let docStats = null;
 async function loadDocStats() {
-  if (!classId || isAssistant()) return;
+  if (!classId || !can("docs_publish")) return;
   try { docStats = await rpc("t_doc_stats", { p_class: classId }); } catch (e) { toast(e.message, "error"); return; }
   const n = docStats.students.length;
   const byDoc = (id) => docStats.reads.filter((r) => r.doc === id);
@@ -1918,17 +1999,63 @@ $("docUrlAddBtn").onclick = async () => {
 };
 
 // ------------------------------------------------------------------ lab assistants and their activity
+// v29: assistants: a role (preset of permissions), then any permission ticked or unticked, and the groups he works with.
+const PERM_GROUPS = [
+  ["Types of sessions", [["kind_course", "Course sessions"], ["kind_td", "TD sessions"], ["kind_tp", "TP (lab) sessions"]]],
+  ["Sessions and quizzes", [["sessions_create", "Create and edit sessions (of these types)"], ["quiz_prepare", "Prepare quizzes (of these types)"]]],
+  ["Students", [["students_edit", "Edit students, groups, registration"], ["profiles", "Open the student profiles"]]],
+  ["Results", [["results_view", "See the results"], ["results_export", "Download the results of a quiz (when the quiz allows it)"], ["export_all", "Export all the marks of the class (Excel)"], ["marks_edit", "Correct marks, fix a question, board check"]]],
+  ["Documents", [["docs_view", "See the course content"], ["docs_publish", "Upload and publish documents (Student space)"], ["docs_unlock", "Open the locked parts of documents"]]],
+  ["Messages", [["messages", "Write to the students"]]],
+];
+function roleSelect(cls, val, extra) {
+  return `<select class="${cls}" ${extra || ""} style="width:auto">${Object.entries(ROLE_LABEL).map(([k, v]) => `<option value="${k}" ${k === val ? "selected" : ""}>${v}</option>`).join("")}</select>`;
+}
 async function loadAssistants() {
   if (!classId || isAssistant()) return;
-  let list = [], log = [];
-  try { list = await rpc("t_list_assistants", { p_class: classId }); log = await rpc("t_activity_log", { p_class: classId }); } catch (e) { return; }
+  let list = [], log = [], invites = [];
+  try {
+    [list, log, invites] = await Promise.all([rpc("t_list_assistants", { p_class: classId }), rpc("t_activity_log", { p_class: classId }), rpc("t_list_invites", { p_class: classId })]);
+  } catch (e) { return; }
   $("assistantsTable").innerHTML = list.length === 0 ? `<p class="muted">No assistant for ${esc(classNames[classId] || "this class")}.</p>` :
-    `<table>` + list.map((a) => `<tr><td>${esc(a.email)}</td><td class="muted">added ${new Date(a.added_at).toLocaleDateString()}</td>
-      <td><button class="small red" data-arem="${a.user_id}" data-email="${esc(a.email)}">Remove</button></td></tr>`).join("") + `</table>`;
+    list.map((a) => `<div class="asst-card" data-user="${a.user_id}">
+      <div class="row" style="justify-content:space-between"><strong>${esc(a.email)}</strong>
+        <span>${roleSelect("a-role", a.role)} <input class="a-groups" value="${esc((a.groups || []).join(" "))}" placeholder="all groups" style="width:150px" title="Groups (empty = all), e.g. G11 G12">
+        <button class="small secondary a-save-groups">Save groups</button>
+        <button class="small red" data-arem="${a.user_id}" data-email="${esc(a.email)}">Remove</button></span></div>
+      <div class="muted" style="font-size:12px">added ${new Date(a.added_at).toLocaleDateString()}</div>
+      ${PERM_GROUPS.map(([title, perms]) => `<h4>${title}</h4><div class="perms">${perms.map(([k, label]) =>
+        `<label><input type="checkbox" class="a-perm" value="${k}" ${(a.perms || []).includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>`).join("")}
+    </div>`).join("");
+  const save = async (card, role, perms, quiet) => {
+    const groups = card.querySelector(".a-groups").value.split(/[\s,;]+/).filter(Boolean);
+    try { await rpc("t_set_assistant", { p_class: classId, p_user: card.dataset.user, p_role: role, p_perms: perms, p_groups: groups }); if (!quiet) toast("Saved.", "ok"); }
+    catch (e) { toast(e.message, "error"); loadAssistants(); }
+  };
+  $("assistantsTable").querySelectorAll(".asst-card").forEach((card) => {
+    const perms = () => [...card.querySelectorAll(".a-perm:checked")].map((c) => c.value);
+    card.querySelectorAll(".a-perm").forEach((c) => c.onchange = () => save(card, card.querySelector(".a-role").value, perms(), true).then(() => toast("Permission " + (c.checked ? "given" : "removed") + ".", "ok")));
+    card.querySelector(".a-role").onchange = async () => {
+      if (!confirm(`Role: ${ROLE_LABEL[card.querySelector(".a-role").value]}. Tick the permissions of this role (the ones you changed are replaced)?`)) { loadAssistants(); return; }
+      await save(card, card.querySelector(".a-role").value, null); loadAssistants();
+    };
+    card.querySelector(".a-save-groups").onclick = () => save(card, card.querySelector(".a-role").value, perms());
+  });
   $("assistantsTable").querySelectorAll("[data-arem]").forEach((b) => b.onclick = async () => {
     if (!confirm(`Remove ${b.dataset.email} from the assistants of this class? (His activity log is kept.)`)) return;
     try { await rpc("t_remove_assistant", { p_class: classId, p_user: b.dataset.arem }); toast("Assistant removed.", "ok"); loadAssistants(); }
     catch (e) { toast(e.message, "error"); }
+  });
+  $("invitesTable").innerHTML = invites.length ? `<table><tr><th>Code</th><th>Role</th><th>Groups</th><th>Valid until</th><th></th></tr>` + invites.map((i) =>
+    `<tr><td><strong style="font-size:18px;letter-spacing:2px">${esc(i.code)}</strong></td><td>${ROLE_LABEL[i.role] || esc(i.role)}</td><td>${esc((i.groups || []).join(", ") || "all")}</td>
+      <td>${i.used_at ? `<span class="badge ok">used by ${esc(i.used_email || "")}</span>` : fmtWhen(i.expires_at)}</td>
+      <td>${i.used_at ? "" : `<button class="small secondary" data-icopy="${esc(i.code)}">Copy</button> <button class="small red" data-icancel="${esc(i.code)}">Cancel</button>`}</td></tr>`).join("") + `</table>` : "";
+  $("invitesTable").querySelectorAll("[data-icopy]").forEach((b) => b.onclick = async () => {
+    const text = `ClassPulse — assistant of ${classNames[classId] || "my class"}\n${siteUrl("teacher.html")}\nInvitation code: ${b.dataset.icopy}`;
+    try { await navigator.clipboard.writeText(text); toast("Copied: paste it in a message to the assistant.", "ok"); } catch (e) { prompt("Copy this:", text); }
+  });
+  $("invitesTable").querySelectorAll("[data-icancel]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_cancel_invite", { p_code: b.dataset.icancel }); toast("Invitation cancelled.", "ok"); loadAssistants(); } catch (e) { toast(e.message, "error"); }
   });
   $("activityLog").innerHTML = log.length === 0 ? `<p class="muted">Nothing yet.</p>` :
     `<table><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr>` + log.map((l) =>
@@ -1936,10 +2063,27 @@ async function loadAssistants() {
 }
 $("addAssistantBtn").onclick = async () => {
   try {
-    await rpc("t_add_assistant", { p_class: classId, p_email: $("assistantEmail").value });
+    await rpc("t_add_assistant", { p_class: classId, p_email: $("assistantEmail").value, p_role: $("assistantRole").value });
     $("assistantEmail").value = "";
     toast("Assistant added: he logs in on this same page with his e-mail and password.", "ok");
     loadAssistants();
+  } catch (e) { toast(e.message, "error"); }
+};
+$("inviteBtn").onclick = async () => {
+  try {
+    const r = await rpc("t_invite_assistant", { p_class: classId, p_role: $("inviteRole").value, p_perms: null,
+      p_groups: $("inviteGroups").value.split(/[\s,;]+/).filter(Boolean) });
+    toast(`Invitation code: ${r.code} (valid 14 days).`, "ok");
+    loadAssistants();
+  } catch (e) { toast(e.message, "error"); }
+};
+// Any account: join a class with an invitation code (Classes tab)
+$("joinBtn").onclick = async () => {
+  try {
+    const r = await rpc("t_claim_invite", { p_code: $("joinCode").value });
+    $("joinCode").value = "";
+    toast(`You are now assistant of ${r.class_name}.`, "ok");
+    await loadClasses(); await selectClass(r.class_id);
   } catch (e) { toast(e.message, "error"); }
 };
 $("logRefreshBtn").onclick = loadAssistants;
@@ -1956,7 +2100,7 @@ async function openProfile(studentId) {
       ${st.registered ? `class device: ${esc(st.device_kind || "linked")}${st.device_linked_at ? ", linked " + fmtWhen(st.device_linked_at) : ""}` : "no class device"}</p>
     <p class="profile-groups">${grp("TD group", st.td_group)} ${grp("TP sub-group", st.tp_group)}
       <span class="muted">E-mail:</span> <span id="profileEmail">${st.email ? `<a href="mailto:${esc(st.email)}">${esc(st.email)}</a>` : '<span class="muted">none</span>'}</span>
-      <button class="small secondary teacher-only" id="profileEmailEdit">✏</button></p>
+      <button class="small secondary" data-perm="students_edit" id="profileEmailEdit">✏</button></p>
     <div class="row" style="gap:30px;margin:10px 0">
       <div><div class="stat">${present} / ${p.sessions.length}</div><div class="muted">sessions attended</div></div>
       <div><div class="stat">${p.quizzes.filter((q) => q.graded && q.mark != null).length}</div><div class="muted">graded quizzes taken</div></div>
@@ -1968,7 +2112,7 @@ async function openProfile(studentId) {
     <h3 style="margin-top:14px">Quizzes and tests</h3><table><tr><th>Date</th><th>Type</th><th>Title</th><th>Mark</th><th>Board</th><th>Left the screen</th></tr>` +
     p.quizzes.map((q) => `<tr><td>${q.date}</td><td>${KIND_LABEL[q.kind] || q.kind}${q.graded ? "" : " (not graded)"}</td><td>${esc(q.title)}</td>
       <td>${q.kind === "survey" ? "-" : quizStatusCell(q)}
-        ${q.kind !== "survey" && !isAssistant() && q.status !== "other group" ? `<button class="small secondary" data-pmark="${q.quiz_id}" title="Correct this mark">✏</button>` : ""}</td>
+        ${q.kind !== "survey" && can("marks_edit") && q.status !== "other group" ? `<button class="small secondary" data-pmark="${q.quiz_id}" title="Correct this mark">✏</button>` : ""}</td>
       <td>${q.board ? (q.board.includes("->") ? `<span class="badge info">${esc(q.board)}</span>` : esc(q.board)) : ""}</td><td>${q.left_screen || ""}</td></tr>`).join("") + `</table>
     <h3 style="margin-top:14px">Documents (course notes, lab sheets, code)</h3>` + ((p.documents || []).filter((d) => d.stored).length === 0 ? `<p class="muted">No document in this class yet.</p>` :
     `<table><tr><th>Document</th><th>First opened</th><th>Last seen</th><th>Times opened</th><th>Reading time</th><th>Read up to</th><th>PDF downloaded</th><th>File downloaded</th></tr>` +
@@ -2439,13 +2583,13 @@ function msgDocLink(m) {
 }
 
 async function loadMessages() {
-  if (!classId) { $("msgInbox").innerHTML = ""; $("msgSent").innerHTML = ""; return; }
-  const teacher = !isAssistant();
+  if (!classId) { $("mailList").innerHTML = ""; return; }
+  const teacher = can("messages");
   const cid = classId;
   try {
-    // v28.1: the three lists are asked at the same time (one wait instead of three)
-    const [m, studs, docs] = await Promise.all([rpc("t_messages", { p_class: cid }),
-      teacher ? rpc("t_list_students", { p_class: cid }) : null, teacher ? rpc("t_list_docs", { p_class: cid }) : null]);
+    // v28.1: the lists are asked at the same time (one wait instead of three). v29: no message in them (light).
+    const [m, studs, docs] = await Promise.all([rpc("t_msg_meta", { p_class: cid }),
+      teacher ? rpc("t_list_students", { p_class: cid }) : null, teacher && can("docs_publish") ? rpc("t_list_docs", { p_class: cid }) : []]);
     if (cid !== classId) return;
     msgData = m;
     if (teacher) {
@@ -2460,7 +2604,7 @@ async function loadMessages() {
   fillMsgGroups();
   renderMsgPick();
   renderStaffCard();
-  renderMsgLists();
+  await loadMailList(true);
   updateMsgBadge();
 }
 
@@ -2492,12 +2636,13 @@ function renderMsgPick() {
   });
   $("msgPickCount").textContent = `${msgPicked.size} student(s) chosen`;
 }
+// v29: an assistant limited to some groups writes only to them (the server checks it too)
 
 function renderStaffCard() {
   const teacher = msgData && msgData.is_teacher;
   const assistants = (msgData && msgData.assistants) || [];
   if (teacher) {
-    $("staffTitle").textContent = "Lab assistants of this class";
+    $("staffTitle").textContent = "Assistants of this class";
     $("staffTo").innerHTML = assistants.length
       ? `<option value="">all the assistants (${assistants.length})</option>` + assistants.map((a) => `<option value="${a.user_id}">${esc(a.email)}</option>`).join("")
       : `<option value="">no assistant in this class</option>`;
@@ -2509,50 +2654,96 @@ function renderStaffCard() {
   }
 }
 
-function msgItem(m, sent) {
-  const who = sent
-    ? `To: ${m.target && !/student/.test(m.target) ? esc(m.target) + (m.to_name ? ` (${esc(m.to_name)})` : "") : esc(m.to_name || m.target || "")}${m.recipients > 1 ? ` <span class="muted">· read by ${m.read_by}/${m.recipients}</span>` : m.read_by ? ' <span class="muted">· read</span>' : ' <span class="muted">· not read yet</span>'}`
-    : `${m.from_kind === "student" ? "👤" : "🧑‍🏫"} ${esc(m.from || "")}${m.from_matricule ? ` <span class="muted">${esc(m.from_matricule)}</span>` : ""}
-       ${m.from_kind === "assistant" ? ' <span class="badge info">assistant</span>' : m.from_kind === "teacher" ? ' <span class="badge info">teacher</span>' : ""}`;
-  const unread = !sent && !m.read_at;
-  return `<div class="msg-item${unread ? " unread" : ""}" data-mid="${m.id}">
-    <div class="msg-head"><span>${who}</span><span class="muted">${msgWhen(m.at)}</span></div>
-    ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}
-    <div class="msg-body">${msgBodyHtml(m.body)}</div>${msgDocLink(m)}
-    ${sent ? "" : `<div class="msg-actions">${unread ? `<button class="small secondary" data-mread="${m.id}">Mark as read</button>` : ""}
-      <button class="small" data-mreply="${m.id}">Reply</button></div>`}
-  </div>`;
+// ---- v29: mailbox. One line per message (who, subject, start of the text, date); a click opens it in full.
+let mailBox = "inbox", mailItems = [], mailTotal = 0, mailOpen = null, mailSearchTimer = null;
+async function loadMailList(reset) {
+  if (!classId) return;
+  const cid = classId;
+  let r;
+  try { r = await rpc("t_msg_list", { p_class: cid, p_box: mailBox, p_search: $("mailSearch").value.trim() || null, p_offset: reset ? 0 : mailItems.length }); }
+  catch (e) { toast(e.message, "error"); return; }
+  if (cid !== classId) return;
+  mailItems = reset ? r.items : mailItems.concat(r.items);
+  mailTotal = r.total;
+  if (reset) mailOpen = null;
+  renderMailList();
 }
-
-function renderMsgLists() {
-  const rec = (msgData && msgData.received) || [], sent = (msgData && msgData.sent) || [];
-  const unread = rec.filter((m) => !m.read_at).length;
-  $("msgUnread").textContent = unread ? `${unread} new` : "";
-  $("msgUnread").classList.toggle("hidden", !unread);
-  $("msgInbox").innerHTML = rec.length ? rec.map((m) => msgItem(m, false)).join("") : `<p class="muted">No message received in this class.</p>`;
-  $("msgSent").innerHTML = sent.length ? sent.map((m) => msgItem(m, true)).join("") : `<p class="muted">No message sent in this class.</p>`;
-  $("msgInbox").querySelectorAll("[data-mread]").forEach((b) => b.onclick = () => markMsgRead(Number(b.dataset.mread)));
-  $("msgInbox").querySelectorAll("[data-mreply]").forEach((b) => b.onclick = () => replyTo(rec.find((m) => m.id === Number(b.dataset.mreply))));
+function renderMailList() {
+  const sent = mailBox === "sent";
+  $("mailBoxes").querySelectorAll("[data-box]").forEach((b) => { b.className = "small " + (b.dataset.box === mailBox ? "" : "secondary"); });
+  const unread = mailBox === "inbox" ? mailItems.filter((m) => !m.read).length : 0;
+  $("msgUnread").textContent = unread ? `${unread} new` : ""; $("msgUnread").classList.toggle("hidden", !unread);
+  $("mailList").innerHTML = mailItems.length ? mailItems.map((m) => `<div class="mail-row ${!sent && !m.read ? "unread" : ""}" data-mid="${m.id}">
+      <button class="star" data-mstar="${m.id}" title="${m.starred ? "Unstar" : "Star"}">${m.starred ? "★" : "☆"}</button>
+      <span class="who">${sent ? "To: " + esc(m.to || "") : (m.from_kind === "student" ? "👤 " : "🧑‍🏫 ") + esc(m.from || "")}</span>
+      <span class="what">${esc(m.subject || "(no subject)")} <span class="snip">— ${esc(m.snippet || "")}</span>${m.has_doc ? " 📄" : ""}</span>
+      <span class="when">${msgWhen(m.at)}${sent ? ` · read ${m.read_by}/${m.recipients}` : ""}</span></div>
+      ${mailOpen && mailOpen.id === m.id ? `<div class="mail-open" id="mailOpen">${mailOpenHtml(mailOpen, sent)}</div>` : ""}`).join("")
+    : `<p class="muted" style="padding:8px">${{ inbox: "No message received.", starred: "No starred message.", archived: "No archived message.", sent: "No message sent." }[mailBox]}</p>`;
+  $("mailCount").textContent = mailTotal ? `${mailItems.length} / ${mailTotal}` : "";
+  $("mailMore").classList.toggle("hidden", mailItems.length >= mailTotal);
+  $("mailList").querySelectorAll(".mail-row").forEach((row) => row.onclick = (e) => { if (!e.target.closest("[data-mstar]")) openMail(Number(row.dataset.mid)); });
+  $("mailList").querySelectorAll("[data-mstar]").forEach((b) => b.onclick = () => {
+    const m = mailItems.find((x) => x.id === Number(b.dataset.mstar));
+    flagMail(m, m.starred ? "unstar" : "star");
+  });
+  if (mailOpen) bindMailOpen(sent);
 }
-
-// v28.1: shown as read at once; the server is told in the background (put back if it refuses).
-async function markMsgRead(id) {
-  const m = msgData.received.find((x) => x.id === id);
-  if (!m || m.read_at) return;
-  m.read_at = new Date().toISOString();
-  renderMsgLists();
-  const b = $("msgBadge"), n = Math.max(0, Number(b.textContent || 0) - 1);
-  b.textContent = n ? String(n) : ""; b.classList.toggle("hidden", !n);
-  try { await rpc("t_message_read", { p_id: id }); }
-  catch (e) { m.read_at = null; renderMsgLists(); toast(e.message, "error"); }
+function mailOpenHtml(m, sent) {
+  return `<div class="msg-head"><span>${sent ? "To: " + esc(m.to_name || m.target || "") : esc(m.from || "")}${m.from_matricule ? ` <span class="muted">${esc(m.from_matricule)}</span>` : ""}</span><span class="muted">${msgWhen(m.at)}</span></div>
+    ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}<div class="msg-body">${msgBodyHtml(m.body)}</div>${msgDocLink(m)}
+    <div class="msg-actions">${sent ? "" : `<button class="small" data-mact="reply">Reply</button>`}
+      ${mailBox === "archived" ? `<button class="small secondary" data-mact="unarchive">Back to Received</button>` : sent ? "" : `<button class="small secondary" data-mact="archive">🗄 Archive</button>`}
+      ${sent ? "" : `<button class="small secondary" data-mact="unread">Mark as unread</button>`}
+      <button class="small red" data-mact="delete">Delete</button></div>`;
+}
+function bindMailOpen(sent) {
+  const box = $("mailOpen");
+  if (!box) return;
+  box.querySelectorAll("[data-mact]").forEach((b) => b.onclick = async () => {
+    const act = b.dataset.mact, m = mailItems.find((x) => x.id === mailOpen.id);
+    if (act === "reply") { if (!mailOpen.loading) replyTo(mailOpen); return; }
+    if (act === "delete" && !confirm("Delete this message? (Only for you: the others keep it.)")) return;
+    await flagMail(m, act);
+  });
+}
+async function openMail(id) {
+  if (mailOpen && mailOpen.id === id) { mailOpen = null; renderMailList(); return; }
+  const m = mailItems.find((x) => x.id === id);
+  // shown at once (read, start of the text), the full text follows
+  mailOpen = { id, loading: true, from: m && m.from, to_name: m && m.to, subject: m && m.subject, body: (m && m.snippet || "") + " …", at: m && m.at };
+  if (m && !m.read && mailBox !== "sent") m.read = true;
+  renderMailList();
+  let full;
+  try { full = await rpc("t_msg_get", { p_id: id }); } catch (e) { toast(e.message, "error"); return; }
+  if (!mailOpen || mailOpen.id !== id) return;
+  mailOpen = full;
+  renderMailList();
   updateMsgBadge();
 }
+// star | unstar | archive | unarchive | delete | unread: shown at once, the server is told in the background
+async function flagMail(m, action) {
+  if (!m) return;
+  const before = Object.assign({}, m);
+  if (action === "star") m.starred = true;
+  if (action === "unstar") m.starred = false;
+  if (action === "unread") { m.read = false; mailOpen = null; }
+  const leaves = ["archive", "unarchive", "delete"].includes(action) || (mailBox === "starred" && action === "unstar");
+  if (leaves) { mailItems = mailItems.filter((x) => x !== m); mailTotal = Math.max(0, mailTotal - 1); if (mailOpen && mailOpen.id === m.id) mailOpen = null; }
+  renderMailList();
+  try { await rpc("t_msg_flag", { p_id: m.id, p_action: action }); }
+  catch (e) { Object.assign(m, before); toast(e.message, "error"); loadMailList(true); return; }
+  if (action === "archive") toast("Archived (folder 🗄 Archived).", "ok");
+  updateMsgBadge();
+}
+$("mailBoxes").querySelectorAll("[data-box]").forEach((b) => b.onclick = () => { mailBox = b.dataset.box; loadMailList(true); });
+$("mailMore").onclick = () => loadMailList(false);
+$("mailSearch").oninput = () => { clearTimeout(mailSearchTimer); mailSearchTimer = setTimeout(() => loadMailList(true), 400); };
 
 function replySubject(m) { const s = m.subject || ""; return /^re:/i.test(s) ? s : ("Re: " + (s || "your message")).slice(0, 200); }
 
 function replyTo(m) {
   if (!m) return;
-  if (!m.read_at) markMsgRead(m.id);
   if (m.from_kind === "student") {
     // answer one student: compose card, that student only
     $("msgKind").value = "students"; syncMsgKind();
@@ -3054,3 +3245,125 @@ async function openMakeupPanel(quizId, after) {
     catch (e) { toast(e.message, "error"); }
   });
 }
+
+// ------------------------------------------------------------------ v30: My space (announcement, office hours, proposals)
+// Entered once here for all the classes of the teacher; read by the students ("My teachers") and by the personal page.
+const WEEKDAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const PROP_KIND = { pfe: "Final-year project", master: "Master thesis", licence: "Licence project", mini: "Mini-project", other: "Other" };
+let mySpace = null, propEditing = null;
+function dayLabel(d) { return new Date(d + "T12:00:00").toLocaleDateString([], { weekday: "long", day: "2-digit", month: "short" }); }
+function officeHtml(list) {
+  if (!list || !list.length) return `<p class="muted">No office hours in the next two weeks.</p>`;
+  return list.map((o) => `<div class="office-day ${o.cancelled ? "cancelled" : ""}"><span class="d">${esc(dayLabel(o.date))}</span>
+    <span class="t">${esc(o.start)}–${esc(o.end)}${o.place ? " · " + esc(o.place) : ""}</span>
+    ${o.cancelled ? `<span class="badge no">cancelled</span>${o.reason ? ` <span class="muted">${esc(o.reason)}</span>` : ""}` : o.extra ? `<span class="badge open">extra</span>${o.reason ? ` <span class="muted">${esc(o.reason)}</span>` : ""}` : ""}</div>`).join("");
+}
+async function loadMySpace() {
+  try { mySpace = await rpc("t_myspace"); } catch (e) { toast(e.message, "error"); return; }
+  const d = mySpace;
+  // announcement
+  const keep = [...$("annClasses").selectedOptions].map((o) => o.value);
+  $("annClasses").innerHTML = d.classes.map((c) => `<option value="${c.id}" ${keep.includes(c.id) ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+  if (!$("annUntil").value) { const t = new Date(Date.now() + 7 * 86400000); t.setHours(23, 59, 0, 0); $("annUntil").value = localDateTime(t); }
+  $("annList").innerHTML = d.announcements.map((a) => `<div class="ann-banner" style="${a.active ? "" : "opacity:.5"}">${esc(a.body)}
+      <div class="muted" style="font-size:12px">${a.active ? "until " + fmtWhen(a.until) : "ended"} · ${a.class_ids.length ? a.class_ids.map((id) => esc((d.classes.find((c) => c.id === id) || {}).name || "?")).join(", ") : "all my classes"}${a.public ? " · public page" : ""}
+      ${a.active ? `<button class="small secondary" data-annend="${a.id}">End now</button>` : ""}</div></div>`).join("");
+  $("annList").querySelectorAll("[data-annend]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_announce_end", { p_id: Number(b.dataset.annend) }); toast("Announcement ended.", "ok"); loadMySpace(); } catch (e) { toast(e.message, "error"); }
+  });
+  // office hours
+  $("slotList").innerHTML = d.slots.length ? `<table>` + d.slots.map((s) => `<tr><td><strong>${WEEKDAYS[s.weekday]}</strong></td><td>${esc(s.start)}–${esc(s.end)}</td>
+      <td>${esc(s.place)}</td><td class="muted">${s.valid_from ? "from " + esc(s.valid_from) : ""} ${s.valid_until ? "until " + esc(s.valid_until) : ""}</td>
+      <td><button class="small red" data-slotdel="${s.id}">Delete</button></td></tr>`).join("") + `</table>` : `<p class="muted">No weekly slot yet.</p>`;
+  $("slotList").querySelectorAll("[data-slotdel]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Delete this weekly slot?")) return;
+    try { await rpc("t_slot_delete", { p_id: Number(b.dataset.slotdel) }); loadMySpace(); } catch (e) { toast(e.message, "error"); }
+  });
+  $("officePreview").innerHTML = officeHtml(d.upcoming) + (d.exceptions.length ? `<p class="muted" style="margin:8px 0 2px">Changes:</p>` +
+    d.exceptions.map((e) => `<div class="row" style="gap:6px"><span>${esc(dayLabel(e.day))}: ${e.kind === "cancel" ? "cancelled" : `extra ${esc(e.start)}–${esc(e.end)} ${esc(e.place)}`}${e.reason ? " — " + esc(e.reason) : ""}</span>
+      <button class="small secondary" data-exdel="${e.id}">Undo</button></div>`).join("") : "");
+  $("officePreview").querySelectorAll("[data-exdel]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_exception_delete", { p_id: Number(b.dataset.exdel) }); loadMySpace(); } catch (e) { toast(e.message, "error"); }
+  });
+  if (!$("exDay").value) $("exDay").value = new Date().toISOString().slice(0, 10);
+  // proposals
+  $("propList").innerHTML = d.proposals.length ? d.proposals.map((p) => `<div class="prop-row ${p.status !== "open" ? "closed" : ""}">
+      <div class="row" style="justify-content:space-between"><strong>${esc(p.title)}</strong>
+        <span><span class="badge ${p.status === "open" ? "open" : "closed"}">${p.status}</span> ${p.public ? "" : '<span class="badge info">not public</span>'}</span></div>
+      <div class="muted">${PROP_KIND[p.kind] || esc(p.kind)}${p.level ? " · " + esc(p.level) : ""} · ${p.places} place(s)${p.keywords ? " · " + esc(p.keywords) : ""}${p.assigned_note ? " · " + esc(p.assigned_note) : ""}</div>
+      ${p.description ? `<p style="margin:6px 0;white-space:pre-line">${esc(p.description)}</p>` : ""}
+      <div class="row" style="gap:6px"><button class="small" data-pint="${p.id}">👥 Interested: ${p.interested}</button>
+        <button class="small secondary" data-pedit="${p.id}">✏ Edit</button>
+        ${p.status === "open" ? `<button class="small green" data-passign="${p.id}">Assigned</button>` : `<button class="small secondary" data-preopen="${p.id}">Open again</button>`}
+        <button class="small" data-pproj="${p.id}" title="A space for the team: thread, files, milestones, meetings">🎓 Start the project</button>
+        <button class="small red" data-pdel="${p.id}">Delete</button></div>
+      <div class="pint-box" id="pint-${p.id}"></div></div>`).join("") : `<p class="muted">No proposal yet.</p>`;
+  const prop = (id) => d.proposals.find((x) => x.id === id);
+  const saveStatus = async (p, status, note) => {
+    try { await rpc("t_proposal_save", { p_id: p.id, p_data: Object.assign({}, p, { status, assigned_note: note == null ? p.assigned_note : note }) }); loadMySpace(); }
+    catch (e) { toast(e.message, "error"); }
+  };
+  $("propList").querySelectorAll("[data-pedit]").forEach((b) => b.onclick = () => openPropForm(prop(b.dataset.pedit)));
+  $("propList").querySelectorAll("[data-passign]").forEach((b) => b.onclick = () => {
+    const note = prompt("Assigned: note (e.g. names of the students). The proposal leaves the students' list.", "");
+    if (note !== null) saveStatus(prop(b.dataset.passign), "assigned", note);
+  });
+  $("propList").querySelectorAll("[data-pproj]").forEach((b) => b.onclick = () => startProjectFromProposal(b.dataset.pproj));   // v31
+  $("propList").querySelectorAll("[data-preopen]").forEach((b) => b.onclick = () => saveStatus(prop(b.dataset.preopen), "open"));
+  $("propList").querySelectorAll("[data-pdel]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Delete this proposal (and the list of interested students)?")) return;
+    try { await rpc("t_proposal_delete", { p_id: b.dataset.pdel }); loadMySpace(); } catch (e) { toast(e.message, "error"); }
+  });
+  $("propList").querySelectorAll("[data-pint]").forEach((b) => b.onclick = async () => {
+    const box = $("pint-" + b.dataset.pint);
+    if (box.innerHTML) { box.innerHTML = ""; return; }
+    let list = [];
+    try { list = await rpc("t_proposal_interested", { p_id: b.dataset.pint }); } catch (e) { toast(e.message, "error"); return; }
+    box.innerHTML = list.length ? `<table>` + list.map((x) => `<tr><td><strong>${esc(x.name)}</strong> <span class="muted">${esc(x.matricule)} · ${esc(x.class)}${x.group ? " · " + esc(x.group) : ""}</span>
+        ${x.email ? `<div><a href="mailto:${esc(x.email)}">${esc(x.email)}</a></div>` : ""}</td><td style="white-space:pre-line">${esc(x.message || "")}</td><td class="muted">${fmtWhen(x.at)}</td></tr>`).join("") + `</table>`
+      : `<p class="muted">Nobody yet.</p>`;
+  });
+}
+function openPropForm(p) {
+  propEditing = p || null;
+  $("propForm").classList.remove("hidden");
+  $("propTitle").value = p ? p.title : ""; $("propKind").value = p ? p.kind : "pfe"; $("propLevel").value = p ? p.level : "";
+  $("propPlaces").value = p ? p.places : 2; $("propStatus").value = p ? p.status : "open"; $("propPublic").checked = p ? p.public : true;
+  $("propDesc").value = p ? p.description : ""; $("propKeywords").value = p ? p.keywords : ""; $("propNote").value = p ? (p.assigned_note || "") : "";
+  $("propTitle").focus();
+}
+$("propNewBtn").onclick = () => openPropForm(null);
+$("propCancelBtn").onclick = () => { $("propForm").classList.add("hidden"); propEditing = null; };
+$("propSaveBtn").onclick = async () => {
+  const data = { title: $("propTitle").value, kind: $("propKind").value, level: $("propLevel").value, places: Number($("propPlaces").value) || 1,
+    status: $("propStatus").value, public: $("propPublic").checked, description: $("propDesc").value, keywords: $("propKeywords").value, assigned_note: $("propNote").value };
+  try { await rpc("t_proposal_save", { p_id: propEditing ? propEditing.id : null, p_data: data }); toast("Proposal saved.", "ok"); $("propForm").classList.add("hidden"); propEditing = null; loadMySpace(); }
+  catch (e) { toast(e.message, "error"); }
+};
+$("annSaveBtn").onclick = async () => {
+  const until = new Date($("annUntil").value);
+  if (isNaN(until) || until <= new Date()) { toast("Choose a date and time in the future.", "error"); return; }
+  try {
+    await rpc("t_announce_save", { p_id: null, p_body: $("annBody").value, p_classes: [...$("annClasses").selectedOptions].map((o) => o.value),
+      p_until: until.toISOString(), p_public: $("annPublic").checked });
+    $("annBody").value = ""; toast("Announcement published.", "ok"); loadMySpace();
+  } catch (e) { toast(e.message, "error"); }
+};
+$("slotAddBtn").onclick = async () => {
+  try {
+    await rpc("t_slot_save", { p_id: null, p_weekday: Number($("slotDay").value), p_start: $("slotStart").value, p_end: $("slotEnd").value,
+      p_place: $("slotPlace").value, p_from: $("slotFrom").value || null, p_until: $("slotUntil").value || null });
+    toast("Slot added.", "ok"); loadMySpace();
+  } catch (e) { toast(e.message, "error"); }
+};
+$("exKind").onchange = () => $("exExtra").classList.toggle("hidden", $("exKind").value !== "extra");
+$("exAddBtn").onclick = async () => {
+  const extra = $("exKind").value === "extra";
+  try {
+    const r = await rpc("t_exception_save", { p_day: $("exDay").value, p_kind: $("exKind").value, p_slot: null,
+      p_start: extra ? $("exStart").value : null, p_end: extra ? $("exEnd").value : null, p_place: extra ? $("exPlace").value : "",
+      p_reason: $("exReason").value, p_notify: $("exNotify").checked ? [] : null });
+    toast(r.classes_notified ? `Saved; message sent to ${r.classes_notified} class(es).` : "Saved.", "ok");
+    $("exReason").value = ""; loadMySpace();
+  } catch (e) { toast(e.message, "error"); }
+};

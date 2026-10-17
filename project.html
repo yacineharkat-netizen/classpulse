@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en" data-version="31">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ClassPulse · Project</title>
+<link rel="stylesheet" href="css/style.css?v=31">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B2545">
+</head>
+<body>
+<div class="student">
+  <header>
+    <a href="index.html" class="home-link">⌂ Home</a>
+    <div class="brand">Project</div>
+  </header>
+  <div id="netBanner" class="net-banner hidden" role="status">⚠ Connection lost — reconnecting…</div>
+  <div id="view"><p class="muted">Loading…</p></div>
+</div>
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=31"></script>
+<script>
+// v31: the space of a supervised project, for its team: thread, milestones, files and versions, minutes of the meetings.
+const classId = new URLSearchParams(location.search).get("c");
+let token = null, proj = null, me = null, tab = "thread", draft = "";
+try { token = localStorage.getItem("cp_device_" + classId) || localStorage.getItem("cp_reader_" + classId); } catch (e) { token = null; }
+const KIND = { submission: ["version to review", "orange"], reference: ["reference", "info"], doc: ["document", "closed"] };
+
+async function load() {
+  try { const r = await rpc("s_project_space", { p_device: token }); proj = r.project; me = r.me; render(); }
+  catch (e) {
+    $("view").innerHTML = `<div class="card"><p>${esc(e.code === "UNKNOWN_DEVICE" || e.code === "NOT_FOUND" ? "This project is not open on this device: sign in on the home page with your student number and your PIN." : e.message)}</p>
+      <a href="index.html"><button style="width:100%">Home page</button></a></div>`;
+  }
+}
+
+function render() {
+  const p = proj, next = p.milestones.find((m) => !m.validated_at);
+  $("view").innerHTML = `<div class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎓 ${esc(p.title)}</h2><button class="small secondary" id="reloadBtn" title="Reload">↻</button></div>
+      <div class="muted">${esc(PROJECT_TYPE[p.ptype] || "Project")}${p.level ? " · " + esc(p.level) : ""} · ${esc(p.year || "")} · <span class="badge ${p.status === "in_progress" ? "open" : "closed"}">${esc(PROJECT_STATUS[p.status] || "")}</span></div>
+      <p style="margin:6px 0 0">Supervisor: <strong>${esc(p.teacher || "")}</strong>${p.co_supervisor ? " · co-supervisor: " + esc(p.co_supervisor) : ""}<br>
+        Team: ${p.team.map((s) => esc(s.name)).join(", ")}</p>
+      ${next ? `<p style="margin:6px 0 0">Next milestone: <strong>${esc(next.title)}</strong>${next.due ? ` <span class="${next.late ? "late" : "muted"}">${esc(dayText(next.due))}</span>` : ""}</p>` : ""}
+      ${p.submit_date || p.defense_date ? `<p class="muted" style="margin:4px 0 0">${p.submit_date ? "Report due " + esc(dayText(p.submit_date)) : ""}${p.submit_date && p.defense_date ? " · " : ""}${p.defense_date ? "defense " + esc(dayText(p.defense_date)) : ""}</p>` : ""}
+      ${p.github ? `<div class="proj-git">🐙 <a href="${esc(p.github)}" target="_blank" rel="noopener">${esc(p.github.replace(/^https?:\/\//, ""))}</a> <button class="small secondary" id="ghBtn">Last commits</button><div id="ghBox"></div></div>` : ""}
+      <div class="sub-tabs">
+        ${[["thread", "💬 Thread"], ["milestones", "🏁 Milestones"], ["files", "📎 Files"], ["meetings", "🗓 Meetings"], ["about", "ℹ About"]].map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? "active" : ""}">${l}</button>`).join("")}
+      </div>
+      <div id="tabBox"></div></div>`;
+  $("reloadBtn").onclick = load;
+  if (p.github) $("ghBtn").onclick = async () => { $("ghBox").innerHTML = '<span class="muted">…</span>'; $("ghBox").innerHTML = githubHtml(await githubCommits(p.github)); };
+  document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { tab = b.dataset.tab; render(); });
+  ({ thread: renderThread, milestones: renderMilestones, files: renderFiles, meetings: renderMeetings, about: renderAbout })[tab]();
+}
+
+async function getFile(id) {
+  toast("Downloading…");
+  try { const f = await rpc("s_project_file_get", { p_device: token, p_id: id }); saveBase64(f.name, f.mime, f.data); } catch (e) { toast(e.message, "error"); }
+}
+
+function renderThread() {
+  $("tabBox").innerHTML = `<div id="posts" class="proj-posts">${projectPostsHtml(proj.posts, "data-file")}</div>
+    <textarea id="postBody" rows="3" maxlength="4000" placeholder="A message to the team and the supervisor(s)" style="margin-top:8px"></textarea>
+    <button id="postBtn" class="green" style="width:100%;margin-top:6px">Send</button>
+    <p class="muted" style="margin:6px 0 0">Everybody in the project reads the thread. For a private question to the supervisor, use ✉ Messages on the home page.</p>`;
+  $("postBody").value = draft; $("postBody").oninput = () => { draft = $("postBody").value; };   // kept when the page reloads its content
+  $("posts").querySelectorAll("[data-file]").forEach((a) => a.onclick = (e) => { e.preventDefault(); getFile(Number(a.dataset.file)); });
+  $("posts").scrollTop = $("posts").scrollHeight;
+  $("postBtn").onclick = async () => {
+    $("postBtn").disabled = true;
+    try { await rpc("s_project_post", { p_device: token, p_body: $("postBody").value }); draft = ""; await load(); }
+    catch (e) { toast(e.message, "error"); $("postBtn").disabled = false; }
+  };
+}
+
+function renderMilestones() {
+  $("tabBox").innerHTML = proj.milestones.length ? proj.milestones.map((m) => `<div class="ms-row ${m.validated_at ? "ok" : m.late ? "late-row" : ""}">
+      <span class="ms-state">${m.validated_at ? "✔" : `<input type="checkbox" data-ms="${m.id}" ${m.done_at ? "checked" : ""} style="width:auto" title="Done">`}</span>
+      <span class="ms-title"><strong>${esc(m.title)}</strong>${m.due ? ` <span class="${m.late ? "late" : "muted"}">${m.late ? "⚠ " : ""}${esc(dayText(m.due))}</span>` : ""}
+        <span class="muted">${m.validated_at ? " · validated by the supervisor" : m.done_at ? " · done: waiting for the supervisor" : ""}</span></span></div>`).join("") +
+      `<p class="muted" style="margin:8px 0 0">Tick a step when it is done; the supervisor validates it (✔).</p>`
+    : `<p class="muted">The supervisor has not set the milestones yet.</p>`;
+  $("tabBox").querySelectorAll("[data-ms]").forEach((c) => c.onchange = async () => {
+    try { await rpc("s_milestone_done", { p_device: token, p_id: Number(c.dataset.ms), p_done: c.checked }); await load(); }
+    catch (e) { toast(e.message, "error"); c.checked = !c.checked; }
+  });
+}
+
+function renderFiles() {
+  $("tabBox").innerHTML = `<div class="card" style="background:#F5F8FB">
+      <input type="file" id="fileIn">
+      <select id="fileKind" style="margin-top:6px"><option value="submission">a version for the supervisor to review</option><option value="doc">a document for the team</option></select>
+      <input id="fileNote" placeholder="note, e.g. chapter 2, version 3" style="margin-top:6px">
+      <button id="fileBtn" style="width:100%;margin-top:6px">⬆ Upload</button>
+      <p class="muted" style="margin:6px 0 0">5 MB per file (${(proj.used_kb / 1024).toFixed(1)} of 100 MB used). Big files (videos, datasets): a Drive or GitHub link in the thread.</p></div>` +
+    (proj.files.length ? proj.files.map((f) => `<div class="file-row">
+      <div><a href="#" data-get="${f.id}">📎 ${esc(f.name)}</a> <span class="badge ${KIND[f.kind][1]}">${KIND[f.kind][0]}</span></div>
+      <div class="muted">${esc(sizeText(f.size))} · ${esc(f.by)} · ${esc(whenText(f.at))}${f.note ? " · " + esc(f.note) : ""}</div>
+      ${f.comment ? `<div class="file-comment">💬 ${esc(f.comment).replace(/\n/g, "<br>")}</div>` : ""}</div>`).join("") : `<p class="muted">No file yet.</p>`);
+  $("tabBox").querySelectorAll("[data-get]").forEach((a) => a.onclick = (e) => { e.preventDefault(); getFile(Number(a.dataset.get)); });
+  $("fileBtn").onclick = async () => {
+    const file = $("fileIn").files[0];
+    if (!file) { toast("Choose a file first.", "error"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast(errorText({ message: "FILE_TOO_BIG" }), "error"); return; }
+    $("fileBtn").disabled = true; toast("Uploading…");
+    try {
+      await rpc("s_project_file_add", { p_device: token, p_name: file.name, p_mime: file.type, p_b64: await fileToBase64(file), p_kind: $("fileKind").value, p_note: $("fileNote").value });
+      toast("File added: the supervisor sees it in the thread.", "ok"); await load();
+    } catch (e) { toast(e.message, "error"); $("fileBtn").disabled = false; }
+  };
+}
+
+function renderMeetings() {
+  $("tabBox").innerHTML = proj.meetings.length ? proj.meetings.map((g) => `<div class="meeting"><strong>🗓 ${esc(dayText(g.day))}</strong>
+      ${g.attendees ? `<div class="muted">Present: ${esc(g.attendees)}</div>` : ""}
+      ${g.notes ? `<div class="mt-part">${esc(g.notes).replace(/\n/g, "<br>")}</div>` : ""}
+      ${g.decisions ? `<div class="mt-part"><strong>Decisions:</strong> ${esc(g.decisions).replace(/\n/g, "<br>")}</div>` : ""}
+      ${g.next_tasks ? `<div class="mt-part"><strong>Next tasks:</strong> ${esc(g.next_tasks).replace(/\n/g, "<br>")}</div>` : ""}</div>`).join("")
+    : `<p class="muted">No minutes yet: the supervisor writes them after each meeting.</p>`;
+}
+
+function renderAbout() {
+  $("tabBox").innerHTML = (proj.description ? `<p style="white-space:pre-line">${esc(proj.description)}</p>` : `<p class="muted">No description yet.</p>`) +
+    `<h3>Team</h3>` + proj.team.map((s) => `<div>${esc(s.name)}${s.id === me ? " (you)" : ""}${s.registered ? "" : ' <span class="muted">— not signed in yet</span>'}</div>`).join("");
+}
+
+// back on the page (from another app): fresh content
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && proj) load(); });
+setInterval(() => { $("netBanner").classList.toggle("hidden", !((CP_NET.lastFail || 0) > (CP_NET.lastOk || 0))); }, 1000);
+if (!token || !classId) $("view").innerHTML = `<div class="card"><p>Open the project from your ClassPulse home page (sign in with your student number and your PIN).</p><a href="index.html"><button style="width:100%">Home page</button></a></div>`;
+else load();
+</script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.CP_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    if (wrong.length) document.body.insertAdjacentHTML("afterbegin", '<div style="background:#B83227;color:#fff;padding:10px;font-weight:600">Version problem: ' + wrong.join(", ") + ". Reload the page (Ctrl+F5).</div>");
+  });
+})();
+</script>
+</body>
+</html>
