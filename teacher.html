@@ -178,6 +178,12 @@
             <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
             <div id="lockedList"></div>
           </div>
+          <!-- v28.2: phones that stopped calling the server during a question (network lost, phone asleep) -->
+          <div id="silentBox" class="silent-alert hidden">
+            <strong>📶 <span id="silentCount">0</span> phone(s) without contact for 10 s or more</strong>
+            <span class="muted">(network lost or phone asleep: they may miss questions — a make-up can be given after the quiz, in Results)</span>
+            <div id="silentList"></div>
+          </div>
           <div id="quizLive" class="grid2" style="margin-top:14px"></div>
           <div class="row launch-row" style="margin-top:12px;gap:8px;align-items:center;flex-wrap:wrap">
             <strong>➕ Run a prepared quiz in this session:</strong>
