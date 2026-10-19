@@ -1,5 +1,5 @@
 // ClassPulse v32: the timetable in the teacher console (tab 🗓 Timetable, the « start this session » bar of Live).
-(window.CP_FILES = window.CP_FILES || {})["tt_teacher.js"] = "32"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["tt_teacher.js"] = "32.1"; // file version, checked by common.js
 
 let ttList = [], ttCur = null, ttMine = { links: [], timetables: [] };
 const ttState = { sel: "", view: "", week: null, day: null, weekAuto: null };

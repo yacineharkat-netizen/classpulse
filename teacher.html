@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="32">
+<html lang="en" data-version="32.1">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=32">
+<link rel="stylesheet" href="css/style.css?v=32.1">
 </head>
 <body>
 
@@ -118,6 +118,7 @@
               <div class="row" style="gap:6px;margin-top:8px">
                 <button id="projectorBtn" class="secondary small" title="Opens the projector window once; if it is open, brings it to the front">🖥 Open projector</button>
                 <button id="joinQrBtn" class="orange small" title="Big QR code and session code on the projector, for students who closed the page">📱 Show join QR</button>
+                <button id="floatQrBtn" class="green small" title="A small check-in QR code that stays above the slides (PowerPoint, PDF...): move it and resize it where it does not hide anything">📌 Floating QR (above the slides)</button>
               </div>
             </div>
             <div>
@@ -965,13 +966,14 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=32"></script>
-<script src="js/excel.js?v=32"></script>
-<script src="js/teacher.js?v=32"></script>
-<script src="js/supervision.js?v=32"></script>
-<script src="js/ttview.js?v=32"></script>
-<script src="js/timetable.js?v=32"></script>
-<script src="js/tt_teacher.js?v=32"></script>
+<script src="js/common.js?v=32.1"></script>
+<script src="js/excel.js?v=32.1"></script>
+<script src="js/teacher.js?v=32.1"></script>
+<script src="js/supervision.js?v=32.1"></script>
+<script src="js/ttview.js?v=32.1"></script>
+<script src="js/timetable.js?v=32.1"></script>
+<script src="js/tt_teacher.js?v=32.1"></script>
+<script src="js/floatqr.js?v=32.1"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

@@ -2,7 +2,7 @@
 // weeks A/B, the sessions of a date (with the changes: cancelled, moved, added), the next session, the calendar file (.ics),
 // reading a DeptDesk "timetable-exchange v1" file or the DeptDesk Excel template, writing the usual Excel grid.
 // The Excel and exchange code comes from DeptDesk 2.2 (timetable-excel.js, exchange.js), renamed inside the TT object.
-(window.CP_FILES = window.CP_FILES || {})["timetable.js"] = "32"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["timetable.js"] = "32.1"; // file version, checked by common.js
 
 const TT = {
   KIND: { course: "Course", td: "TD", tp: "TP" },

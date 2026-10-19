@@ -2,7 +2,7 @@
 // and the rotation dialog is TTV.ask (no dependency on the page). Shared by the teacher console and the student pages:
 //   week agenda in proportional time (block height = duration, free time visible), a TP day summarised in the
 //   whole-section view (click: the rotation table), one lane per group for a single day, the phone's day timeline.
-(window.CP_FILES = window.CP_FILES || {})["ttview.js"] = "32"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["ttview.js"] = "32.1"; // file version, checked by common.js
 const TT_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const TTV = {

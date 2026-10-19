@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "32";
+:root { --cp-version: "32.1";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -590,3 +590,6 @@ table.rt .rt-offrow th { color: #8A9AAB; }
 .ttb.tt-narrow .tt-t { display: none; }
 .ttb.tt-narrow .tt-n { font-size: 11.5px; }
 .ttb.tt-narrow .tt-r { font-size: 10.5px; }
+
+/* v32.1: floating QR button while its window is open */
+#floatQrBtn.on { outline: 3px solid #E8741E; }
