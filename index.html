@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="31">
+<html lang="en" data-version="32">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=31">
+<link rel="stylesheet" href="css/style.css?v=32">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -35,6 +35,7 @@
       <button id="mailBtn" class="small" style="margin-top:8px">Save my e-mail</button>
     </div>
     <a href="student.html?space=1" style="text-decoration:none"><button id="docsBtn" style="width:100%;margin-top:10px">📚 My documents</button></a>
+    <a href="timetable.html" id="ttLink" class="hidden" style="text-decoration:none"><button class="secondary" style="width:100%;margin-top:10px">🗓 Timetable</button></a>
     <div class="row" style="margin-top:10px;flex-wrap:nowrap">
       <button id="msgBtn" class="secondary" style="flex:1">✉ Messages <span id="stuMsgBadge" class="badge no hidden"></span></button>
       <button id="teacherBtn" class="secondary" style="flex:1">👤 My teachers</button>
@@ -106,7 +107,9 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=31"></script>
+<script src="js/common.js?v=32"></script>
+<script src="js/ttview.js?v=32"></script>
+<script src="js/timetable.js?v=32"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -139,6 +142,7 @@
     view("homeIn");
     const rows = [], live = [], courses = [], anns = new Map();
     let name = "", phone = false, others = [], mail = "", anyToken = null, pending = 0, matricule = "";
+    const ttTokens = {};   // v32: one token per timetable (its section)
     for (const t of tokens) {
       try {
         const sp = await rpc("s_space", { p_device: t.token });
@@ -154,6 +158,7 @@
           : sp.has_device ? `class device: your ${esc(sp.device_kind || "other device")}${since ? ", linked on " + since : ""}` : "";
         const tl = sp.teacher || {};
         pending = Math.max(pending, Number(sp.pending || 0)); matricule = sp.student.matricule;   // v31
+        if (sp.tt && !ttTokens[sp.tt]) ttTokens[sp.tt] = t.token;   // v32
         (sp.announcements || []).forEach((a) => { if (!anns.has(a.id)) anns.set(a.id, Object.assign({ who: tl.name }, a)); });   // v30
         courses.push({ token: t.token, class_id: sp.class_id, class_name: sp.class_name, teacher: tl, unread: Number(sp.unread || 0) });
         if (sp.kind === "project") {   // v31: a supervised project: its own space
@@ -196,7 +201,23 @@
       $("pendingBtn").disabled = false;
     };
     $("courseList").innerHTML = rows.join("");
-    $("liveBox").innerHTML = [...anns.values()].map((a) => `<div class="ann-banner">📌 ${esc(a.body)}<div class="muted" style="font-size:12px">${esc(a.who || "")}</div></div>`).join("") + live.join("");
+    // v32: the next session of the timetable (his groups), and today's / tomorrow's changes
+    let ttHtml = "";
+    for (const tok of Object.values(ttTokens)) {
+      try {
+        const tt = await rpc("s_timetable", { p_device: tok });
+        if (!tt.linked) continue;
+        const now = TT.now(), mine = TT.forGroups(tt.td_group, tt.tp_group), n = TT.next(tt, mine, now);
+        const ch = TT.changes(tt, mine, now.date, 2);
+        if (n) ttHtml += `<a href="timetable.html?tt=${tt.id}" style="text-decoration:none;color:inherit"><div class="card tt-next-card" style="margin-bottom:10px">
+          <div class="muted" style="font-size:13px">🗓 Next session${n.date === now.date ? (TTV.min(n.starts) <= now.min ? " · now" : " · today") : " · " + esc(TT.dayLabel(n.date))}</div>
+          <strong>${esc(n.module)} · ${esc(TTV.kindLabel(n))}</strong> ${esc(TTV.hm(n.starts))}–${esc(TTV.hm(n.ends))}${n.room ? " · " + esc(n.room) : ""}${n.teacher ? `<div class="muted">${esc(n.teacher)}</div>` : ""}
+          ${n.status !== "normal" ? `<div><span class="badge orange">${esc(TT.STATUS[n.status])}</span></div>` : ""}</div></a>`;
+        ch.forEach((o) => { ttHtml += `<div class="ann-banner">🗓 ${esc(o.date === now.date ? "Today" : "Tomorrow")}: ${esc(TT.occText(o))}</div>`; });
+      } catch (e) { /* older database: no timetable */ }
+    }
+    $("ttLink").classList.toggle("hidden", !Object.keys(ttTokens).length);
+    $("liveBox").innerHTML = ttHtml + [...anns.values()].map((a) => `<div class="ann-banner">📌 ${esc(a.body)}<div class="muted" style="font-size:12px">${esc(a.who || "")}</div></div>`).join("") + live.join("");
     // v25: a student registered before the e-mails gives it once, for all his courses
     $("mailBox").classList.toggle("hidden", !!mail || !anyToken);
     $("mailBtn").onclick = async () => {

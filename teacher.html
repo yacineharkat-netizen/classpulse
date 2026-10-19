@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="31">
+<html lang="en" data-version="32">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=31">
+<link rel="stylesheet" href="css/style.css?v=32">
 </head>
 <body>
 
@@ -36,6 +36,7 @@
     <select id="classSelect"></select>
     <button data-tab="live" class="active">▶ Live session</button>
     <button data-tab="sessions">📅 Sessions <span id="sessionsBadge" class="badge open hidden"></span></button>
+    <button data-tab="timetable">🗓 Timetable</button>
     <button data-tab="students">👥 Students <span id="attemptBadge" class="badge no hidden"></span></button>
     <button data-tab="messages">✉ Messages <span id="msgBadge" class="badge no hidden"></span></button>
     <button data-tab="questions" class="teacher-only">❓ Questions</button>
@@ -66,6 +67,7 @@
     <section id="tab-live">
       <div class="card">
         <h2>Session</h2>
+        <div id="ttNowBar" class="tt-now-bar hidden"></div>
         <div class="row">
           <select id="sessionSelect" style="max-width:420px"></select>
           <span class="muted">or create:</span>
@@ -824,6 +826,66 @@
       </div>
     </section>
 
+    <!-- ===================== v32: TIMETABLE ===================== -->
+    <section id="tab-timetable" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">🗓 Timetable</h2>
+          <span class="teacher-only"><button id="ttImportBtn" class="green">⬆ Import (Excel or DeptDesk file)</button>
+          <button id="ttNewBtn" class="secondary">＋ New, by hand</button></span></div>
+        <p class="muted">One timetable per section and semester. Link each class to its module (below): its students then see the timetable
+          of their whole section, their own sessions and the next one on their home page; « Live » offers to start the session at the right time.</p>
+        <div class="tt-bar">
+          <select id="ttSelect" title="Which timetable"></select>
+          <select id="ttViewSel" title="What to show"></select>
+          <label class="tick" style="margin:0"><input type="checkbox" id="ttStudents" style="width:auto"> as the students see it</label>
+        </div>
+        <p class="muted" id="ttWeekNote" style="margin:0 0 8px"></p>
+        <div id="ttGrid"></div>
+        <div class="row no-print" style="margin-top:10px;gap:6px">
+          <button id="ttExportXls" class="small secondary">⬇ Excel (grid)</button>
+          <button id="ttExportTpl" class="small secondary teacher-only">⬇ Excel (template, to import again)</button>
+          <button id="ttExportIcs" class="small secondary">📅 Calendar file (.ics)</button>
+          <button id="ttPrint" class="small secondary">🖨 Print</button>
+        </div>
+      </div>
+      <div class="card" id="ttUpcomingCard">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Next 14 days</h2>
+          <button id="ttChangeBtn" class="orange teacher-only">＋ Cancel, move or add a session</button></div>
+        <p class="muted" style="margin:4px 0">The sessions of what is shown above, with the changes. A change can send a message to the students concerned.</p>
+        <div id="ttUpcoming"></div>
+        <h3 style="margin-top:14px">All the changes</h3>
+        <div id="ttChanges"></div>
+      </div>
+      <div class="card teacher-only" id="ttLinksCard">
+        <h2>My classes and their timetable</h2>
+        <p class="muted">The module of the class in that timetable; « late after » = minutes after the start of a session started from the timetable.</p>
+        <div id="ttLinks"></div>
+      </div>
+      <div class="card teacher-only hidden" id="ttSettingsCard">
+        <h2>Settings of this timetable</h2>
+        <div class="row">
+          <input id="tsTitle" placeholder="Title, e.g. 5th year ATT · S1 2026-2027" style="max-width:340px">
+          <input id="tsLevel" placeholder="level, e.g. ING5 ATT" style="max-width:150px">
+          <input id="tsYear" placeholder="year, e.g. 2026-2027" style="max-width:130px">
+          <input id="tsPeriod" placeholder="semester, e.g. S1" style="max-width:110px">
+          <input id="tsSection" placeholder="section (if several)" style="max-width:140px">
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label style="margin:0">TD groups <input type="number" id="tsTd" min="0" max="12" style="width:70px"></label>
+          <label style="margin:0">TP sub-groups <input type="number" id="tsTp" min="0" max="20" style="width:70px"></label>
+          <label style="margin:0">semester from <input type="date" id="tsStarts" style="width:auto"></label>
+          <label style="margin:0">to <input type="date" id="tsEnds" style="width:auto"></label>
+          <label style="margin:0">week A = the week of <input type="date" id="tsWeekA" style="width:auto"></label>
+        </div>
+        <label for="tsKinds" style="margin-top:8px">Weeks without classes: one line per week, its first day (Saturday or any day of it) + holiday or exams</label>
+        <textarea id="tsKinds" rows="3" placeholder="2026-12-19 holiday&#10;2027-01-09 exams"></textarea>
+        <label class="tick"><input type="checkbox" id="tsShowTeachers" style="width:auto"> the students see the names of the teachers</label>
+        <p class="muted" id="tsWeeksInfo"></p>
+        <div class="row" style="margin-top:6px"><button id="tsSaveBtn" class="green">Save</button>
+          <button id="tsDeleteBtn" class="red">Delete this timetable</button></div>
+      </div>
+    </section>
+
     <section id="tab-classes" class="hidden">
       <!-- v29: an account with an invitation code joins a class as assistant -->
       <div class="card" id="joinCard">
@@ -903,10 +965,13 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=31"></script>
-<script src="js/excel.js?v=31"></script>
-<script src="js/teacher.js?v=31"></script>
-<script src="js/supervision.js?v=31"></script>
+<script src="js/common.js?v=32"></script>
+<script src="js/excel.js?v=32"></script>
+<script src="js/teacher.js?v=32"></script>
+<script src="js/supervision.js?v=32"></script>
+<script src="js/ttview.js?v=32"></script>
+<script src="js/timetable.js?v=32"></script>
+<script src="js/tt_teacher.js?v=32"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

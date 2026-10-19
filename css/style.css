@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "31";
+:root { --cp-version: "32";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -513,3 +513,80 @@ button.pending { opacity: .55; }
 .code-pill { background: var(--ice); padding: 2px 8px; border-radius: 6px; letter-spacing: 1px; }
 .proj-home { border-left: 4px solid #E8741E; }
 @media (max-width: 640px) { .ms-actions { width: 100%; } .proj-posts { max-height: none; } }
+
+
+/* ============ v32: timetable (views taken from DeptDesk 2.2, css/timetable.css) ============ */
+.tt-modal { position: fixed; inset: 0; background: rgba(11, 37, 69, .55); z-index: 60; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 5vh 12px; }
+.tt-modal-box { background: #fff; border-radius: 14px; padding: 16px; width: 100%; max-width: 560px; }
+.tt-modal-box.wide { max-width: 980px; }
+.tt-modal-box .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.tt-modal-box label { display: block; margin-top: 8px; }
+.tt-seg { border: none; background: var(--ice, #E8F0F7); border-radius: 12px; padding: 4px; gap: 4px; display: inline-flex; }
+.tt-seg button { border-radius: 9px; background: transparent; color: var(--navy); }
+.tt-seg button.on { background: #fff; color: var(--navy); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.table-scroll { overflow-x: auto; }
+.tt-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.tt-bar select { width: auto; flex: 1 1 220px; max-width: 420px; }
+.tt-occ { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #EEF2F6; padding: 7px 0; flex-wrap: wrap; }
+.tt-occ .d { font-weight: 700; min-width: 108px; color: var(--navy); }
+.tt-occ .t { min-width: 96px; }
+.tt-occ.cancelled .w { text-decoration: line-through; color: var(--muted); }
+.tt-now-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: #EAF5EE; border: 1px solid #BFDCC9; border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; }
+.tt-next-card { border-left: 4px solid var(--navy); }
+.tt-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+/* v2.1 timetable views (ttview.js): proportional time, TP summary and rotation table, day lanes, phone day */
+.tt-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.tt-seg { margin: 0; }
+.tt-seg button { flex: 0 0 auto; min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.tt-days { display: flex; gap: 4px; flex-wrap: wrap; }
+.tt-days button { background: var(--ice); color: var(--navy); min-width: 44px; min-height: 40px; padding: 6px 10px; font-size: 14px; }
+.tt-days button.on { background: var(--navy); color: #fff; }
+.tt-agenda { display: grid; gap: 0 6px; align-items: start; }
+.tt-dh { font-weight: 700; color: var(--navy); font-size: 14px; padding: 0 2px 6px; min-height: 30px; display: flex; align-items: center; gap: 6px; }
+.tt-dh button { min-height: 26px; padding: 2px 9px; }
+.tt-col { position: relative; border: 1px solid #DCE6EF; border-radius: 10px;
+  background: repeating-linear-gradient(to bottom, #fff 0, #fff calc(var(--hh, 54px) - 1px), #E8F0F7 calc(var(--hh, 54px) - 1px), #E8F0F7 var(--hh, 54px)); }
+.tt-ruler { position: relative; }
+.tt-ruler span { position: absolute; right: 2px; transform: translateY(-50%); font-size: 11px; color: var(--muted); }
+.ttb { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 1px;
+  padding: 3px 6px; border: 1.5px solid; border-radius: 8px; overflow: hidden; font-weight: 400; min-height: 0; line-height: 1.2; font-size: 12px; }
+button.ttb { cursor: pointer; }
+button.ttb:hover { filter: brightness(.97); box-shadow: 0 1px 4px rgba(11, 37, 69, .18); }
+.ttb .tt-t { font-size: 11px; opacity: .85; }
+.ttb .tt-n { font-weight: 700; font-size: 12.5px; }
+.ttb .tt-r { font-size: 11px; }
+.tt-sum { background: #F1F4F7; border: 1.5px dashed #8A9AAB; color: #33475B; }
+.tt-sum .tt-open { margin-top: auto; font-weight: 700; color: var(--teal); }
+.tt-gap { position: absolute; left: 4px; right: 4px; border: 1.5px dashed var(--ice2); border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--muted); }
+.tt-empty { position: absolute; left: 6px; right: 6px; top: 8px; font-size: 12px; color: var(--muted); }
+.tt-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--red); z-index: 2; }
+.tt-now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 5px; background: var(--red); }
+.tt-next { background: var(--navy); color: #fff; border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; display: flex; flex-direction: column; }
+.tt-next small { opacity: .8; }
+.tl-wrap { overflow-x: auto; }
+.tl-head, .tl-row { display: grid; grid-template-columns: 70px minmax(640px, 1fr); }
+.tl-hours { position: relative; height: 22px; }
+.tl-hours span { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
+.tl-name { font-weight: 700; color: var(--navy); font-size: 14px; display: flex; align-items: center; }
+.tl-track { position: relative; height: 60px; border-top: 1px solid #E8F0F7;
+  background: repeating-linear-gradient(to right, transparent 0, transparent calc(10% - 1px), #E8F0F7 calc(10% - 1px), #E8F0F7 10%); }
+table.rt { border-collapse: separate; border-spacing: 5px; width: 100%; }
+table.rt th { font-size: 13px; color: var(--muted); text-align: left; white-space: nowrap; }
+table.rt tbody th { color: var(--navy); font-size: 14px; }
+table.rt .rt-offrow th { color: #8A9AAB; }
+.rt-cell { display: flex; flex-direction: column; width: 100%; padding: 7px 8px; border-radius: 8px; border: 1.5px solid; text-align: center; font-weight: 400; min-height: 0; }
+.rt-cell small { font-size: 11px; }
+.rt-off { background: #F5F8FB; border: 1px dashed var(--ice2); color: #8A9AAB; }
+.rt-empty { text-align: center; color: #8A9AAB; }
+@media (max-width: 640px) { .tt-days { width: 100%; display: grid; grid-template-columns: repeat(6, 1fr); } .ttb .tt-n { font-size: 14px; } .ttb .tt-t, .ttb .tt-r { font-size: 12px; } }
+@media print { button.ttb { display: flex !important; } .tt-agenda { break-inside: avoid; } .tt-now, .tt-next { display: none; } .tt-modal { display: none; }
+  .tt-col, .ttb, .tl-track, .rt-cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+.tt-print-only { display: none; }
+@media print { .tt-print-only { display: block; break-inside: avoid; margin-top: 14px; } .tt-open { display: none; }
+  body.tt-printing nav, body.tt-printing .class-banner, body.tt-printing main > section:not(#tab-timetable), body.tt-printing #tab-timetable > .card:not(:first-child),
+  body.tt-printing .no-print, body.tt-printing .tt-bar { display: none !important; } }
+.ttb.tt-narrow { padding: 3px 4px; }
+.ttb.tt-narrow .tt-t { display: none; }
+.ttb.tt-narrow .tt-n { font-size: 11.5px; }
+.ttb.tt-narrow .tt-r { font-size: 10.5px; }

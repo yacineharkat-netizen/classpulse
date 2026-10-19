@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "31"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "32"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -40,9 +40,10 @@ function updateBanner() {
     resources: "Resources are shared by all your classes.",
     classes: "",
     supervision: "Supervision: your projects, outside the classes.",
+    timetable: "Timetables: one per section and semester, shared by your classes.",
   };
   $("bannerNote").textContent = notes[activeTab] || "";
-  $("classBanner").classList.toggle("hidden", activeTab === "supervision");   // v31: a project is not a class
+  $("classBanner").classList.toggle("hidden", activeTab === "supervision" || activeTab === "timetable");   // v31, v32: not a class
 }
 
 // ------------------------------------------------------------------ login
@@ -96,6 +97,7 @@ async function showApp() {
   try { const me = await rpc("t_me"); $("newClassCard").classList.toggle("hidden", !me.is_teacher); $("mySpaceTab").classList.toggle("hidden", !me.is_teacher); }
   catch (e) { $("newClassCard").classList.add("hidden"); }
   initSupervision();   // v31
+  ttInit();            // v32: timetable (the « start this session » bar of Live)
   await loadClasses();
   poller(loadAttempts, 20000);   // v28.1: never two at the same time
   await loadResources();
@@ -110,7 +112,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects,
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects, timetable: loadTimetableTab,
       quizzes: () => { $("tplEditorCard").classList.add("hidden"); $("tplListCard").classList.remove("hidden"); return loadTemplates(); } };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
@@ -195,6 +197,7 @@ async function selectClass(id) {
   if (id) localStorage.setItem("cp_class", id);
   applyRole();
   updateBanner();
+  if (typeof ttNowBar === "function") ttNowBar();   // v32
   // Forget the session only when the teacher switches to another class (not on a page reload, where classId starts empty).
   if (changed && previous) { sessionId = null; localStorage.removeItem("cp_session"); }
   await loadSessions();

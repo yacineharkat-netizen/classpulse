@@ -1,6 +1,6 @@
 // ClassPulse v31: supervision space of the teacher (final-year projects, theses, mini-projects).
 // A project is a small class of kind "project": its students are the team, an assistant of it is the co-supervisor.
-(window.CP_FILES = window.CP_FILES || {})["supervision.js"] = "31"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["supervision.js"] = "32"; // file version, checked by common.js
 
 let projects = [], projId = null, proj = null, projIsTeacher = false, projTab = "thread", meetingEditing = null, meIsTeacher = false;
 

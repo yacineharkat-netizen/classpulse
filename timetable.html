@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-version="32">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ClassPulse · Timetable</title>
+<link rel="stylesheet" href="css/style.css?v=32">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B2545">
+</head>
+<body>
+<div class="student" style="max-width:1100px">
+  <header>
+    <a href="index.html" class="home-link">⌂ Home</a>
+    <div class="brand">Timetable</div>
+  </header>
+  <div id="netBanner" class="net-banner hidden" role="status">⚠ Connection lost — reconnecting…</div>
+  <div id="view"><p class="muted">Loading…</p></div>
+</div>
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=32"></script>
+<script src="js/ttview.js?v=32"></script>
+<script src="js/timetable.js?v=32"></script>
+<script>
+// v32: the timetable of the student's section: his own sessions, the whole section, one module with its teacher;
+// the next days with the changes (cancelled, moved, extra); a calendar file for his phone.
+let books = [], cur = 0, st = { view: "me", module: "", week: null, day: null, auto: null };
+
+async function load() {
+  const tokens = accountTokens();
+  if (!tokens.length) { $("view").innerHTML = `<div class="card"><p>Sign in on the home page first.</p><a href="index.html"><button style="width:100%">Home page</button></a></div>`; return; }
+  const seen = {};
+  for (const t of tokens) {
+    try {
+      const r = await rpc("s_timetable", { p_device: t.token });
+      if (!r.linked) continue;
+      if (seen[r.id]) { seen[r.id].mine.push({ module: r.module, class_name: r.class_name, teacher: r.teacher_name }); continue; }
+      r.mine = [{ module: r.module, class_name: r.class_name, teacher: r.teacher_name }];
+      seen[r.id] = r; books.push(r);
+    } catch (e) { /* course left */ }
+  }
+  if (!books.length) { $("view").innerHTML = `<div class="card"><p>No timetable yet: your teacher has not published it in ClassPulse.</p></div>`; return; }
+  const want = new URLSearchParams(location.search).get("tt");
+  cur = Math.max(0, books.findIndex((b) => b.id === want));
+  render();
+}
+
+function render() {
+  const tt = books[cur], now = TT.now();
+  if (!st.auto) { st.auto = TT.weekChoice(tt, now.date); st.week = st.auto.parity || null; }
+  const mods = [...new Set(tt.slots.map((s) => s.module))].sort();
+  const mineMods = new Set(tt.mine.map((m) => m.module));
+  const groups = [tt.td_group, tt.tp_group].filter(Boolean).join(" · ");
+  $("view").innerHTML = `<div class="card">
+      ${books.length > 1 ? `<select id="bookSel" style="margin-bottom:8px">${books.map((b, i) => `<option value="${i}" ${i === cur ? "selected" : ""}>${esc(b.title)}</option>`).join("")}</select>` : ""}
+      <h2 style="margin:0">${esc(tt.title)}</h2>
+      <p class="muted" style="margin:4px 0 10px">${groups ? "Your groups: " + esc(groups) : "Your groups are not set yet: ask the teacher."}
+        ${st.auto.parity && !st.auto.unknown ? ` · week ${esc(st.auto.parity)} = ${esc(st.auto.label)}` : ""}</p>
+      <div class="sub-tabs">
+        <button data-v="me" class="${st.view === "me" ? "active" : ""}">👤 My timetable</button>
+        <button data-v="section" class="${st.view === "section" ? "active" : ""}">👥 Whole section</button>
+        <button data-v="module" class="${st.view === "module" ? "active" : ""}">📘 By module</button>
+      </div>
+      ${st.view === "module" ? `<select id="modSel" style="margin-bottom:8px">${mods.map((m) => {
+        const s = tt.slots.find((x) => x.module === m), t = [...new Set(tt.slots.filter((x) => x.module === m).map((x) => x.teacher).filter(Boolean))];
+        return `<option value="${esc(m)}" ${m === st.module ? "selected" : ""}>${esc(m)}${s.module_name ? " — " + esc(s.module_name) : ""}${t.length ? " · " + esc(t.join(", ")) : ""}${mineMods.has(m) ? " (ClassPulse)" : ""}</option>`; }).join("")}</select>` : ""}
+      <div id="grid"></div>
+      <button id="icsBtn" class="secondary" style="width:100%;margin-top:10px">📅 Add my sessions to my phone's calendar (.ics)</button>
+    </div>
+    <div class="card"><h2>Next 7 days</h2><div id="nextDays"></div></div>`;
+  if ($("bookSel")) $("bookSel").onchange = () => { cur = Number($("bookSel").value); st.auto = null; render(); };
+  document.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { st.view = b.dataset.v; st.day = null; render(); });
+  if (st.view === "module") { if (!st.module || !mods.includes(st.module)) st.module = [...mineMods][0] || mods[0]; $("modSel").value = st.module; $("modSel").onchange = () => { st.module = $("modSel").value; render(); }; }
+  const filter = st.view === "me" ? TT.forGroups(tt.td_group, tt.tp_group) : st.view === "module" ? TT.forModule(st.module) : null;
+  TTV.render($("grid"), { slots: tt.slots.filter((s) => !filter || filter(s)), week: st.week, day: st.day,
+    mode: st.view === "section" ? "section" : st.view === "me" ? "group" : "other", students: !tt.show_teachers,
+    phone: window.matchMedia("(max-width: 640px)").matches, today: now.date, nowMin: now.min,
+    weekLabel: st.week === st.auto.parity && !st.auto.unknown ? st.auto.label : "",
+    onRoom: (s) => TTV.ask({ title: `${s.module} · ${TTV.kindLabel(s)}`, ok: false, cancel: "Close",
+      html: `<p>${esc(s.module_name || "")}</p><p>${esc(TT_DAYS[s.day])} ${esc(TTV.hm(s.starts))}–${esc(TTV.hm(s.ends))}${s.parity !== "all" ? " · week " + esc(s.parity) : ""}<br>${esc(s.room || "")}${s.teacher ? " · " + esc(s.teacher) : ""}</p>` }),
+    onChange: (c) => { st.week = c.week; st.day = c.day; render(); } });
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const iso = TTV.addDays(now.date, i), occ = TT.occurrencesOn(tt, iso, st.view === "section" ? TT.forGroups(tt.td_group, tt.tp_group) : filter);
+    if (occ.length) days.push(`<h3 style="margin:10px 0 2px">${i === 0 ? "Today" : i === 1 ? "Tomorrow" : esc(TT.dayLabel(iso))}</h3>` + occ.map((o) => TT.occHtml(o, false)).join(""));
+  }
+  $("nextDays").innerHTML = days.join("") || `<p class="muted">No session in the next 7 days.</p>`;
+  $("icsBtn").onclick = () => {
+    const n = TT.ics(tt, TT.forGroups(tt.td_group, tt.tp_group), tt.title);
+    toast(n ? `${n} sessions: open the file to add them to your calendar.` : "No session to add.", n ? "ok" : "error");
+  };
+}
+setInterval(() => { $("netBanner").classList.toggle("hidden", !((CP_NET.lastFail || 0) > (CP_NET.lastOk || 0))); }, 1000);
+load();
+</script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.CP_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    if (wrong.length) document.body.insertAdjacentHTML("afterbegin", '<div style="background:#B83227;color:#fff;padding:10px;font-weight:600">Version problem: ' + wrong.join(", ") + ". Reload the page (Ctrl+F5).</div>");
+  });
+})();
+</script>
+</body>
+</html>
