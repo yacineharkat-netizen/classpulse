@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "30"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "31"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -44,6 +44,11 @@ const ERROR_MESSAGES = {
   QUIZ_NOT_FOUND: "Quiz not found.",
   QUIZ_FINISHED: "This quiz is finished. To run it again: Reset it (answers erased) or Duplicate it (new quiz).",
   TITLE_REQUIRED: "Type a title.",
+  FILE_TOO_BIG: "This file is bigger than 5 MB: put it on Google Drive or GitHub and share the link in the thread.",
+  PROJECT_FULL: "The files of this project reach 100 MB: delete old versions, or share big files as links.",
+  MATRICULE_ALREADY_IN_CLASS: "This student number is already in the list.",
+  MEMBER_NAME_REQUIRED: "This student is in none of your classes: type his last and first name.",
+  BAD_STATUS: "Unknown status.",
   QUIZ_CLOSED: "This test is not open (not started yet, or already finished).",
   VARIANT_REQUIRED: "Type the number of your board first (top of the page).",
   VARIANT_LOCKED: "The board number cannot change once you have saved answers. Ask the teacher.",
@@ -98,7 +103,9 @@ async function rpc(fn, args) {
   // v28.2: a call never hangs: after 12 s without an answer it is given up (the next poll tries again).
   // Without this, one request lost on a bad network froze the phone on the same screen.
   const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctl ? setTimeout(() => ctl.abort(), RPC_TIMEOUT_MS) : null;
+  // v31: a big upload (a PDF, a file of a project) or a download of a file gets 2 minutes, not 12 s
+  const big = (args && Object.values(args).some((v) => typeof v === "string" && v.length > 100000)) || RPC_BIG.test(fn);
+  const timer = ctl ? setTimeout(() => ctl.abort(), big ? 120000 : RPC_TIMEOUT_MS) : null;
   try {
     const call = db.rpc(fn, args || {});
     result = await (ctl && call.abortSignal ? call.abortSignal(ctl.signal) : call);
@@ -124,6 +131,7 @@ async function rpc(fn, args) {
   return data;
 }
 const RPC_TIMEOUT_MS = 12000;
+const RPC_BIG = /file_get|^s_doc$|document_content|demo_file/;   // calls that may bring back a big file
 // Summary of the last calls: median and slowest time, per function.
 function netSummary(lastMs) {
   const since = Date.now() - (lastMs || 120000);
@@ -300,4 +308,58 @@ function triText(v) { return v == null ? "" : typeof v === "string" ? v : (v.en 
 function personalPageUrl(extra) {
   const base = (typeof CONFIG !== "undefined" && CONFIG.personalPage) || new URL("../", location.href).href;
   return base + (extra || "");
+}
+
+// ------------------------------------------------------------------ v31: shared by the supervision pages (teacher and team)
+const PROJECT_TYPE = { pfe: "Final-year project", master: "Master thesis", licence: "Licence project", mini: "Mini-project", phd: "PhD", other: "Project" };
+const PROJECT_STATUS = { in_progress: "in progress", submitted: "report submitted", defended: "defended", stopped: "stopped" };
+function whenText(t) { return t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""; }
+function dayText(d) { return d ? new Date(String(d).slice(0, 10) + "T12:00:00").toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" }) : ""; }
+function agoText(t) {
+  if (!t) return "never";
+  const d = Math.floor((Date.now() - new Date(t).getTime()) / 86400000);
+  return d <= 0 ? "today" : d === 1 ? "yesterday" : d + " days ago";
+}
+function sizeText(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+// A file chosen by the user, as base64 (without the "data:...;base64," prefix).
+function fileToBase64(file) {
+  return new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => ko(r.error); r.readAsDataURL(file); });
+}
+// Save a file received as base64.
+function saveBase64(name, mime, b64) {
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime || "application/octet-stream" }));
+  const a = document.createElement("a"); a.href = url; a.download = name || "file"; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+// The last commits of a public GitHub repository (60 calls per hour without a key: kept 10 minutes in this browser).
+async function githubCommits(repoUrl) {
+  const m = String(repoUrl || "").match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
+  if (!m) return { error: "Not a GitHub repository address (https://github.com/owner/name)." };
+  const repo = m[1] + "/" + m[2].replace(/\.git$/i, ""), key = "cp_gh_" + repo;
+  try { const c = JSON.parse(sessionStorage.getItem(key) || "null"); if (c && Date.now() - c.at < 600000) return c.v; } catch (e) { /* no cache */ }
+  let v;
+  try {
+    const r = await fetch("https://api.github.com/repos/" + repo + "/commits?per_page=5", { headers: { Accept: "application/vnd.github+json" } });
+    if (r.status === 404) v = { repo, error: "Repository not found or private: only the commits of a public repository can be shown." };
+    else if (r.status === 403 || r.status === 429) v = { repo, error: "GitHub limits the number of reads: try again in a while." };
+    else if (!r.ok) v = { repo, error: "GitHub answered " + r.status + "." };
+    else v = { repo, commits: (await r.json()).map((c) => ({ msg: (c.commit.message || "").split("\n")[0], who: (c.commit.author || {}).name || "", at: (c.commit.author || {}).date, url: c.html_url })) };
+  } catch (e) { return { repo, error: "GitHub could not be reached." }; }
+  try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), v })); } catch (e) { /* ignore */ }
+  return v;
+}
+function githubHtml(g) {
+  if (!g) return "";
+  if (g.error) return `<span class="muted">${esc(g.error)}</span>`;
+  if (!g.commits.length) return `<span class="muted">No commit yet.</span>`;
+  return `<ul class="gh-list">` + g.commits.map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.msg)}</a> <span class="muted">· ${esc(c.who)} · ${esc(whenText(c.at))}</span></li>`).join("") + `</ul>`;
+}
+// The thread of a project (the same for the supervisors and for the team).
+function projectPostsHtml(posts, fileAttr) {
+  if (!posts.length) return `<p class="muted">No message yet. Say hello to the team!</p>`;
+  return posts.map((p) => `<div class="post ${p.staff ? "staff" : ""}"><div class="msg-head"><strong>${esc(p.who || "")}</strong><span class="muted">${esc(whenText(p.at))}</span></div>
+    <div class="msg-body">${esc(p.body).replace(/\n/g, "<br>")}</div>
+    ${p.file_id && p.file_name ? `<div style="margin-top:4px"><a href="#" ${fileAttr}="${p.file_id}">📎 ${esc(p.file_name)}</a></div>` : ""}</div>`).join("");
 }

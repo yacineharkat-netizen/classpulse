@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="30">
+<html lang="en" data-version="31">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=30">
+<link rel="stylesheet" href="css/style.css?v=31">
 </head>
 <body>
 
@@ -18,7 +18,7 @@
   </div>
   <!-- v29: an assistant invited by a teacher creates his account himself -->
   <details class="card" id="inviteCard">
-    <summary><strong>I am an assistant and I have an invitation code</strong></summary>
+    <summary><strong>I have an invitation code (assistant, co-supervisor)</strong></summary>
     <p class="muted">The teacher gave you a code (8 characters). Type your e-mail, choose a password (8 characters or more) and type the code.
       If you already have a ClassPulse account, use its password: the class is added to it.</p>
     <label for="invEmail">E-mail</label><input id="invEmail" type="email" autocomplete="username">
@@ -47,6 +47,7 @@
     <button data-tab="results">📊 Results</button>
     <button data-tab="export" data-perm="export_all">⬇ Export results</button>
     <button data-tab="myspace" class="teacher-only hidden" id="mySpaceTab">🌐 My space</button>
+    <button data-tab="supervision" class="hidden" id="supervisionTab">🎓 Supervision <span id="supBadge" class="badge no hidden"></span></button>
     <button data-tab="classes">＋ Classes</button>
     <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">🌐 My public page</button>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
@@ -712,6 +713,117 @@
       </div>
     </section>
 
+    <!-- ===================== v31: SUPERVISION (final-year projects, theses, mini-projects) ===================== -->
+    <section id="tab-supervision" class="hidden">
+      <div id="projListCard" class="card">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎓 My supervised projects</h2>
+          <span><label class="tick" style="margin:0 10px 0 0"><input type="checkbox" id="projShowOld" style="width:auto"> finished ones too</label>
+          <button id="projNewBtn" class="green teacher-only-sup">＋ New project</button></span></div>
+        <p class="muted">One space per project: a thread with the team, the files and their versions, the milestones, the minutes of the meetings.
+          The students open it from their ClassPulse home page, with their usual PIN.</p>
+        <div id="projForm" class="card hidden" style="background:#F8FAFC">
+          <label for="projFromProp">From one of my proposals (optional)</label>
+          <select id="projFromProp"><option value="">— none: a new subject —</option></select>
+          <input id="projTitle" placeholder="Title (empty = the title of the proposal)" maxlength="200" style="margin-top:6px">
+          <div class="row" style="margin-top:6px">
+            <select id="projType" style="width:auto"><option value="pfe">Final-year project (engineering)</option><option value="master">Master thesis</option><option value="licence">Licence project</option><option value="mini">Mini-project</option><option value="phd">PhD</option><option value="other">Other</option></select>
+            <input id="projLevel" placeholder="level, e.g. 5th year ATT" style="max-width:180px">
+            <input id="projYear" placeholder="year, e.g. 2026-2027" style="max-width:140px">
+          </div>
+          <div class="row" style="margin-top:8px"><button id="projCreateBtn" class="green">Create the project space</button><button id="projCancelBtn" class="secondary">Cancel</button></div>
+        </div>
+        <div id="projList" style="margin-top:8px"></div>
+      </div>
+
+      <div id="projCard" class="card hidden">
+        <div class="row" style="justify-content:space-between">
+          <button id="projBackBtn" class="small secondary">← All projects</button>
+          <button id="projRefreshBtn" class="small secondary" title="Reload">↻</button>
+        </div>
+        <h2 id="projHead" style="margin:8px 0 2px"></h2>
+        <div id="projSummary" class="muted"></div>
+        <div id="projGit" class="proj-git hidden"></div>
+        <div class="sub-tabs" id="projTabs">
+          <button data-ptab="thread" class="active">💬 Thread</button>
+          <button data-ptab="files">📎 Files</button>
+          <button data-ptab="milestones">🏁 Milestones</button>
+          <button data-ptab="meetings">🗓 Meetings</button>
+          <button data-ptab="settings">⚙ Team and settings</button>
+        </div>
+
+        <div id="ptab-thread">
+          <div id="projPosts" class="proj-posts"></div>
+          <textarea id="projPostBody" rows="3" placeholder="A message to the whole team (and the co-supervisor)" maxlength="4000" style="margin-top:8px"></textarea>
+          <button id="projPostBtn" class="green" style="margin-top:6px">Send to the team</button>
+        </div>
+
+        <div id="ptab-files" class="hidden">
+          <div class="row">
+            <input type="file" id="projFile" style="max-width:300px">
+            <select id="projFileKind" style="width:auto"><option value="reference">reference (paper, datasheet, template)</option><option value="doc">document</option><option value="submission">version to review</option></select>
+            <input id="projFileNote" placeholder="note, e.g. chapter 2, v3" style="max-width:220px">
+            <button id="projFileBtn">⬆ Upload</button>
+          </div>
+          <p class="muted" style="margin:4px 0 8px">5 MB per file, 100 MB per project (<span id="projUsed">0</span> MB used). Bigger files (videos, datasets): share a Drive or GitHub link in the thread.</p>
+          <div id="projFiles"></div>
+        </div>
+
+        <div id="ptab-milestones" class="hidden">
+          <div id="projMilestones"></div>
+          <div class="row" style="margin-top:8px">
+            <input id="msTitle" placeholder="New milestone, e.g. Prototype working" maxlength="200" style="max-width:320px">
+            <label style="margin:0">due <input type="date" id="msDue" style="width:auto"></label>
+            <button id="msAddBtn">＋ Add</button>
+            <button id="msTplBtn" class="secondary">Add the usual steps</button>
+          </div>
+          <p class="muted" style="margin:6px 0 0">The team ticks a step « done »; you validate it. A step past its date and not validated shows in red here and in the list of projects.</p>
+        </div>
+
+        <div id="ptab-meetings" class="hidden">
+          <div class="card" style="background:#F8FAFC">
+            <div class="row"><label style="margin:0">Date <input type="date" id="mtDay" style="width:auto"></label>
+              <input id="mtWho" placeholder="present, e.g. Hamdi, Ziani, co-supervisor" style="max-width:340px"></div>
+            <textarea id="mtNotes" rows="3" placeholder="What was shown / discussed" style="margin-top:6px"></textarea>
+            <textarea id="mtDecisions" rows="2" placeholder="Decisions" style="margin-top:6px"></textarea>
+            <textarea id="mtNext" rows="2" placeholder="Next tasks: who, what, by when" style="margin-top:6px"></textarea>
+            <div class="row" style="margin-top:6px"><button id="mtSaveBtn" class="green">Save the minutes</button><button id="mtCancelBtn" class="secondary hidden">Cancel the edit</button></div>
+          </div>
+          <div id="projMeetings"></div>
+        </div>
+
+        <div id="ptab-settings" class="hidden">
+          <h3>Team</h3>
+          <div id="projTeam"></div>
+          <div class="row" style="margin-top:6px">
+            <input id="tmMat" placeholder="student number" style="max-width:150px" inputmode="numeric">
+            <input id="tmLast" placeholder="last name (empty: from my classes)" style="max-width:220px">
+            <input id="tmFirst" placeholder="first name" style="max-width:160px">
+            <button id="tmAddBtn">＋ Add to the team</button>
+          </div>
+          <p class="muted" style="margin:4px 0 0">A student who already uses ClassPulse signs in again with his PIN: the project appears on his home page. A new student registers once with his student number.</p>
+          <h3 style="margin-top:14px">Co-supervisor</h3>
+          <div class="row"><input id="psCo" placeholder="name, e-mail (shown to the team)" style="max-width:320px">
+            <button id="coInviteBtn" class="secondary">Invite him into this space</button></div>
+          <p id="coInviteNote" class="muted hidden"></p>
+          <h3 style="margin-top:14px">Project</h3>
+          <input id="psTitle" maxlength="200" placeholder="Title">
+          <div class="row" style="margin-top:6px">
+            <select id="psType" style="width:auto"><option value="pfe">Final-year project (engineering)</option><option value="master">Master thesis</option><option value="licence">Licence project</option><option value="mini">Mini-project</option><option value="phd">PhD</option><option value="other">Other</option></select>
+            <input id="psLevel" placeholder="level" style="max-width:160px"><input id="psYear" placeholder="year" style="max-width:120px">
+            <select id="psStatus" style="width:auto"><option value="in_progress">in progress</option><option value="submitted">report submitted</option><option value="defended">defended</option><option value="stopped">stopped</option></select>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <label style="margin:0">report due <input type="date" id="psSubmit" style="width:auto"></label>
+            <label style="margin:0">defense <input type="date" id="psDefense" style="width:auto"></label>
+            <input id="psGithub" placeholder="GitHub repository, e.g. https://github.com/team/project" style="max-width:380px">
+          </div>
+          <textarea id="psDesc" rows="4" placeholder="Description, objectives, what is expected at the end" style="margin-top:6px"></textarea>
+          <div class="row" style="margin-top:6px"><button id="psSaveBtn" class="green">Save</button>
+            <button id="psArchiveBtn" class="secondary teacher-only-sup">Archive the project</button></div>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-classes" class="hidden">
       <!-- v29: an account with an invitation code joins a class as assistant -->
       <div class="card" id="joinCard">
@@ -791,9 +903,10 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=30"></script>
-<script src="js/excel.js?v=30"></script>
-<script src="js/teacher.js?v=30"></script>
+<script src="js/common.js?v=31"></script>
+<script src="js/excel.js?v=31"></script>
+<script src="js/teacher.js?v=31"></script>
+<script src="js/supervision.js?v=31"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

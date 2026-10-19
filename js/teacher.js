@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "30"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "31"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -39,8 +39,10 @@ function updateBanner() {
     questions: "The question bank is shared by all your classes (sorted by module).",
     resources: "Resources are shared by all your classes.",
     classes: "",
+    supervision: "Supervision: your projects, outside the classes.",
   };
   $("bannerNote").textContent = notes[activeTab] || "";
+  $("classBanner").classList.toggle("hidden", activeTab === "supervision");   // v31: a project is not a class
 }
 
 // ------------------------------------------------------------------ login
@@ -93,6 +95,7 @@ async function showApp() {
   // v29: "New class" for the teachers' accounts only; an assistant joins a class with a code
   try { const me = await rpc("t_me"); $("newClassCard").classList.toggle("hidden", !me.is_teacher); $("mySpaceTab").classList.toggle("hidden", !me.is_teacher); }
   catch (e) { $("newClassCard").classList.add("hidden"); }
+  initSupervision();   // v31
   await loadClasses();
   poller(loadAttempts, 20000);   // v28.1: never two at the same time
   await loadResources();
@@ -107,7 +110,7 @@ document.querySelectorAll("nav button[data-tab]").forEach((b) => {
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace,
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects,
       quizzes: () => { $("tplEditorCard").classList.add("hidden"); $("tplListCard").classList.remove("hidden"); return loadTemplates(); } };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
@@ -3292,6 +3295,7 @@ async function loadMySpace() {
       <div class="row" style="gap:6px"><button class="small" data-pint="${p.id}">👥 Interested: ${p.interested}</button>
         <button class="small secondary" data-pedit="${p.id}">✏ Edit</button>
         ${p.status === "open" ? `<button class="small green" data-passign="${p.id}">Assigned</button>` : `<button class="small secondary" data-preopen="${p.id}">Open again</button>`}
+        <button class="small" data-pproj="${p.id}" title="A space for the team: thread, files, milestones, meetings">🎓 Start the project</button>
         <button class="small red" data-pdel="${p.id}">Delete</button></div>
       <div class="pint-box" id="pint-${p.id}"></div></div>`).join("") : `<p class="muted">No proposal yet.</p>`;
   const prop = (id) => d.proposals.find((x) => x.id === id);
@@ -3304,6 +3308,7 @@ async function loadMySpace() {
     const note = prompt("Assigned: note (e.g. names of the students). The proposal leaves the students' list.", "");
     if (note !== null) saveStatus(prop(b.dataset.passign), "assigned", note);
   });
+  $("propList").querySelectorAll("[data-pproj]").forEach((b) => b.onclick = () => startProjectFromProposal(b.dataset.pproj));   // v31
   $("propList").querySelectorAll("[data-preopen]").forEach((b) => b.onclick = () => saveStatus(prop(b.dataset.preopen), "open"));
   $("propList").querySelectorAll("[data-pdel]").forEach((b) => b.onclick = async () => {
     if (!confirm("Delete this proposal (and the list of interested students)?")) return;

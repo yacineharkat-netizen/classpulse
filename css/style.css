@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "30";
+:root { --cp-version: "31";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -487,3 +487,29 @@ button.pending { opacity: .55; }
 /* v28.3: confirmation inside the page (no browser dialog during a quiz) */
 .ask-box { border: 2px solid var(--orange); background: #FFF7EC; }
 @media (max-width: 600px) { .office-day { flex-wrap: wrap; gap: 4px 10px; } .office-day .d { min-width: 0; width: 100%; } .office-day .badge { padding: 1px 8px; font-size: 12px; } }
+
+/* v31: supervision space */
+.badge.orange { background: #FDEBD9; color: #B4570E; }
+.late { color: var(--red); font-weight: 600; font-size: 13px; }
+.proj-table tr.proj-row { cursor: pointer; }
+.proj-table tr.proj-row:hover td { background: #F3F7FB; }
+.sub-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; border-bottom: 1px solid #DCE4EC; padding-bottom: 8px; }
+.sub-tabs button { background: #EEF3F8; color: var(--navy); padding: 6px 12px; }
+.sub-tabs button.active { background: var(--navy); color: #fff; }
+.proj-posts { max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+.post { border: 1px solid #E3E9EF; border-radius: 8px; padding: 8px 10px; margin: 6px 0; background: #fff; }
+.post.staff { background: #F1F6FB; border-color: #CFDDEB; }
+.file-row, .meeting { border: 1px solid #E3E9EF; border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+.file-comment { background: #FFF7EC; border-left: 3px solid #E8741E; padding: 6px 8px; margin-top: 6px; border-radius: 4px; }
+.ms-row { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #EEF2F6; padding: 7px 0; flex-wrap: wrap; }
+.ms-row.ok .ms-title strong { color: var(--green); }
+.ms-row.late-row { background: #FDF3F2; }
+.ms-state { font-size: 18px; width: 22px; text-align: center; }
+.ms-title { flex: 1; min-width: 200px; }
+.ms-actions { white-space: nowrap; }
+.mt-part { margin-top: 4px; }
+.proj-git { margin: 8px 0; }
+.gh-list { margin: 6px 0; padding-left: 20px; font-size: 14px; }
+.code-pill { background: var(--ice); padding: 2px 8px; border-radius: 6px; letter-spacing: 1px; }
+.proj-home { border-left: 4px solid #E8741E; }
+@media (max-width: 640px) { .ms-actions { width: 100%; } .proj-posts { max-height: none; } }

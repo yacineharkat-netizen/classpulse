@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="30">
+<html lang="en" data-version="31">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=30">
+<link rel="stylesheet" href="css/style.css?v=31">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -20,6 +20,12 @@
   <div id="homeIn" class="card hidden">
     <h2 id="hello">My courses</h2>
     <div id="liveBox"></div>
+    <!-- v31: a course or a project added to this student number after the registration: the PIN opens it -->
+    <div id="pendingBox" class="card hidden" style="background:#EEF6EE;margin-bottom:10px">
+      <strong id="pendingText"></strong>
+      <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input id="pendingPin" inputmode="numeric" maxlength="4" type="password" placeholder="your PIN" autocomplete="current-password" style="max-width:120px">
+        <button id="pendingBtn" class="green">Open</button></div>
+    </div>
     <div id="courseList" class="muted">Loading…</div>
     <a id="checkinLink" href="student.html?checkin=1" style="text-decoration:none"><button id="checkinBtn" class="orange" style="width:100%;margin-top:10px">✅ Check in (scan or type the code)</button></a>
     <p id="deviceNote" class="muted" style="margin:10px 0 0"></p>
@@ -100,7 +106,7 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=30"></script>
+<script src="js/common.js?v=31"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -132,7 +138,7 @@
     if (!tokens.length) { view("viewSignIn"); return; }
     view("homeIn");
     const rows = [], live = [], courses = [], anns = new Map();
-    let name = "", phone = false, others = [], mail = "", anyToken = null;
+    let name = "", phone = false, others = [], mail = "", anyToken = null, pending = 0, matricule = "";
     for (const t of tokens) {
       try {
         const sp = await rpc("s_space", { p_device: t.token });
@@ -147,8 +153,14 @@
         const devLine = sp.linked ? `class device: this ${deviceKind()}${since ? ", linked on " + since : ""}`
           : sp.has_device ? `class device: your ${esc(sp.device_kind || "other device")}${since ? ", linked on " + since : ""}` : "";
         const tl = sp.teacher || {};
+        pending = Math.max(pending, Number(sp.pending || 0)); matricule = sp.student.matricule;   // v31
         (sp.announcements || []).forEach((a) => { if (!anns.has(a.id)) anns.set(a.id, Object.assign({ who: tl.name }, a)); });   // v30
         courses.push({ token: t.token, class_id: sp.class_id, class_name: sp.class_name, teacher: tl, unread: Number(sp.unread || 0) });
+        if (sp.kind === "project") {   // v31: a supervised project: its own space
+          rows.push(`<div class="home-course proj-home"><strong>🎓 ${esc(sp.class_name)}</strong><span class="muted"> · project${tl.name ? " · supervisor " + esc(tl.name) : ""}</span>
+            <a href="project.html?c=${encodeURIComponent(sp.class_id)}" style="text-decoration:none"><button class="small" style="width:100%;margin-top:6px">Open the project space</button></a></div>`);
+          continue;
+        }
         rows.push(`<div class="home-course"><strong>${esc(sp.class_name)}</strong><span class="muted"> · ${sp.docs.length} document(s)${groups ? " · group " + esc(groups) : ""}${devLine ? " · " + devLine : ""}</span>
           ${tl.name ? `<div class="course-teacher">👤 ${esc(tl.name)}${tl.affiliation ? " · " + esc(tl.affiliation) : ""}</div>` : ""}</div>`);
         if (t.phone) {
@@ -175,6 +187,14 @@
     $("stuMsgBadge").classList.toggle("hidden", !unread);
     if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } }
     $("hello").textContent = name ? "Hello, " + name : "My courses";
+    $("pendingBox").classList.toggle("hidden", !pending);
+    $("pendingText").textContent = pending === 1 ? "🆕 You were added to a new course or project. Type your PIN to open it." : `🆕 You were added to ${pending} new courses or projects. Type your PIN to open them.`;
+    $("pendingBtn").onclick = async () => {
+      $("pendingBtn").disabled = true;
+      try { await accountLogin(matricule, $("pendingPin").value); $("pendingPin").value = ""; toast("Done.", "ok"); await showHome(); }
+      catch (e) { toast(e.message, "error"); }
+      $("pendingBtn").disabled = false;
+    };
     $("courseList").innerHTML = rows.join("");
     $("liveBox").innerHTML = [...anns.values()].map((a) => `<div class="ann-banner">📌 ${esc(a.body)}<div class="muted" style="font-size:12px">${esc(a.who || "")}</div></div>`).join("") + live.join("");
     // v25: a student registered before the e-mails gives it once, for all his courses
