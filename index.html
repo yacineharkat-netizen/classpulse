@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="32.1">
+<html lang="en" data-version="33">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=32.1">
+<link rel="stylesheet" href="css/style.css?v=33">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -36,6 +36,7 @@
     </div>
     <a href="student.html?space=1" style="text-decoration:none"><button id="docsBtn" style="width:100%;margin-top:10px">📚 My documents</button></a>
     <a href="timetable.html" id="ttLink" class="hidden" style="text-decoration:none"><button class="secondary" style="width:100%;margin-top:10px">🗓 Timetable</button></a>
+    <button id="progressBtn" class="secondary" style="width:100%;margin-top:10px">📈 My progress (attendance, marks)</button>
     <div class="row" style="margin-top:10px;flex-wrap:nowrap">
       <button id="msgBtn" class="secondary" style="flex:1">✉ Messages <span id="stuMsgBadge" class="badge no hidden"></span></button>
       <button id="teacherBtn" class="secondary" style="flex:1">👤 My teachers</button>
@@ -57,6 +58,14 @@
       <button id="stuMsgSend" style="margin-top:8px;width:100%">Send</button>
       <p id="stuReplyNote" class="muted hidden" style="margin:6px 0 0"></p>
     </div>
+  </div>
+
+  <!-- v33: what the teachers opened: attendance, results, final mark -->
+  <div id="viewProgress" class="card hidden">
+    <p style="margin-top:0"><a href="#" class="backHome">← My courses</a></p>
+    <h2>My progress</h2>
+    <p class="muted" style="margin-top:0">Your teachers decide what is shown here, and when.</p>
+    <div id="progressList" class="muted">Loading…</div>
   </div>
 
   <!-- v27: the teachers of the courses: contact, office hours, supervision proposals, mini-projects -->
@@ -107,13 +116,13 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=32.1"></script>
-<script src="js/ttview.js?v=32.1"></script>
-<script src="js/timetable.js?v=32.1"></script>
+<script src="js/common.js?v=33"></script>
+<script src="js/ttview.js?v=33"></script>
+<script src="js/timetable.js?v=33"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
-  const view = (id) => ["homeIn", "viewSignIn", "viewRegister", "viewMessages", "viewTeacher"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
+  const view = (id) => ["homeIn", "viewSignIn", "viewRegister", "viewMessages", "viewTeacher", "viewProgress"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
 
   // A phone that scanned a session without being signed in arrives here with ?next=<session query>.
   // After the sign-in (or the registration) it goes back to that session.
@@ -190,7 +199,7 @@
     const unread = courses.reduce((a, c) => a + c.unread, 0);
     $("stuMsgBadge").textContent = unread ? String(unread) : "";
     $("stuMsgBadge").classList.toggle("hidden", !unread);
-    if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } }
+    if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } if (v === "progress") { showProgress(); return; } }
     $("hello").textContent = name ? "Hello, " + name : "My courses";
     $("pendingBox").classList.toggle("hidden", !pending);
     $("pendingText").textContent = pending === 1 ? "🆕 You were added to a new course or project. Type your PIN to open it." : `🆕 You were added to ${pending} new courses or projects. Type your PIN to open them.`;
@@ -272,10 +281,19 @@
         ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}
         <div class="msg-body">${esc(m.body).replace(/\n/g, "<br>")}</div>
         ${m.doc ? `<div style="margin-top:4px">📄 <a href="doc.html?d=${m.doc.id}&c=${m.class_id}">${esc(m.doc.title || "document")}</a></div>` : ""}
+        ${(() => { const r = m.reactions || [], mine = new Set(r.filter((x) => x.student).map((x) => x.emoji)), them = r.filter((x) => !x.student);
+            return (them.length ? `<div class="muted" style="font-size:13px;margin-top:4px">${them.map((x) => esc(x.emoji + " " + x.who)).join(" · ")}</div>` : "")
+              + (m.mine ? "" : `<div class="react-row">${["👍", "❤️", "✅", "😂", "🙏", "👀"].map((e) => `<button class="react ${mine.has(e) ? "on" : ""}" data-sreact="${e}" data-id="${m.id}" aria-label="Reaction ${e}">${e}</button>`).join("")}</div>`); })()}
         ${m.mine ? "" : `<div class="msg-actions"><button class="small secondary" data-sreply="${m.id}">Reply to the teacher</button>
           <button class="small secondary" data-sflag="archive" data-id="${m.id}" title="Hide it from this list">🗄 Archive</button>
           <button class="small red" data-sflag="delete" data-id="${m.id}">Delete</button></div>`}
       </div>`).join("") : "No message yet.";
+    // v33: emoji reactions
+    $("stuMsgList").querySelectorAll("[data-sreact]").forEach((b) => b.onclick = async () => {
+      const m = all.find((x) => x.id === Number(b.dataset.id));
+      try { m.reactions = await rpc("s_msg_react", { p_device: m.course.token, p_id: m.id, p_emoji: b.dataset.sreact }); b.classList.toggle("on"); }
+      catch (e) { toast(e.message, "error"); }
+    });
     // v29: archive / delete a message (for this student only)
     $("stuMsgList").querySelectorAll("[data-sflag]").forEach((b) => b.onclick = async () => {
       const m = all.find((x) => x.id === Number(b.dataset.id));
@@ -372,6 +390,37 @@
     });
   }
   $("teacherBtn").onclick = () => showTeachers();
+  // ------------------------------------------------------------ v33: my progress (what the teacher opened)
+  const PROG_STATUS = { present: "present", late: "late", absent: "absent", excused: "excused" };
+  const progMark = (r) => r.status === "exc" ? "excused" : r.status === "none" ? "not marked yet" : r.mark == null ? "—" : `${Number(r.mark)} / ${Number(r.scale)}`;
+  const untilTxt = (u) => u ? ` <span class="muted" style="font-size:12px">(shown until ${new Date(u).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>` : "";
+  async function showProgress() {
+    view("viewProgress"); setViewUrl("progress");
+    const out = [];
+    for (const c of homeCourses) {
+      let p; try { p = await rpc("s_progress", { p_device: c.token }); } catch (e) { continue; }   // older database or course left
+      const blocks = [];
+      if (p.final) blocks.push(`<div class="prog-final"><div class="row" style="justify-content:space-between;align-items:baseline"><strong>Final mark</strong>
+          <strong class="prog-big">${p.final.final == null ? "—" : Number(p.final.final)} / 20</strong></div>
+          <div class="muted" style="font-size:12px">Published ${new Date(p.final.published_at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}${untilTxt(p.final.until)}</div>
+          ${(p.final.detail || []).map((d) => `<div class="prog-line"><span>${esc(d.label)} <span class="muted">· ${d.weight} %</span>${d.notes ? `<span class="muted" style="display:block;font-size:12px">${esc(d.notes)}</span>` : ""}</span><strong>${d.mark == null ? "—" : Number(d.mark)}</strong></div>`).join("")}
+          <button class="small secondary" data-progask="${c.class_id}" style="margin-top:6px">A question about my mark? Write</button></div>`);
+      if (p.results && p.results.length) blocks.push(`<h3 style="margin:12px 0 4px">Results</h3><table class="prog-table">${p.results.map((r) =>
+          `<tr class="${r.status === "exc" || r.status === "none" ? "muted" : ""}"><td>${esc(r.title)}${untilTxt(r.until)}</td><td><strong>${progMark(r)}</strong></td></tr>`).join("")}</table>`);
+      if (p.presence) {
+        const n = p.presence.sessions.length, ok = p.presence.present;
+        blocks.push(`<h3 style="margin:12px 0 4px">Attendance${untilTxt(p.presence.until)}</h3>
+          <p style="margin:0"><strong class="prog-big">${n ? Math.round((100 * ok) / n) : 0} %</strong> <span class="muted">${ok} of ${n} session(s) · ${p.presence.late} late · ${p.presence.absent} absent · ${p.presence.excused} excused</span></p>
+          <div class="prog-chips">${p.presence.sessions.map((x) => `<span class="badge ${x.status === "absent" ? "no" : x.status === "late" ? "orange" : x.status === "excused" ? "info" : "ok"}">${esc(x.date)} ${esc(x.title)} · ${PROG_STATUS[x.status] || esc(x.status)}</span>`).join("")}</div>
+          <p class="muted" style="font-size:12px;margin:4px 0 0">Only the sessions of your groups.</p>`);
+      }
+      out.push(`<div class="card prog-card"><h3 style="margin-top:0">${esc(p.class_name)}</h3>${blocks.join("") || `<p class="muted">Nothing shown by the teacher yet.</p>`}</div>`);
+    }
+    $("progressList").classList.toggle("muted", !out.length);
+    $("progressList").innerHTML = out.join("") || "No course on this device.";
+    $("progressList").querySelectorAll("[data-progask]").forEach((b) => b.onclick = () => showMessages({ class_id: b.dataset.progask, subject: "Question about my final mark" }));
+  }
+  $("progressBtn").onclick = () => showProgress();
   document.querySelectorAll(".backHome").forEach((a) => a.onclick = (e) => { e.preventDefault(); setViewUrl(""); showHome(); });
 
   $("goRegister").onclick = (e) => { e.preventDefault(); view("viewRegister"); $("regMat").value = $("siMat").value; };

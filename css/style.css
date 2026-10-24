@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "32.1";
+:root { --cp-version: "33";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -593,3 +593,134 @@ table.rt .rt-offrow th { color: #8A9AAB; }
 
 /* v32.1: floating QR button while its window is open */
 #floatQrBtn.on { outline: 3px solid #E8741E; }
+
+/* ===================================================================== v33 */
+/* ---- teacher menu: five spaces, the tabs of the open space under it */
+.teacher nav .space { margin: 2px 0; }
+.teacher nav .space-btn { font-weight: 700; color: #fff; }
+.teacher nav .space.current > .space-btn { background: var(--navy2); }
+.teacher nav .space-head { font-weight: 700; }
+.teacher nav .subtabs { display: none; margin: 0 0 6px 10px; border-left: 2px solid rgba(255, 255, 255, .18); padding-left: 6px; }
+.teacher nav .space.open .subtabs, body.nav-all .teacher nav .subtabs { display: block; }
+.teacher nav .subtabs button { margin: 3px 0; padding: 7px 10px; font-size: 14px; }
+@media (max-width: 900px) {
+  .teacher nav .space { display: contents; }
+  .teacher nav .space-btn, .teacher nav .space-head { order: 1; }
+  .teacher nav .subtabs { order: 5; flex: 1 0 100%; margin: 6px 0 0; border-left: none; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, .18);
+    overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  .teacher nav .space.open .subtabs, body.nav-all .teacher nav .space .subtabs { display: flex; gap: 6px; }
+  body.nav-all .teacher nav .subtabs { flex-wrap: wrap; }   /* automated tests only: every tab reachable */
+  .teacher nav .subtabs button { margin: 0; }
+  .teacher nav #logoutBtn, .teacher nav #netInfo { order: 2; }
+}
+
+/* ---- Results: pages */
+.rt-bar { gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.rt-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.rt-tabs button { background: #DCE8F2; color: var(--navy); padding: 8px 14px; }
+.rt-tabs button.on { background: var(--navy); color: #fff; }
+.g-tools { gap: 8px; align-items: center; flex-wrap: wrap; position: relative; }
+.g-menu { position: relative; z-index: 5; display: flex; flex-direction: column; gap: 4px; max-width: 420px; margin: 6px 0 6px auto;
+  background: #fff; box-shadow: 0 10px 30px rgba(11, 37, 69, .2); border-radius: 12px; padding: 8px; }
+.g-menu button { text-align: left; background: #F5F8FB; color: var(--navy); }
+.g-menu button span { display: block; font-size: 12px; color: #4A5B6D; font-weight: 400; }
+.g-entry, .g-edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-radius: 12px; padding: 8px 10px; margin: 8px 0; }
+.g-entry { background: #E8F0F7; border: 1.5px solid #2F6F9F; }
+.g-edit { background: #FFF4E8; border: 1px solid #F2D2B4; }
+.g-scroll { overflow: auto; max-height: calc(100vh - 260px); border: 1px solid #EEF2F6; border-radius: 10px; }
+.g-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+.g-table th { position: sticky; top: 0; background: #fff; z-index: 2; font-size: 12px; vertical-align: bottom; min-width: 78px; }
+.g-table .g-name { position: sticky; left: 0; background: #fff; z-index: 1; min-width: 170px; }
+.g-table th.g-name { z-index: 3; }
+.g-table td, .g-table th { padding: 5px 7px; border-bottom: 1px solid #EEF2F6; white-space: nowrap; }
+.g-table .g-head { font-size: 13px; text-align: left; }
+.g-table .g-sub { font-size: 11px; font-weight: 400; color: #4A5B6D; }
+.g-table .g-off { color: #9AA8B6; background: #FAFBFC; }
+.g-table .g-off .g-head, .g-table .g-off .g-cell { color: #9AA8B6; }
+.g-table .g-c-abs { background: #FDF1EF; }
+.g-table .g-c-exc { background: #F4F0FA; }
+.g-table .g-cell { font-weight: 400; }
+.g-table .g-mod { color: var(--orange, #E8741E); margin-left: 2px; }
+.g-table .g-final { background: #FFF8F0; position: sticky; right: 0; }
+.g-table .g-entrycol { background: #F2F7FC; }
+.g-in { width: 62px; padding: 3px 5px; border: 1.5px solid #2F6F9F; border-radius: 6px; font: inherit; }
+.g-in.g-bad { border-color: #B83227; background: #FCE3DF; }
+.g-formula { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(280px, 340px); gap: 12px; align-items: start; }
+.g-vis { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
+@media (max-width: 1150px) { .g-formula, .g-vis { grid-template-columns: 1fr; } }
+.g-part { background: #F5F8FB; border-radius: 10px; padding: 8px; margin: 6px 0; }
+.g-part.off { opacity: .55; }
+.g-w { width: 52px; text-align: center; font-weight: 700; padding: 4px; }
+.g-chip { border: 1.5px solid var(--navy); background: #fff; color: var(--navy); border-radius: 999px; padding: 4px 11px; font-size: 13px; margin: 2px; min-height: 32px; }
+.g-chip.on { background: #E8741E; border-color: #E8741E; color: #fff; font-weight: 700; }
+.g-sum { border-radius: 10px; padding: 7px 10px; font-weight: 700; margin-top: 6px; }
+.g-sum.ok { background: #E2F2E7; color: #2E7D4F; }
+.g-sum.no { background: #FCE3DF; color: #B83227; }
+.g-evals td, .g-evals th { padding: 5px 6px; }
+.g-evals tr.g-off { opacity: .55; }
+.g-bcat { display: flex; gap: 6px; align-items: center; border: 1px solid #E3E9EF; border-radius: 10px; padding: 6px 10px; margin: 0; }
+.g-warn { font-size: 12px; color: #B4570E; background: #FFF4E8; border-radius: 8px; padding: 6px 8px; }
+.g-formula-text { background: var(--navy); color: #fff; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.5; }
+.g-prev { background: #fff; border: 1px solid #EEF2F6; border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
+.g-pl { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
+.g-pf { border-top: 1px solid #E3E9EF; margin-top: 4px; padding-top: 6px; font-size: 16px; }
+.g-pf strong:last-child { color: #E8741E; font-size: 20px; }
+.g-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.g-stats div { background: #F5F8FB; border-radius: 10px; padding: 6px; text-align: center; }
+.g-stats span { display: block; font-size: 12px; }
+.g-vrow { display: flex; align-items: center; gap: 10px; border: 1px solid #E3E9EF; border-radius: 10px; padding: 8px 10px; margin: 5px 0; background: #fff; }
+.g-vrow.final { background: #FFF8F0; border: 1.5px solid #F2D2B4; }
+.g-log { display: flex; flex-direction: column; gap: 4px; font-size: 13px; max-height: 300px; overflow: auto; }
+.badge.orange { background: #FFF0DD; color: #B4570E; }
+@media (max-width: 640px) {
+  .rt-bar { position: sticky; top: 92px; z-index: 30; background: var(--ice, #F5F8FB); padding: 4px 0; }
+  .rt-tabs { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
+  .rt-tabs button { white-space: nowrap; }
+  .g-scroll { max-height: 65vh; }
+  .g-vrow { flex-wrap: wrap; }
+  .g-vrow button { min-height: 44px; }
+  .g-in { width: 70px; min-height: 40px; font-size: 17px; }
+  .g-chip { min-height: 40px; }
+}
+/* ---- student: my progress */
+.prog-card { background: #fff; }
+.prog-final { border: 2px solid #2E7D4F; border-radius: 12px; padding: 10px; }
+.prog-big { font-size: 24px; color: #2E7D4F; }
+.prog-line { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid #EEF2F6; padding-top: 4px; margin-top: 4px; font-size: 14px; }
+.prog-table { width: 100%; border-collapse: collapse; }
+.prog-table td { padding: 6px 4px; border-bottom: 1px solid #EEF2F6; }
+.prog-table tr.muted td { color: #6B7B8C; }
+.prog-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+/* ---- messages: selection, same answer, reactions */
+.mail-row { grid-template-columns: 22px 24px minmax(120px, 220px) 1fr auto; }
+.mail-row .mail-pick { width: 18px; height: 18px; margin: 0; }
+.mail-pickbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #E8F0F7; border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+.react-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.react { border: 1.5px solid #DCE6EF; background: #fff; border-radius: 999px; padding: 2px 10px; font-size: 18px; min-height: 36px; color: inherit; }
+.react.on { border-color: #E8741E; background: #FFF4E8; }
+@media (max-width: 700px) { .mail-row { grid-template-columns: 22px 24px 1fr auto; } .mail-row .what { grid-column: 3 / 5; } .react { min-height: 44px; min-width: 48px; } }
+.att-counts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+/* ---- the student profile opens as a side panel; the page behind stays visible */
+.modal.drawer { justify-content: flex-end; padding: 0; background: rgba(11, 37, 69, .28); }
+.modal.drawer .modal-content { max-width: 640px; min-height: 100vh; margin: 0; border-radius: 0; box-shadow: -10px 0 30px rgba(11, 37, 69, .25); }
+.profile-actions { position: sticky; top: 0; background: #fff; z-index: 2; padding: 8px 0; border-bottom: 1px solid #EEF2F6; margin-bottom: 6px; }
+@media (max-width: 640px) { .modal.drawer .modal-content { max-width: 100%; } .profile-actions button { min-height: 44px; } }
+/* ---- student: states of « Submit my answers » */
+#submitQuizBtn.sending { background: #9FB6CC; color: #fff; }
+#submitQuizBtn.sent { background: #DCE8F2; color: #2E7D4F; }
+.submit-state { margin: 6px 0 0; font-weight: 600; color: #33475B; min-height: 1em; }
+/* ---- v33: the menu on a phone: the class, then the five spaces, then the tabs of the open space */
+.teacher nav .sh { display: none; }
+@media (max-width: 900px) {
+  .teacher nav { flex-wrap: wrap; overflow-x: visible; row-gap: 6px; }
+  .teacher nav select { flex: 1 1 100%; max-width: none; position: static; box-shadow: none; order: 0; }
+  .teacher nav .space-btn, .teacher nav .space-head { flex: 1 1 0; text-align: center; padding: 9px 4px; font-size: 13px; min-height: 44px; }
+  .teacher nav .lg { display: none; }
+  .teacher nav .sh { display: inline; }
+  .teacher nav #netInfo { display: none; }
+  .teacher nav #logoutBtn { display: none; order: 6; }
+  .teacher nav .space[data-space=me].open ~ #logoutBtn { display: inline-block; }
+  .teacher nav .space.current > .space-btn, .teacher nav .space-head.active { background: #fff; color: var(--navy); }
+  .teacher nav .subtabs button.active { background: #fff; color: var(--navy); }
+  .teacher nav .subtabs button { min-height: 40px; }
+}

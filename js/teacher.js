@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "32.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -7,6 +7,7 @@ let sessionCode = null;
 let live = null;              // last t_live result
 let channel = null;
 let autoTimer = null;
+let autoDone = "";   // v33: last (quiz, question, phase) the automatic mode acted on
 let allQuestions = [];
 let activeTab = "live";
 let checkLocation = false;    // this session asks the phone position at check-in
@@ -105,18 +106,42 @@ async function showApp() {
 }
 
 // ------------------------------------------------------------------ navigation
+// v33: five spaces (Live, My class, Messages, Content, Me). The tabs of the open space are listed under it.
+// Automated tests (navigator.webdriver) see every tab, as before, unless the page is asked for the compact menu.
+const NAV_ALL = navigator.webdriver && (function () { try { return localStorage.getItem("cp_nav_test") !== "compact"; } catch (e) { return true; } })();
+document.body.classList.toggle("nav-all", !!NAV_ALL);
+function openSpace(space) {
+  document.querySelectorAll("nav .space").forEach((sp) => sp.classList.toggle("open", sp.dataset.space === space));
+}
+function spaceOf(btn) { const sp = btn.closest(".space"); return sp ? sp.dataset.space : ""; }
+document.querySelectorAll("nav .space-btn").forEach((h) => {
+  h.onclick = () => {
+    const sp = h.closest(".space");
+    openSpace(sp.dataset.space);
+    let last = null; try { last = localStorage.getItem("cp_tab_" + sp.dataset.space); } catch (e) { /* private window */ }
+    const tabs = [...sp.querySelectorAll(".subtabs button[data-tab]")].filter((b) => b.offsetParent !== null || !b.classList.contains("hidden"));
+    const visible = tabs.filter((b) => getComputedStyle(b).display !== "none");
+    const go = visible.find((b) => b.dataset.tab === last) || visible[0];
+    if (go) go.click();
+  };
+});
 document.querySelectorAll("nav button[data-tab]").forEach((b) => {
   b.onclick = () => {
+    openSpace(spaceOf(b));
+    try { localStorage.setItem("cp_tab_" + spaceOf(b), b.dataset.tab); } catch (e) { /* private window */ }
+    document.querySelectorAll("nav .space").forEach((sp) => sp.classList.toggle("current", sp.dataset.space === spaceOf(b)));
     document.querySelectorAll("nav button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
     document.querySelectorAll("main section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab));
     activeTab = b.dataset.tab;
     updateBanner();
     const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects, timetable: loadTimetableTab,
+      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: () => { loadResults(); gradesOnShow(); }, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects, timetable: loadTimetableTab,
       quizzes: () => { $("tplEditorCard").classList.add("hidden"); $("tplListCard").classList.remove("hidden"); return loadTemplates(); } };
     if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
   };
 });
+openSpace("live");
+document.querySelector("nav .space[data-space=live]").classList.add("current");
 
 // ------------------------------------------------------------------ classes
 async function loadClasses() {
@@ -206,7 +231,7 @@ async function selectClass(id) {
   if (changed && activeTab === "students") await loadStudents();
   if (changed && activeTab === "space") { $("statsDetail").dataset.doc = ""; $("statsDetail").innerHTML = ""; await loadDocs(); await loadDocStats(); }
   if (activeTab === "classes" && !isAssistant()) loadAssistants();
-  if (activeTab === "results") loadResults();
+  if (activeTab === "results") { loadResults(); gradesOnShow(); }
   if (activeTab === "messages") loadMessages();
   updateMsgBadge();
 }
@@ -916,11 +941,16 @@ function bindResultsToggle(q) {
 function autoMode() {
   const q = live.quiz;
   if (!$("autoMode").checked || !q) return;
-  if (q.phase === "question" && q.remaining_ms <= 0 && !autoTimer) {
-    autoTimer = setTimeout(async () => { autoTimer = null; await act("t_quiz_reveal", { p_quiz: q.id }); }, 300);
+  // v33: one order per (question, phase), and the server ignores an order whose position is out of date.
+  const key = q.id + ":" + q.index + ":" + q.phase;
+  if (autoTimer || autoDone === key) return;
+  if (q.phase === "question" && q.remaining_ms <= 0) {
+    autoDone = key;
+    autoTimer = setTimeout(async () => { autoTimer = null; await act("t_quiz_reveal", { p_quiz: q.id, p_at: q.index }); }, 300);
   }
-  if (q.phase === "reveal" && !autoTimer) {
-    autoTimer = setTimeout(async () => { autoTimer = null; await act("t_quiz_next", { p_quiz: q.id }); }, CONFIG.autoNextDelayS * 1000);
+  if (q.phase === "reveal") {
+    autoDone = key;
+    autoTimer = setTimeout(async () => { autoTimer = null; await act("t_quiz_next", { p_quiz: q.id, p_from: q.index }); }, CONFIG.autoNextDelayS * 1000);
   }
 }
 
@@ -1092,7 +1122,7 @@ $("quizDeleteBtn").onclick = async () => {
   try { await rpc("t_quiz_delete", { p_quiz: q.id, p_confirm: q.title }); await afterQuizChange("Run deleted."); }
   catch (e) { toast(e.message, "error"); }
 };
-$("revealBtn").onclick = () => act("t_quiz_reveal", { p_quiz: currentQuiz() });
+$("revealBtn").onclick = () => act("t_quiz_reveal", { p_quiz: currentQuiz(), p_at: live && live.quiz ? live.quiz.index : null });
 $("nextBtn").onclick = () => {
   const q = live && live.quiz;
   if (q && q.is_last && q.pace !== "self") {
@@ -1100,7 +1130,7 @@ $("nextBtn").onclick = () => {
     act("t_quiz_finish", { p_quiz: q.id }, "Quiz finished.");
     return;
   }
-  act("t_quiz_next", { p_quiz: currentQuiz() });
+  act("t_quiz_next", { p_quiz: currentQuiz(), p_from: live && live.quiz ? live.quiz.index : null });
 };
 $("addTimeBtn").onclick = () => act("t_quiz_add_time", { p_quiz: currentQuiz(), p_seconds: Number($("addTimeSel").value) },
   `+${$("addTimeSel").value} s added to the current question.`);
@@ -1194,7 +1224,19 @@ function renderAttendanceTable() {
   // v25: by default the group checking in now (current run); or the whole session; or the whole class
   const scope = $("attScopeBox").classList.contains("hidden") ? "session" : $("attScope").value;
   const expected = scope === "all" ? list : scope === "run" ? list.filter((r) => r.run_member || r.this_run) : list.filter((r) => r.member || r.status);
-  const shown = term ? list.filter((r) => norm(r.name + " " + r.matricule).includes(term)) : expected;
+  // v33: a group filter (TD group or TP sub-group), and the list sorted: present, late, not yet, absent, excused
+  const groups = [...new Set(list.flatMap((r) => [r.td_group, r.tp_group]).filter(Boolean))].sort();
+  const gsel = $("attFilterGroup"), gval = gsel.value;
+  const gopts = `<option value="">all</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+  if (gsel.dataset.opts !== gopts) { gsel.innerHTML = gopts; gsel.dataset.opts = gopts; gsel.value = groups.includes(gval) ? gval : ""; }
+  const ORDER = { present: 0, late: 1, "": 2, absent: 3, excused: 4 };
+  const byGroup = gsel.value ? (term ? list : expected).filter((r) => r.td_group === gsel.value || r.tp_group === gsel.value) : null;
+  const shown = (term ? list.filter((r) => norm(r.name + " " + r.matricule).includes(term)) : byGroup || expected)
+    .filter((r) => !gsel.value || r.td_group === gsel.value || r.tp_group === gsel.value)
+    .slice().sort((a, b) => (ORDER[a.status || ""] - ORDER[b.status || ""]) || String(a.name).localeCompare(String(b.name)));
+  const cnt = (k) => shown.filter((r) => (r.status || "") === k).length;
+  $("attCounts").innerHTML = `<span class="badge ok">${cnt("present")} present</span> <span class="badge orange">${cnt("late")} late</span>
+    <span class="badge closed">${cnt("")} not yet</span> <span class="badge no">${cnt("absent")} absent</span> <span class="badge info">${cnt("excused")} excused</span>`;
   const far = enoughPositions ? list.filter((r) => checkLocation && r.distance > (CONFIG.farFromRoomM || 300)).length : 0;
   const html = (far ? `<p class="far">⚠ ${far} student(s) checked in far from the rest of the class.</p>` : "") +
     `<table><tr><th>Name</th><th>Matricule</th><th>Status</th><th></th>${checkLocation ? "<th>Position</th>" : ""}<th>Bonus ${SESSION_KIND[live && live.session.kind] || ""}</th></tr>` + shown.map((r) =>
@@ -1242,6 +1284,7 @@ $("attendanceTable").addEventListener("change", async (e) => {
 
 $("attSearch").oninput = () => renderAttendanceTable();
 $("attScope").onchange = () => renderAttendanceTable();
+$("attFilterGroup").onchange = () => { attLastHtml = ""; renderAttendanceTable(); };
 
 // ------------------------------------------------------------------ collapsible cards (remembered in this browser)
 function collapseKey() { return "cp_collapsed"; }
@@ -2004,13 +2047,22 @@ $("docUrlAddBtn").onclick = async () => {
 // ------------------------------------------------------------------ lab assistants and their activity
 // v29: assistants: a role (preset of permissions), then any permission ticked or unticked, and the groups he works with.
 const PERM_GROUPS = [
-  ["Types of sessions", [["kind_course", "Course sessions"], ["kind_td", "TD sessions"], ["kind_tp", "TP (lab) sessions"]]],
-  ["Sessions and quizzes", [["sessions_create", "Create and edit sessions (of these types)"], ["quiz_prepare", "Prepare quizzes (of these types)"]]],
+  ["Sessions", [["kind_course", "Course sessions"], ["kind_td", "TD sessions"], ["kind_tp", "TP (lab) sessions"], ["sessions_create", "Create and edit sessions (of these types)"],
+    ["attendance", "Change a presence by hand"], ["unlock", "Unlock a student, allow a new device"]]],
+  ["Quizzes", [["quiz_prepare", "Prepare and run quizzes (of these types)"], ["quiz_all", "Reset and delete the quiz runs of the class"], ["makeup", "Open make-ups"]]],
   ["Students", [["students_edit", "Edit students, groups, registration"], ["profiles", "Open the student profiles"]]],
-  ["Results", [["results_view", "See the results"], ["results_export", "Download the results of a quiz (when the quiz allows it)"], ["export_all", "Export all the marks of the class (Excel)"], ["marks_edit", "Correct marks, fix a question, board check"]]],
-  ["Documents", [["docs_view", "See the course content"], ["docs_publish", "Upload and publish documents (Student space)"], ["docs_unlock", "Open the locked parts of documents"]]],
+  ["Results", [["results_view", "See the results"], ["results_export", "Download the results of a quiz (when the quiz allows it)"], ["export_all", "Export all the marks of the class (Excel)"],
+    ["marks_edit", "Correct and type marks, fix a question, board check"], ["grading", "Final mark: formula, what the students see, publish"]]],
+  ["Documents", [["docs_view", "See the course content"], ["docs_publish", "Upload and publish documents (Student space)"], ["docs_unlock", "Open the locked parts of documents"],
+    ["push", "Push a document or a link in a session"]]],
   ["Messages", [["messages", "Write to the students"]]],
 ];
+// v33: presets (they tick boxes; each box can then be changed)
+const PERM_PRESETS = {
+  course: ["kind_course", "sessions_create", "attendance", "quiz_prepare", "results_view", "profiles", "docs_view", "push"],
+  td: ["kind_td", "sessions_create", "attendance", "unlock", "quiz_prepare", "makeup", "results_view", "results_export", "profiles", "docs_view", "docs_unlock", "push"],
+  tp: ["kind_tp", "sessions_create", "attendance", "unlock", "quiz_prepare", "makeup", "results_view", "results_export", "profiles", "docs_view", "docs_unlock", "push"],
+};
 function roleSelect(cls, val, extra) {
   return `<select class="${cls}" ${extra || ""} style="width:auto">${Object.entries(ROLE_LABEL).map(([k, v]) => `<option value="${k}" ${k === val ? "selected" : ""}>${v}</option>`).join("")}</select>`;
 }
@@ -2027,6 +2079,11 @@ async function loadAssistants() {
         <button class="small secondary a-save-groups">Save groups</button>
         <button class="small red" data-arem="${a.user_id}" data-email="${esc(a.email)}">Remove</button></span></div>
       <div class="muted" style="font-size:12px">added ${new Date(a.added_at).toLocaleDateString()}</div>
+      <div class="row perm-presets" style="gap:6px;align-items:center;margin-top:6px"><span class="muted" style="font-size:13px">Tick for:</span>
+        <button class="small secondary" data-preset="course">Course</button><button class="small secondary" data-preset="td">TD</button>
+        <button class="small secondary" data-preset="tp">TP</button><button class="small secondary" data-preset="all">Everything</button>
+        <button class="small secondary" data-preset="none">Nothing</button>
+        <span class="muted" style="font-size:12px">${(a.perms || []).length} / ${PERM_GROUPS.reduce((n, g) => n + g[1].length, 0)} permissions</span></div>
       ${PERM_GROUPS.map(([title, perms]) => `<h4>${title}</h4><div class="perms">${perms.map(([k, label]) =>
         `<label><input type="checkbox" class="a-perm" value="${k}" ${(a.perms || []).includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>`).join("")}
     </div>`).join("");
@@ -2043,6 +2100,13 @@ async function loadAssistants() {
       await save(card, card.querySelector(".a-role").value, null); loadAssistants();
     };
     card.querySelector(".a-save-groups").onclick = () => save(card, card.querySelector(".a-role").value, perms());
+    card.querySelectorAll("[data-preset]").forEach((b) => b.onclick = async () => {
+      const k = b.dataset.preset;
+      const list = k === "all" ? PERM_GROUPS.flatMap((g) => g[1].map((x) => x[0])) : k === "none" ? [] : PERM_PRESETS[k];
+      card.querySelectorAll(".a-perm").forEach((c) => { c.checked = list.includes(c.value); });
+      await save(card, card.querySelector(".a-role").value, perms(), true);
+      toast(`Permissions ticked: ${b.textContent}. Change any box if needed.`, "ok"); loadAssistants();
+    });
   });
   $("assistantsTable").querySelectorAll("[data-arem]").forEach((b) => b.onclick = async () => {
     if (!confirm(`Remove ${b.dataset.email} from the assistants of this class? (His activity log is kept.)`)) return;
@@ -2123,6 +2187,40 @@ async function openProfile(studentId) {
       ? `<tr><td>${esc(d.title)}</td><td colspan="7"><span class="badge no">never opened</span></td></tr>`
       : `<tr><td>${esc(d.title)}</td><td>${fmtWhen(d.first_open)}</td><td>${fmtWhen(d.last_seen)}</td><td>${d.opens}</td><td>${fmtDuration(d.active_s)}</td>
           <td>${d.scroll_pct} %</td><td>${fmtWhen(d.pdf_at)}</td><td>${fmtWhen(d.file_at)}</td></tr>`).join("") + `</table>`);
+  // v33: actions from the profile: presence in the session now, write, his marks, change of group
+  const row = (lastAttendance || []).find((r) => r.student_id === st.id);
+  const gr = typeof GT !== "undefined" && GT.b && GT.cid === classId ? GT.b.rows.find((r) => r.st.id === st.id) : null;
+  $("profileActions").innerHTML = `<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
+      <button class="small orange" id="pfWrite" data-perm="messages">✉ Write to him</button>
+      <button class="small secondary" id="pfMarks">📊 His marks</button>
+      <button class="small secondary" id="pfGroups" data-perm="students_edit">Change his groups</button>
+      ${gr ? `<span class="badge ${visOf("final").visible ? "ok" : "closed"}">Final mark ${GRADE.fmt(gr.final)} (${visOf("final").visible ? "published" : "not published"})</span>` : ""}</div>
+    ${sessionId && row ? `<div class="row" style="gap:6px;align-items:center;margin-top:8px" data-perm="attendance"><span class="muted">In the session now:</span>
+      ${["present", "late", "absent", "excused"].map((k) => `<button class="small ${row.status === k ? "" : "secondary"}" data-pfatt="${k}">${k}</button>`).join("")}</div>` : ""}`;
+  applyRole();
+  $("pfWrite").onclick = () => {
+    $("profileBox").classList.add("hidden");
+    document.querySelector("nav button[data-tab=messages]").click();
+    $("msgKind").value = "students"; syncMsgKind(); msgPicked = new Set([st.id]); $("msgPickSearch").value = ""; renderMsgPick();
+    msgReplyTo = null; $("msgReplyNote").textContent = `To ${st.last_name} ${st.first_name}.`;
+    setTimeout(() => { $("msgComposeCard").scrollIntoView({ behavior: "smooth" }); $("msgBody").focus(); }, 300);
+  };
+  $("pfMarks").onclick = () => {
+    $("profileBox").classList.add("hidden");
+    gStore("cp_rt", "marks");
+    document.querySelector("nav button[data-tab=results]").click();
+  };
+  $("pfGroups").onclick = async () => {
+    const td = prompt(`TD group of ${st.last_name} ${st.first_name}:`, st.td_group || ""); if (td === null) return;
+    const tp = prompt(`TP sub-group of ${st.last_name} ${st.first_name}:`, st.tp_group || ""); if (tp === null) return;
+    try { await rpc("t_set_student_groups", { p_student: st.id, p_td: td.trim(), p_tp: tp.trim() }); toast("Groups saved.", "ok"); openProfile(st.id); }
+    catch (e) { toast(e.message, "error"); }
+  };
+  $("profileActions").querySelectorAll("[data-pfatt]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_set_attendance", { p_session: sessionId, p_student: st.id, p_status: b.dataset.pfatt }); toast(`${st.last_name}: ${b.dataset.pfatt}.`, "ok");
+      attForce = true; await refreshAttendance(); openProfile(st.id); }
+    catch (e) { toast(e.message, "error"); }
+  });
   $("profileBox").classList.remove("hidden");
   $("profileEmailEdit").onclick = async () => {
     const v = prompt(`E-mail of ${st.last_name} ${st.first_name} (empty = none):`, st.email || "");
@@ -2659,6 +2757,8 @@ function renderStaffCard() {
 
 // ---- v29: mailbox. One line per message (who, subject, start of the text, date); a click opens it in full.
 let mailBox = "inbox", mailItems = [], mailTotal = 0, mailOpen = null, mailSearchTimer = null;
+const mailPicked = new Set();   // v33: messages ticked for one same answer
+const EMOJIS = [["👍", "thumbs up"], ["❤️", "heart"], ["✅", "seen, ok"], ["😂", "laugh"], ["🙏", "thanks"], ["👀", "looking at it"]];
 async function loadMailList(reset) {
   if (!classId) return;
   const cid = classId;
@@ -2676,7 +2776,10 @@ function renderMailList() {
   $("mailBoxes").querySelectorAll("[data-box]").forEach((b) => { b.className = "small " + (b.dataset.box === mailBox ? "" : "secondary"); });
   const unread = mailBox === "inbox" ? mailItems.filter((m) => !m.read).length : 0;
   $("msgUnread").textContent = unread ? `${unread} new` : ""; $("msgUnread").classList.toggle("hidden", !unread);
+  [...mailPicked].forEach((id) => { if (!mailItems.some((m) => m.id === id && m.from_kind === "student")) mailPicked.delete(id); });
+  renderMailPickBar();
   $("mailList").innerHTML = mailItems.length ? mailItems.map((m) => `<div class="mail-row ${!sent && !m.read ? "unread" : ""}" data-mid="${m.id}">
+      ${!sent && m.from_kind === "student" ? `<input type="checkbox" class="mail-pick" data-mailpick="${m.id}" ${mailPicked.has(m.id) ? "checked" : ""} aria-label="Select this message" title="Select (same answer to several messages)">` : `<span class="mail-pick"></span>`}
       <button class="star" data-mstar="${m.id}" title="${m.starred ? "Unstar" : "Star"}">${m.starred ? "★" : "☆"}</button>
       <span class="who">${sent ? "To: " + esc(m.to || "") : (m.from_kind === "student" ? "👤 " : "🧑‍🏫 ") + esc(m.from || "")}</span>
       <span class="what">${esc(m.subject || "(no subject)")} <span class="snip">— ${esc(m.snippet || "")}</span>${m.has_doc ? " 📄" : ""}</span>
@@ -2685,16 +2788,46 @@ function renderMailList() {
     : `<p class="muted" style="padding:8px">${{ inbox: "No message received.", starred: "No starred message.", archived: "No archived message.", sent: "No message sent." }[mailBox]}</p>`;
   $("mailCount").textContent = mailTotal ? `${mailItems.length} / ${mailTotal}` : "";
   $("mailMore").classList.toggle("hidden", mailItems.length >= mailTotal);
-  $("mailList").querySelectorAll(".mail-row").forEach((row) => row.onclick = (e) => { if (!e.target.closest("[data-mstar]")) openMail(Number(row.dataset.mid)); });
+  $("mailList").querySelectorAll(".mail-row").forEach((row) => row.onclick = (e) => { if (!e.target.closest("[data-mstar]") && !e.target.closest("[data-mailpick]")) openMail(Number(row.dataset.mid)); });
+  $("mailList").querySelectorAll("[data-mailpick]").forEach((c) => c.onchange = () => { const id = Number(c.dataset.mailpick); if (c.checked) mailPicked.add(id); else mailPicked.delete(id); renderMailPickBar(); });
   $("mailList").querySelectorAll("[data-mstar]").forEach((b) => b.onclick = () => {
     const m = mailItems.find((x) => x.id === Number(b.dataset.mstar));
     flagMail(m, m.starred ? "unstar" : "star");
   });
   if (mailOpen) bindMailOpen(sent);
 }
+// v33: one same answer to several messages of students (each one receives it in his own conversation)
+function renderMailPickBar() {
+  const n = mailPicked.size;
+  $("mailPickBar").classList.toggle("hidden", !n);
+  $("mailPickCount").textContent = n;
+}
+$("mailPickReply").onclick = () => { $("mailManyBox").classList.remove("hidden"); $("mailManyBody").focus(); };
+$("mailPickClear").onclick = () => { mailPicked.clear(); $("mailManyBox").classList.add("hidden"); renderMailList(); };
+$("mailManySend").onclick = async () => {
+  const body = $("mailManyBody").value.trim();
+  if (!body) { toast("Write the answer first.", "error"); return; }
+  $("mailManySend").disabled = true;
+  try {
+    const r = await rpc("t_msg_reply_many", { p_class: classId, p_ids: [...mailPicked], p_subject: $("mailManySubject").value.trim() || null, p_body: body });
+    toast(`Answer sent to ${r.sent} student(s), each in his own conversation.`, "ok");
+    mailPicked.clear(); $("mailManyBody").value = ""; $("mailManySubject").value = ""; $("mailManyBox").classList.add("hidden");
+    loadMailList(true);
+  } catch (e) { toast(e.message, "error"); }
+  $("mailManySend").disabled = false;
+};
+$("mailNewBtn").onclick = () => { $("msgComposeCard").scrollIntoView({ behavior: "smooth" }); $("msgBody").focus(); };
+function reactionsHtml(m) {
+  const list = m.reactions || [];
+  const mine = new Set(list.filter((r) => r.mine_user).map((r) => r.emoji));
+  const others = list.filter((r) => !r.mine_user);
+  return `<div class="react-row">${EMOJIS.map(([e, name]) => `<button class="react ${mine.has(e) ? "on" : ""}" data-react="${e}" title="${name}" aria-label="Reaction ${name}">${e}</button>`).join("")}
+    ${others.length ? `<span class="muted" style="font-size:13px">${others.map((r) => esc(r.emoji + " " + r.who)).join(" · ")}</span>` : ""}</div>`;
+}
 function mailOpenHtml(m, sent) {
   return `<div class="msg-head"><span>${sent ? "To: " + esc(m.to_name || m.target || "") : esc(m.from || "")}${m.from_matricule ? ` <span class="muted">${esc(m.from_matricule)}</span>` : ""}</span><span class="muted">${msgWhen(m.at)}</span></div>
     ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}<div class="msg-body">${msgBodyHtml(m.body)}</div>${msgDocLink(m)}
+    ${m.loading ? "" : reactionsHtml(m)}
     <div class="msg-actions">${sent ? "" : `<button class="small" data-mact="reply">Reply</button>`}
       ${mailBox === "archived" ? `<button class="small secondary" data-mact="unarchive">Back to Received</button>` : sent ? "" : `<button class="small secondary" data-mact="archive">🗄 Archive</button>`}
       ${sent ? "" : `<button class="small secondary" data-mact="unread">Mark as unread</button>`}
@@ -2703,6 +2836,9 @@ function mailOpenHtml(m, sent) {
 function bindMailOpen(sent) {
   const box = $("mailOpen");
   if (!box) return;
+  box.querySelectorAll("[data-react]").forEach((b) => b.onclick = async () => {
+    try { mailOpen.reactions = await rpc("t_msg_react", { p_id: mailOpen.id, p_emoji: b.dataset.react }); renderMailList(); } catch (e) { toast(e.message, "error"); }
+  });
   box.querySelectorAll("[data-mact]").forEach((b) => b.onclick = async () => {
     const act = b.dataset.mact, m = mailItems.find((x) => x.id === mailOpen.id);
     if (act === "reply") { if (!mailOpen.loading) replyTo(mailOpen); return; }

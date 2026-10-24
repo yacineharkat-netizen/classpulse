@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "32.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "33"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -164,7 +164,7 @@ function parseQuestions(rows) {
 }
 
 // Build and download the results workbook from the t_export data.
-function downloadResults(exp) {
+function downloadResults(exp, extra) {   // v33: extra = more sheets [{name, rows}] (typed marks, final mark)
   const KIND = { course: "Course", td: "TD", tp: "TP" };
   const statusLetter = { present: "P", late: "L", absent: "A", excused: "E" };
   const att = {};
@@ -328,6 +328,7 @@ function downloadResults(exp) {
   const ovRows = [["Matricule", "Last name", "First name", "Quiz", "Computed mark", "Corrected mark", "Reason"]];
   (exp.overrides || []).forEach((o) => { const s = nameOf[o.student_id] || {}; ovRows.push([s.matricule, s.last_name, s.first_name, quizTitle[o.quiz_id], o.computed == null ? "" : Number(o.computed), Number(o.mark), o.reason || ""]); });
   if (ovRows.length > 1) add(ovRows, "Corrected marks", [12, 18, 16, 26, 14, 14, 40]);
+  (extra || []).forEach((x) => add(x.formula ? x.rows.concat([[], [x.formula]]) : x.rows, x.name.slice(0, 31), x.rows[0].map((h, i) => (i < 3 ? 14 : Math.max(10, String(h).length + 2)))));
   const safe = exp.class.name.replace(/[^\w-]+/g, "_");
   XLSX.writeFile(wb, `ClassPulse_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

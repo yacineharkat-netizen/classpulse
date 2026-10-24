@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="32.1">
+<html lang="en" data-version="33">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=32.1">
+<link rel="stylesheet" href="css/style.css?v=33">
 </head>
 <body>
 
@@ -34,23 +34,43 @@
     <div class="brand">ClassPulse</div>
     <label for="classSelect" style="color:#C9DCEB">Class</label>
     <select id="classSelect"></select>
-    <button data-tab="live" class="active">▶ Live session</button>
-    <button data-tab="sessions">📅 Sessions <span id="sessionsBadge" class="badge open hidden"></span></button>
-    <button data-tab="timetable">🗓 Timetable</button>
-    <button data-tab="students">👥 Students <span id="attemptBadge" class="badge no hidden"></span></button>
-    <button data-tab="messages">✉ Messages <span id="msgBadge" class="badge no hidden"></span></button>
-    <button data-tab="questions" class="teacher-only">❓ Questions</button>
-    <button data-tab="quizzes">📝 Quizzes</button>
-    <button data-tab="space" data-perm="docs_publish">📚 Student space</button>
-    <button data-tab="content">📂 Course content</button>
-    <button data-tab="demos" class="teacher-only">🎬 Demos</button>
-    <button data-tab="resources" class="teacher-only">📎 Resources</button>
-    <button data-tab="results">📊 Results</button>
-    <button data-tab="export" data-perm="export_all">⬇ Export results</button>
-    <button data-tab="myspace" class="teacher-only hidden" id="mySpaceTab">🌐 My space</button>
-    <button data-tab="supervision" class="hidden" id="supervisionTab">🎓 Supervision <span id="supBadge" class="badge no hidden"></span></button>
-    <button data-tab="classes">＋ Classes</button>
-    <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">🌐 My public page</button>
+    <!-- v33: five spaces; the tabs of the open space are listed under it (on a phone: a second row) -->
+    <div class="space" data-space="live">
+      <button data-tab="live" class="active space-head">▶ <span class="lg">Live session</span><span class="sh">Live</span></button>
+    </div>
+    <div class="space" data-space="class">
+      <button class="space-btn" data-go="class">👥 <span class="lg">My class</span><span class="sh">Class</span> <span id="classSpaceBadge" class="badge no hidden"></span></button>
+      <div class="subtabs">
+        <button data-tab="students">Students <span id="attemptBadge" class="badge no hidden"></span></button>
+        <button data-tab="sessions">Sessions <span id="sessionsBadge" class="badge open hidden"></span></button>
+        <button data-tab="timetable">Timetable</button>
+        <button data-tab="results">Results and marks</button>
+        <button data-tab="export" data-perm="export_all">Export (Excel)</button>
+      </div>
+    </div>
+    <div class="space" data-space="messages">
+      <button data-tab="messages" class="space-head">✉ <span class="lg">Messages</span><span class="sh">Inbox</span> <span id="msgBadge" class="badge no hidden"></span></button>
+    </div>
+    <div class="space" data-space="content">
+      <button class="space-btn" data-go="content">📚 Content</button>
+      <div class="subtabs">
+        <button data-tab="quizzes">Quizzes</button>
+        <button data-tab="questions" class="teacher-only" data-perm-alt="bank">Question bank</button>
+        <button data-tab="content">Course content</button>
+        <button data-tab="space" data-perm="docs_publish">Student space</button>
+        <button data-tab="resources" class="teacher-only">Resources</button>
+        <button data-tab="demos" class="teacher-only">Demos</button>
+      </div>
+    </div>
+    <div class="space" data-space="me">
+      <button class="space-btn" data-go="me">👤 Me <span id="supBadge" class="badge no hidden"></span></button>
+      <div class="subtabs">
+        <button data-tab="classes">Classes and assistants</button>
+        <button data-tab="myspace" class="teacher-only hidden" id="mySpaceTab">My space (announcements, office hours)</button>
+        <button data-tab="supervision" class="hidden" id="supervisionTab">Supervision</button>
+        <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">My public page ↗</button>
+      </div>
+    </div>
     <button id="logoutBtn" style="margin-top:30px">Log out</button>
     <div id="whoAmI" style="color:#8FA9C8;font-size:12px;margin-top:8px;word-break:break-all"></div>
     <button id="netInfo" class="net-info" title="Average time of an answer from the server (last 2 minutes). Click: copy the details.">⏱ –</button>
@@ -217,7 +237,9 @@
             <input id="attSearch" placeholder="Search by name or student number" style="max-width:320px">
             <label class="hidden" id="attScopeBox" style="margin:0"><select id="attScope" style="width:auto">
               <option value="run">Group checking in now</option><option value="session">Whole session (all its groups)</option><option value="all">All the students of the class</option></select></label>
+            <label style="margin:0">Group <select id="attFilterGroup" style="width:auto"><option value="">all</option></select></label>
           </div>
+          <div id="attCounts" class="att-counts"></div>
           <div id="attendanceTable" class="att-scroll"></div>
         </div>
       </div>
@@ -592,6 +614,17 @@
             <button class="small secondary" data-box="sent">📤 Sent</button>
           </div>
           <input id="mailSearch" placeholder="🔍 Search (name, subject, text)" style="max-width:280px">
+          <button id="mailNewBtn" class="small orange" data-perm="messages">✏ New message</button>
+        </div>
+        <!-- v33: ticked messages: one same answer -->
+        <div id="mailPickBar" class="mail-pickbar hidden" data-perm="messages">
+          <strong><span id="mailPickCount">0</span> message(s) selected</strong>
+          <button id="mailPickReply" class="small">Same answer to all of them</button><button id="mailPickClear" class="small secondary">Unselect</button>
+          <div id="mailManyBox" class="hidden" style="width:100%">
+            <input id="mailManySubject" placeholder="Subject (empty: « Re: » + the subject of each message)" style="margin-top:6px">
+            <textarea id="mailManyBody" rows="3" placeholder="Your answer (each student receives it in his own conversation)" style="margin-top:6px"></textarea>
+            <button id="mailManySend" class="green" style="margin-top:6px">Send to each of them</button>
+          </div>
         </div>
         <div id="mailList" class="mail-list"></div>
         <div class="row" style="margin-top:8px"><button id="mailMore" class="small secondary hidden">Show more</button><span id="mailCount" class="muted"></span></div>
@@ -626,6 +659,81 @@
     </section>
 
     <section id="tab-results" class="hidden">
+      <!-- v33: four pages: each quiz, the marks of all the columns, the final mark, what the students see -->
+      <div class="row rt-bar" id="rtBar">
+        <div class="rt-tabs">
+          <button data-rt="quizzes">Each quiz</button>
+          <button data-rt="marks">Marks</button>
+          <button data-rt="formula" data-perm="grading">Final mark</button>
+          <button data-rt="vis" data-perm="grading">What students see</button>
+        </div>
+        <span id="gPubBadge" class="badge closed"></span>
+        <span style="flex:1"></span>
+        <button id="gPubUpdate" class="small orange hidden" data-perm="grading">Update the publication</button>
+        <button id="gPubToggle" class="small green" data-perm="grading">Publish the final marks</button>
+      </div>
+
+      <div id="rt-marks" class="rt-page hidden">
+        <div class="card g-card">
+          <div class="row g-tools">
+            <span class="muted" style="font-size:13px">Click a <strong>column title</strong> to type the whole column; click a mark to correct it.
+              Grey columns do not count. <strong>abs</strong> = 0, <strong>exc</strong> = left out.</span>
+            <span style="flex:1"></span>
+            <button id="gAddItem" class="small secondary" data-perm="marks_edit">+ Add a column (exam, project, oral…)</button>
+            <button id="gTplBtn" class="small secondary">Excel model to fill ▾</button>
+            <button id="gImportBtn" class="small secondary" data-perm="marks_edit">Import a file</button>
+            <button id="gExportAll" class="small green" data-perm="export_all">Export everything</button>
+            <input id="gImportFile" type="file" accept=".xlsx,.xls,.csv" class="hidden">
+          </div>
+          <div id="gTplMenu" class="g-menu hidden"></div>
+          <div id="gEntryBar" class="g-entry hidden"></div>
+          <div id="gEditBar" class="g-edit hidden"></div>
+          <div class="g-scroll"><div id="gTable" class="muted">Loading…</div></div>
+          <div class="row" style="margin-top:6px;gap:8px;align-items:center"><span class="muted" id="gTableInfo"></span>
+            <span style="flex:1"></span><label class="muted" style="margin:0">Rows <select id="gRows" style="width:auto"><option>25</option><option selected>50</option><option>100</option><option value="0">all</option></select></label></div>
+        </div>
+      </div>
+
+      <div id="rt-formula" class="rt-page hidden">
+        <div class="g-formula">
+          <div class="card"><h3 style="margin-top:0">1 · Weights</h3>
+            <div class="row" style="gap:6px;align-items:center"><span class="muted" style="font-size:13px">Model:</span><span id="gModels"></span></div>
+            <div id="gParts"></div>
+            <div id="gSum" class="g-sum"></div>
+            <div class="row" style="gap:6px;align-items:center;margin-top:8px"><span style="font-size:14px">Rounding:</span><span id="gSteps"></span>
+              <label style="margin:0;font-size:13px">other <input id="gStepOther" inputmode="decimal" placeholder="e.g. 0.1" style="width:70px"></label></div>
+            <p class="muted" style="font-size:12px">Not taken: 0. Excused: left out of the mean. A part empty for a student: its weight goes to the other parts.</p>
+          </div>
+          <div class="card"><h3 style="margin-top:0">2 · What counts, and where</h3>
+            <div id="gEvals"></div>
+            <h4>Bonus</h4><div id="gBonus"></div>
+          </div>
+          <div class="card"><h3 style="margin-top:0">3 · Preview</h3>
+            <div id="gFormulaText" class="g-formula-text"></div>
+            <label for="gPreviewStudent" style="margin-top:8px">Student</label><select id="gPreviewStudent"></select>
+            <div id="gPreview"></div>
+            <div id="gStats" class="g-stats"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="rt-vis" class="rt-page hidden">
+        <div class="g-vis">
+          <div class="card"><h3 style="margin-top:0">What the students of this class see (their « My progress » page)</h3>
+            <p class="muted" style="font-size:13px">Each line is shown or hidden at any time. Nothing is shown before you open it.</p>
+            <div id="gVisRows"></div>
+            <div class="row" style="gap:8px;margin-top:8px"><button id="gVisAllOn" class="small secondary">Show all (except the final mark)</button><button id="gVisAllOff" class="small secondary">Hide all</button></div>
+          </div>
+          <div class="card"><h3 style="margin-top:0">When I show a line, it stays visible</h3>
+            <div id="gDurs" class="row" style="gap:6px;align-items:center"></div>
+            <p class="muted" style="font-size:12px">With a duration, the line hides itself (e.g. show the final marks 10 minutes in class, then take them back).</p>
+            <label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="gShowDetail" style="width:auto"> Show the detail of each part with the final mark</label>
+            <h4>History</h4><div id="gLog" class="g-log"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="rt-quizzes" class="rt-page">
       <div class="card" id="resultsListCard">
         <h2>Results of the quizzes</h2>
         <p class="muted">Every finished quiz and test of the selected class. Open one to see the success rate of each question and the answers
@@ -641,6 +749,7 @@
           <div><button id="resultsExport" class="small green">Download this quiz (Excel)</button> <button id="resultsBack" class="small secondary">◀ All the quizzes</button></div>
         </div>
         <div id="resultsDetail"></div>
+      </div>
       </div>
     </section>
 
@@ -950,12 +1059,13 @@
     </div>
   </div>
 
-  <div id="profileBox" class="modal hidden">
+  <div id="profileBox" class="modal drawer hidden">
     <div class="modal-content card">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 id="profileTitle" style="margin:0">Student</h2>
         <div><button id="profileExport" class="small secondary">Download (Excel)</button> <button id="profileClose" class="small">Close</button></div>
       </div>
+      <div id="profileActions" class="profile-actions"></div>
       <div id="profileBody"></div>
     </div>
   </div>
@@ -966,14 +1076,16 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=32.1"></script>
-<script src="js/excel.js?v=32.1"></script>
-<script src="js/teacher.js?v=32.1"></script>
-<script src="js/supervision.js?v=32.1"></script>
-<script src="js/ttview.js?v=32.1"></script>
-<script src="js/timetable.js?v=32.1"></script>
-<script src="js/tt_teacher.js?v=32.1"></script>
-<script src="js/floatqr.js?v=32.1"></script>
+<script src="js/common.js?v=33"></script>
+<script src="js/excel.js?v=33"></script>
+<script src="js/grading.js?v=33"></script>
+<script src="js/grades_teacher.js?v=33"></script>
+<script src="js/teacher.js?v=33"></script>
+<script src="js/supervision.js?v=33"></script>
+<script src="js/ttview.js?v=33"></script>
+<script src="js/timetable.js?v=33"></script>
+<script src="js/tt_teacher.js?v=33"></script>
+<script src="js/floatqr.js?v=33"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
