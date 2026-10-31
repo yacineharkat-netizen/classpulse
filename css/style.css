@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "32.2";
+:root { --cp-version: "32.3";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -602,3 +602,5 @@ table.rt .rt-offrow th { color: #8A9AAB; }
 .home-session .hs-code { font-size: 30px; font-weight: 800; letter-spacing: 4px; color: #0B2545; }
 .home-session a button { width: 100%; margin-top: 8px; }
 .notif-card { background: #FFF7EC; }
+/* v32.3 */
+.home-opts { gap: 6px 16px; align-items: center; flex-wrap: wrap; }

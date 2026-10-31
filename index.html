@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="32.2">
+<html lang="en" data-version="32.3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=32.2">
+<link rel="stylesheet" href="css/style.css?v=32.3">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -109,9 +109,9 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=32.2"></script>
-<script src="js/ttview.js?v=32.2"></script>
-<script src="js/timetable.js?v=32.2"></script>
+<script src="js/common.js?v=32.3"></script>
+<script src="js/ttview.js?v=32.3"></script>
+<script src="js/timetable.js?v=32.3"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
@@ -181,8 +181,8 @@
         try {
           const hs = await rpc("s_home_session", { p_device: t.token });
           if (hs) live.unshift(`<div class="home-session"><strong>✅ ${esc(sp.class_name)} · ${esc(hs.title)}</strong>
-            ${hs.checked_in ? `<div style="margin-top:4px">You are checked in.</div>` : `<div class="muted" style="margin-top:4px">Attendance code</div><div class="hs-code">${esc(hs.att_code)}</div>
-            <a href="student.html?s=${encodeURIComponent(hs.session_code)}&a=${encodeURIComponent(hs.att_code)}" style="text-decoration:none"><button class="green">Check in now</button></a>`}</div>`);
+            ${hs.checked_in ? `<div style="margin-top:4px">You are checked in.</div>` : (hs.att_code ? `<div class="muted" style="margin-top:4px">Attendance code (type it on the next page)</div><div class="hs-code">${esc(hs.att_code)}</div>` : `<div class="muted" style="margin-top:4px">Attendance is open: tap, then scan the QR code or type the code given in class.</div>`)}
+            ${hs.checked_in ? "" : `<a href="student.html?s=${encodeURIComponent(hs.session_code)}" style="text-decoration:none"><button class="green">Check in</button></a>`}</div>`);
         } catch (e) { /* older database */ }
         // v28.2: a make-up given by the teacher (late, network cut, excused absence)
         try {

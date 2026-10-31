@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "32.2"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "32.3"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -682,10 +682,14 @@ async function refreshLiveNow() {
   if (document.activeElement !== $("optWindow")) $("optWindow").value = String(s.att_window_s || 15);
   $("optLocation").checked = !!s.check_location;
   checkLocation = !!s.check_location;
-  // v32.2: the session (and its code) on the students' home page
-  $("onHomeBtn").classList.toggle("on", !!s.on_home);
-  $("onHomeBtn").textContent = s.on_home ? "📣 On the students' page ✓ (click to remove)" : "📣 Put this session on the students' page";
-  $("onHomeNote").textContent = s.on_home ? (s.attendance_open ? "Your students see the session and its code on their home page, with a button to check in." : "Shown as soon as you open the attendance.") : "";
+  // v32.3: the session on the students' home page (shown by default), with or without its code
+  const shown = s.on_home !== false;
+  if (document.activeElement !== $("homeShown")) $("homeShown").checked = shown;
+  if (document.activeElement !== $("homeCode")) $("homeCode").checked = !!s.home_code;
+  $("homeCode").disabled = !shown;
+  $("onHomeNote").textContent = !shown ? "Hidden from the students." : (s.attendance_open
+    ? (s.home_code ? "Your students see the session and its code; they still type it to check in." : "Your students see the session (without the code): they tap it, then scan or type the code.")
+    : "Shown to your students as soon as you open the attendance.");
   renderQuizLive();
   renderMonitor();
   renderSessionLinks();
@@ -2357,12 +2361,14 @@ function renderBoardCheck() {
 }
 $("quizBoardBtn").onclick = () => { const id = $("quizSelect").value || currentQuiz(); if (!id) { toast("Choose a quiz first.", "error"); return; } openBoardCheck(id); };
 $("boardRefresh").onclick = () => openBoardCheck(boardQuiz);
-$("onHomeBtn").onclick = async () => {
-  const on = !(live && live.session && live.session.on_home);
-  await act("t_session_on_home", { p_session: sessionId, p_on: on },
-    on ? "Session on the students' page. Its code stays the same until you close the attendance." : "Session removed from the students' page.");
-  if (on) loadPushStats();
-};
+// v32.3: shown or hidden on the students' page; the code written on the card or not
+async function saveHome(shown, code) {
+  await act("t_session_home", { p_session: sessionId, p_shown: shown, p_code: code },
+    !shown ? "Session hidden from the students' page." : code ? "Session and code on the students' page (the code stays the same until you close the attendance)." : "Session on the students' page, without the code.");
+  loadPushStats();
+}
+$("homeShown").onchange = () => saveHome($("homeShown").checked, $("homeShown").checked && $("homeCode").checked);
+$("homeCode").onchange = () => saveHome(true, $("homeCode").checked);
 // how many students receive the notifications (shown next to the button)
 async function loadPushStats() {
   if (!classId) return;

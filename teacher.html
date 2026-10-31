@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="32.2">
+<html lang="en" data-version="32.3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=32.2">
+<link rel="stylesheet" href="css/style.css?v=32.3">
 </head>
 <body>
 
@@ -94,7 +94,9 @@
               <option value="999999">fixed until I close the attendance</option></select></label>
           <label style="margin:0"><input type="checkbox" id="optLocation" style="width:auto"> Ask the phone position at check-in (flags students far from the room)</label>
           <!-- v32.2: the session and its code on the students' home page (and a notification to them) -->
-          <div style="flex-basis:100%"><button id="onHomeBtn" class="small orange">📣 Put this session on the students' page</button>
+          <div style="flex-basis:100%" class="row home-opts">
+            <label style="margin:0"><input type="checkbox" id="homeShown" style="width:auto"> 📣 Show on the students' page while the attendance is open</label>
+            <label style="margin:0"><input type="checkbox" id="homeCode" style="width:auto"> …with the code written on it (attendance taken on paper)</label>
             <span id="onHomeNote" class="muted" style="font-size:13px"></span> <span id="pushStats" class="muted" style="font-size:13px"></span></div>
         </div>
       </div>
@@ -975,14 +977,14 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=32.2"></script>
-<script src="js/excel.js?v=32.2"></script>
-<script src="js/teacher.js?v=32.2"></script>
-<script src="js/supervision.js?v=32.2"></script>
-<script src="js/ttview.js?v=32.2"></script>
-<script src="js/timetable.js?v=32.2"></script>
-<script src="js/tt_teacher.js?v=32.2"></script>
-<script src="js/floatqr.js?v=32.2"></script>
+<script src="js/common.js?v=32.3"></script>
+<script src="js/excel.js?v=32.3"></script>
+<script src="js/teacher.js?v=32.3"></script>
+<script src="js/supervision.js?v=32.3"></script>
+<script src="js/ttview.js?v=32.3"></script>
+<script src="js/timetable.js?v=32.3"></script>
+<script src="js/tt_teacher.js?v=32.3"></script>
+<script src="js/floatqr.js?v=32.3"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
