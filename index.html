@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33">
+<html lang="en" data-version="32.2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=33">
+<link rel="stylesheet" href="css/style.css?v=32.2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -20,6 +20,8 @@
   <div id="homeIn" class="card hidden">
     <h2 id="hello">My courses</h2>
     <div id="liveBox"></div>
+    <!-- v32.2: notifications on this device -->
+    <div id="notifBox" class="card notif-card hidden" style="margin-bottom:10px"></div>
     <!-- v31: a course or a project added to this student number after the registration: the PIN opens it -->
     <div id="pendingBox" class="card hidden" style="background:#EEF6EE;margin-bottom:10px">
       <strong id="pendingText"></strong>
@@ -36,7 +38,6 @@
     </div>
     <a href="student.html?space=1" style="text-decoration:none"><button id="docsBtn" style="width:100%;margin-top:10px">📚 My documents</button></a>
     <a href="timetable.html" id="ttLink" class="hidden" style="text-decoration:none"><button class="secondary" style="width:100%;margin-top:10px">🗓 Timetable</button></a>
-    <button id="progressBtn" class="secondary" style="width:100%;margin-top:10px">📈 My progress (attendance, marks)</button>
     <div class="row" style="margin-top:10px;flex-wrap:nowrap">
       <button id="msgBtn" class="secondary" style="flex:1">✉ Messages <span id="stuMsgBadge" class="badge no hidden"></span></button>
       <button id="teacherBtn" class="secondary" style="flex:1">👤 My teachers</button>
@@ -58,14 +59,6 @@
       <button id="stuMsgSend" style="margin-top:8px;width:100%">Send</button>
       <p id="stuReplyNote" class="muted hidden" style="margin:6px 0 0"></p>
     </div>
-  </div>
-
-  <!-- v33: what the teachers opened: attendance, results, final mark -->
-  <div id="viewProgress" class="card hidden">
-    <p style="margin-top:0"><a href="#" class="backHome">← My courses</a></p>
-    <h2>My progress</h2>
-    <p class="muted" style="margin-top:0">Your teachers decide what is shown here, and when.</p>
-    <div id="progressList" class="muted">Loading…</div>
   </div>
 
   <!-- v27: the teachers of the courses: contact, office hours, supervision proposals, mini-projects -->
@@ -116,13 +109,13 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33"></script>
-<script src="js/ttview.js?v=33"></script>
-<script src="js/timetable.js?v=33"></script>
+<script src="js/common.js?v=32.2"></script>
+<script src="js/ttview.js?v=32.2"></script>
+<script src="js/timetable.js?v=32.2"></script>
 <script>
   document.getElementById("appName").textContent = CONFIG.appName;
   document.getElementById("institution").textContent = HOME_LINE;
-  const view = (id) => ["homeIn", "viewSignIn", "viewRegister", "viewMessages", "viewTeacher", "viewProgress"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
+  const view = (id) => ["homeIn", "viewSignIn", "viewRegister", "viewMessages", "viewTeacher"].forEach((v) => $(v).classList.toggle("hidden", v !== id));
 
   // A phone that scanned a session without being signed in arrives here with ?next=<session query>.
   // After the sign-in (or the registration) it goes back to that session.
@@ -184,6 +177,13 @@
           if (s && s.quiz_running) { location.replace("student.html?s=" + encodeURIComponent(s.code)); return; }
           if (s) live.push(`<a href="student.html?s=${encodeURIComponent(s.code)}" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:10px">▶ Session in progress: ${esc(sp.class_name)} · ${esc(s.title)}</button></a>`);
         }
+        // v32.2: the teacher put the session and its code on this page
+        try {
+          const hs = await rpc("s_home_session", { p_device: t.token });
+          if (hs) live.unshift(`<div class="home-session"><strong>✅ ${esc(sp.class_name)} · ${esc(hs.title)}</strong>
+            ${hs.checked_in ? `<div style="margin-top:4px">You are checked in.</div>` : `<div class="muted" style="margin-top:4px">Attendance code</div><div class="hs-code">${esc(hs.att_code)}</div>
+            <a href="student.html?s=${encodeURIComponent(hs.session_code)}&a=${encodeURIComponent(hs.att_code)}" style="text-decoration:none"><button class="green">Check in now</button></a>`}</div>`);
+        } catch (e) { /* older database */ }
         // v28.2: a make-up given by the teacher (late, network cut, excused absence)
         try {
           (await rpc("s_makeups", { p_device: t.token })).forEach((m) => live.push(m.class_device
@@ -196,10 +196,11 @@
     }
     if (!rows.length) { view("viewSignIn"); return; }
     homeCourses = courses;
+    setupNotifications(courses);   // v32.2
     const unread = courses.reduce((a, c) => a + c.unread, 0);
     $("stuMsgBadge").textContent = unread ? String(unread) : "";
     $("stuMsgBadge").classList.toggle("hidden", !unread);
-    if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } if (v === "progress") { showProgress(); return; } }
+    if (wantView) { const v = wantView; wantView = null; if (v === "messages") { showMessages(); return; } if (v === "teacher") { showTeachers(); return; } }
     $("hello").textContent = name ? "Hello, " + name : "My courses";
     $("pendingBox").classList.toggle("hidden", !pending);
     $("pendingText").textContent = pending === 1 ? "🆕 You were added to a new course or project. Type your PIN to open it." : `🆕 You were added to ${pending} new courses or projects. Type your PIN to open them.`;
@@ -251,6 +252,57 @@
     return true;
   }
 
+  // ------------------------------------------------------------ v32.2: notifications (messages, documents, session open, timetable, …)
+  function urlB64ToUint8Array(b64) {
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4), raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  }
+  async function pushSubscribe(courses) {
+    const reg = await navigator.serviceWorker.register("sw-push.js", { scope: "./" });
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(CONFIG.vapidPublicKey) });
+    const j = sub.toJSON();
+    for (const c of courses) await rpc("s_push_subscribe", { p_device: c.token, p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    return sub;
+  }
+  async function setupNotifications(courses) {
+    const box = $("notifBox");
+    const ok = typeof CONFIG !== "undefined" && CONFIG.vapidPublicKey && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent), standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+    if (!CONFIG.vapidPublicKey || !courses.length) { box.classList.add("hidden"); return; }
+    if (!ok) {
+      if (ios && !standalone) { box.innerHTML = `🔔 <strong>Notifications on iPhone:</strong> first add ClassPulse to your home screen (Share › Add to Home Screen), then open it from that icon.`; box.classList.remove("hidden"); }
+      else box.classList.add("hidden");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      box.classList.add("hidden");
+      let done = false; try { done = sessionStorage.getItem("cp_push_ok") === "1"; } catch (e) { /* private window */ }
+      if (!done) pushSubscribe(courses).then(() => { try { sessionStorage.setItem("cp_push_ok", "1"); } catch (e) { /* ignore */ } }).catch(() => {});
+      return;
+    }
+    if (Notification.permission === "denied") {
+      box.innerHTML = `🔕 Notifications are blocked for ClassPulse in this browser. To get them: settings of the site (padlock next to the address) › Notifications › Allow.`;
+      box.classList.remove("hidden"); return;
+    }
+    box.innerHTML = `<strong>🔔 Be told on this device</strong><p class="muted" style="margin:4px 0 8px">Messages of your teachers, new or changed documents,
+        session open (with its code), cancelled or moved sessions, make-ups: a notification, like the other apps.</p>
+      <div class="row" style="gap:8px;flex-wrap:nowrap"><button id="notifOn" class="orange" style="flex:1">Turn on</button><button id="notifLater" class="secondary">Later</button></div>`;
+    box.classList.remove("hidden");
+    $("notifLater").onclick = () => box.classList.add("hidden");
+    $("notifOn").onclick = async () => {
+      $("notifOn").disabled = true;
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { toast("Notifications not allowed.", "error"); setupNotifications(courses); return; }
+        await pushSubscribe(courses);
+        toast("Notifications turned on for this device.", "ok");
+        box.classList.add("hidden");
+      } catch (e) { toast("Could not turn the notifications on: " + e.message, "error"); $("notifOn").disabled = false; }
+    };
+  }
+
   // ------------------------------------------------------------ v27: messages
   let stuReplyTo = null, stuProposal = null;   // v30: the proposal the message is about
   function setViewUrl(v) { history.replaceState(null, "", "index.html" + (v ? "?view=" + v : "")); }
@@ -281,19 +333,10 @@
         ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}
         <div class="msg-body">${esc(m.body).replace(/\n/g, "<br>")}</div>
         ${m.doc ? `<div style="margin-top:4px">📄 <a href="doc.html?d=${m.doc.id}&c=${m.class_id}">${esc(m.doc.title || "document")}</a></div>` : ""}
-        ${(() => { const r = m.reactions || [], mine = new Set(r.filter((x) => x.student).map((x) => x.emoji)), them = r.filter((x) => !x.student);
-            return (them.length ? `<div class="muted" style="font-size:13px;margin-top:4px">${them.map((x) => esc(x.emoji + " " + x.who)).join(" · ")}</div>` : "")
-              + (m.mine ? "" : `<div class="react-row">${["👍", "❤️", "✅", "😂", "🙏", "👀"].map((e) => `<button class="react ${mine.has(e) ? "on" : ""}" data-sreact="${e}" data-id="${m.id}" aria-label="Reaction ${e}">${e}</button>`).join("")}</div>`); })()}
         ${m.mine ? "" : `<div class="msg-actions"><button class="small secondary" data-sreply="${m.id}">Reply to the teacher</button>
           <button class="small secondary" data-sflag="archive" data-id="${m.id}" title="Hide it from this list">🗄 Archive</button>
           <button class="small red" data-sflag="delete" data-id="${m.id}">Delete</button></div>`}
       </div>`).join("") : "No message yet.";
-    // v33: emoji reactions
-    $("stuMsgList").querySelectorAll("[data-sreact]").forEach((b) => b.onclick = async () => {
-      const m = all.find((x) => x.id === Number(b.dataset.id));
-      try { m.reactions = await rpc("s_msg_react", { p_device: m.course.token, p_id: m.id, p_emoji: b.dataset.sreact }); b.classList.toggle("on"); }
-      catch (e) { toast(e.message, "error"); }
-    });
     // v29: archive / delete a message (for this student only)
     $("stuMsgList").querySelectorAll("[data-sflag]").forEach((b) => b.onclick = async () => {
       const m = all.find((x) => x.id === Number(b.dataset.id));
@@ -390,37 +433,6 @@
     });
   }
   $("teacherBtn").onclick = () => showTeachers();
-  // ------------------------------------------------------------ v33: my progress (what the teacher opened)
-  const PROG_STATUS = { present: "present", late: "late", absent: "absent", excused: "excused" };
-  const progMark = (r) => r.status === "exc" ? "excused" : r.status === "none" ? "not marked yet" : r.mark == null ? "—" : `${Number(r.mark)} / ${Number(r.scale)}`;
-  const untilTxt = (u) => u ? ` <span class="muted" style="font-size:12px">(shown until ${new Date(u).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})</span>` : "";
-  async function showProgress() {
-    view("viewProgress"); setViewUrl("progress");
-    const out = [];
-    for (const c of homeCourses) {
-      let p; try { p = await rpc("s_progress", { p_device: c.token }); } catch (e) { continue; }   // older database or course left
-      const blocks = [];
-      if (p.final) blocks.push(`<div class="prog-final"><div class="row" style="justify-content:space-between;align-items:baseline"><strong>Final mark</strong>
-          <strong class="prog-big">${p.final.final == null ? "—" : Number(p.final.final)} / 20</strong></div>
-          <div class="muted" style="font-size:12px">Published ${new Date(p.final.published_at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}${untilTxt(p.final.until)}</div>
-          ${(p.final.detail || []).map((d) => `<div class="prog-line"><span>${esc(d.label)} <span class="muted">· ${d.weight} %</span>${d.notes ? `<span class="muted" style="display:block;font-size:12px">${esc(d.notes)}</span>` : ""}</span><strong>${d.mark == null ? "—" : Number(d.mark)}</strong></div>`).join("")}
-          <button class="small secondary" data-progask="${c.class_id}" style="margin-top:6px">A question about my mark? Write</button></div>`);
-      if (p.results && p.results.length) blocks.push(`<h3 style="margin:12px 0 4px">Results</h3><table class="prog-table">${p.results.map((r) =>
-          `<tr class="${r.status === "exc" || r.status === "none" ? "muted" : ""}"><td>${esc(r.title)}${untilTxt(r.until)}</td><td><strong>${progMark(r)}</strong></td></tr>`).join("")}</table>`);
-      if (p.presence) {
-        const n = p.presence.sessions.length, ok = p.presence.present;
-        blocks.push(`<h3 style="margin:12px 0 4px">Attendance${untilTxt(p.presence.until)}</h3>
-          <p style="margin:0"><strong class="prog-big">${n ? Math.round((100 * ok) / n) : 0} %</strong> <span class="muted">${ok} of ${n} session(s) · ${p.presence.late} late · ${p.presence.absent} absent · ${p.presence.excused} excused</span></p>
-          <div class="prog-chips">${p.presence.sessions.map((x) => `<span class="badge ${x.status === "absent" ? "no" : x.status === "late" ? "orange" : x.status === "excused" ? "info" : "ok"}">${esc(x.date)} ${esc(x.title)} · ${PROG_STATUS[x.status] || esc(x.status)}</span>`).join("")}</div>
-          <p class="muted" style="font-size:12px;margin:4px 0 0">Only the sessions of your groups.</p>`);
-      }
-      out.push(`<div class="card prog-card"><h3 style="margin-top:0">${esc(p.class_name)}</h3>${blocks.join("") || `<p class="muted">Nothing shown by the teacher yet.</p>`}</div>`);
-    }
-    $("progressList").classList.toggle("muted", !out.length);
-    $("progressList").innerHTML = out.join("") || "No course on this device.";
-    $("progressList").querySelectorAll("[data-progask]").forEach((b) => b.onclick = () => showMessages({ class_id: b.dataset.progask, subject: "Question about my final mark" }));
-  }
-  $("progressBtn").onclick = () => showProgress();
   document.querySelectorAll(".backHome").forEach((a) => a.onclick = (e) => { e.preventDefault(); setViewUrl(""); showHome(); });
 
   $("goRegister").onclick = (e) => { e.preventDefault(); view("viewRegister"); $("regMat").value = $("siMat").value; };

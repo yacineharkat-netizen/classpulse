@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "32.2"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -348,7 +348,7 @@ function render() {
   }
 
   if (!state.present && state.attendance_open) {
-    live.innerHTML = who + bigStatus("📷", "Check in", (state.att_window_s || 15) >= 3600 ? "Type the attendance code given by the teacher." : `The code on the screen changes every ${state.att_window_s || 15} seconds.`) +
+    live.innerHTML = who + bigStatus("📷", "Check in", (state.att_window_s || 15) >= 3600 ? "Type the attendance code given by the teacher (or shown on your home page)." : `The code on the screen changes every ${state.att_window_s || 15} seconds.`) +
       checkinBoxHtml("Code shown under the QR code");
     wireCheckinBox(() => { lastRendered = ""; render(); });
     return;
@@ -659,6 +659,37 @@ async function sendNumber(quiet) {
 // By default no full screen and no lock (during a lab, students go back and forth between the phone and their tools);
 // the teacher can turn the lock on for a test (v23).
 const drafts = {};            // quiz id + index -> unsaved value typed or ticked by the student
+// v32.2: station change asked by the student (quiz id -> { to, status })
+const stationPending = {}, stationAsked = {};
+async function refreshStationPending(q) {
+  try { const r = await rpc("s_station_pending", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id });
+    const before = JSON.stringify(stationPending[q.quiz_id] || null);
+    stationPending[q.quiz_id] = r;
+    if (JSON.stringify(r || null) !== before) { lastRendered = ""; render(); }
+    if (r && r.status === "pending") setTimeout(() => refreshStationPending(q), 8000);
+  } catch (e) { /* older database */ }
+}
+function askStation(q, current) {
+  const box = document.createElement("div");
+  box.className = "card station-ask";
+  box.innerHTML = `<strong>Change my station</strong><p class="muted" style="margin:4px 0 8px">Now on station ${current}. ${q.items && q.items.some((it) => it.answered)
+      ? "You already answered: the teacher must accept the change (your numeric answers are then marked with the new station)." : "You have not answered yet: the change is immediate."}</p>
+    <input id="stationNew" type="number" min="1" max="99" inputmode="numeric" style="font-size:22px">
+    <div class="row" style="gap:8px;margin-top:8px"><button id="stationSend" class="orange">Send</button><button id="stationCancel" class="secondary">Cancel</button></div>`;
+  $("stationChangeBtn").replaceWith(box);
+  $("stationNew").focus();
+  $("stationCancel").onclick = () => { lastRendered = ""; render(); };
+  $("stationSend").onclick = async () => {
+    const v = Number($("stationNew").value);
+    if (!(v >= 1 && v <= 99)) { toast("A station number from 1 to 99.", "error"); return; }
+    try {
+      const r = await rpc("s_station_request", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_station: v });
+      if (r.changed) toast(`You are now on station ${v}.`, "ok");
+      else { toast(`Request sent: station ${v}. The teacher accepts or refuses it.`, "ok"); stationPending[q.quiz_id] = { to: v, status: "pending" }; setTimeout(() => refreshStationPending(q), 8000); }
+      lastRendered = ""; await fetchState();
+    } catch (e) { toast(e.message, "error"); }
+  };
+}
 function renderSelfPaced(live, who, head, q) {
   const key = (i) => q.quiz_id + ":" + i;
   const intro = `<div class="card"><strong>${q.kind === "tp" ? "Lab test" : "Test"} · at your own pace</strong>
@@ -666,15 +697,15 @@ function renderSelfPaced(live, who, head, q) {
     <em>Submit my answers</em> at the bottom, or until the teacher closes the test.
     ${q.graded ? "Marked out of " + Number(q.total_points) + "." : "Not graded."} Numbers: use a dot or a comma (2.5 or 2,5).</div></div>`;
   if (q.ask_variant && q.variant == null) {
-    live.innerHTML = who + head + intro + `<div class="card"><strong>Number of your board</strong>
-      <p class="muted">It is written on your ESP32 / your kit. It sets the values expected for your group.</p>
+    live.innerHTML = who + head + intro + `<div class="card"><strong>Number of your station</strong>
+      <p class="muted">It is written on your lab station / your kit. It sets the values expected for your group. Several students may share a station.</p>
       <input id="variantInput" type="number" min="1" max="99" inputmode="numeric" style="font-size:22px">
       <button id="variantBtn" class="orange" style="width:100%;margin-top:10px">Confirm</button></div>`;
     $("variantBtn").onclick = async () => {
       const v = Number($("variantInput").value);
-      if (!v) { toast("Type the number of your board.", "error"); return; }
+      if (!v) { toast("Type the number of your station.", "error"); return; }
       // v28.3: confirmation inside the page. A browser dialog (confirm) leaves the full screen: the student was locked.
-      if (!(await askInPage($("variantBtn"), `Board number <strong>${v}</strong>? All your numeric answers will be checked with the values of board ${v}.`))) return;
+      if (!(await askInPage($("variantBtn"), `Station number <strong>${v}</strong>? All your numeric answers will be checked with the values of station ${v}.`))) return;
       try { await rpc("s_set_variant", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id, p_variant: v }); await fetchState(); }
       catch (e) { toast(e.message, "error"); }
     };
@@ -684,8 +715,12 @@ function renderSelfPaced(live, who, head, q) {
   const done = items.filter((it) => it.answered).length;
   // v25: the board number stays on the screen, above every numeric question: the values to use are those of THIS board
   const board = q.variant_used != null ? q.variant_used : q.variant;
-  const boardBanner = q.ask_variant ? `<div class="board-banner">🔢 Your board: <strong>${board}</strong> — use the values of board ${board} only.
-      <span>Changed group or board? Tell the teacher now.</span></div>` : "";
+  // v32.2: during the test the student may change his station (alone before his first answer, then by a request to the teacher)
+  const stReq = stationPending[q.quiz_id];
+  const boardBanner = q.ask_variant ? `<div class="board-banner">🔢 Your station: <strong>${board}</strong> — use the values of station ${board} only.
+      ${stReq && stReq.status === "pending" ? `<span>Change to station ${stReq.to} asked: waiting for the teacher.</span>`
+        : stReq && stReq.status === "refused" && stReq.to !== board ? `<span>Your request (station ${stReq.to}) was refused.</span>` : ""}
+      ${q.submitted_at ? "" : `<button id="stationChangeBtn" class="small secondary" style="margin-top:6px">Change my station</button>`}</div>` : "";
   const handed = !!q.submitted_at;
   const handedBanner = handed ? `<div class="card submitted-banner">✔ Answers handed in at ${new Date(q.submitted_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
       They can no longer change. You may leave this page.</div>` : "";
@@ -709,9 +744,10 @@ function renderSelfPaced(live, who, head, q) {
   });
   html += watermark() + `</div>`;
   if (!handed) html += `<div class="card"><button id="submitQuizBtn" class="green" style="width:100%;font-size:19px">Submit my answers</button>
-      <p id="submitState" class="submit-state" role="status" aria-live="polite"></p>
       <p class="muted" style="margin:6px 0 0">When you submit, your answers are final. Until then they are saved anyway and the teacher receives them when he closes the test.</p></div>`;
   live.innerHTML = html;
+  if ($("stationChangeBtn")) $("stationChangeBtn").onclick = () => askStation(q, board);
+  if (q.ask_variant && !stationAsked[q.quiz_id]) { stationAsked[q.quiz_id] = true; refreshStationPending(q); }
   if (handed) { live.querySelectorAll(".option[data-pos]").forEach((b) => b.classList.add("disabled")); return; }
   // v26: every change is saved at once (numbers: after a short pause, or when the field is left)
   const saveItem = async (it) => {
@@ -761,25 +797,8 @@ function renderSelfPaced(live, who, head, q) {
     const fresh = (state.quiz && state.quiz.items) || items;
     const missing = fresh.filter((it) => !it.answered).length;
     if (!(await askInPage($("submitQuizBtn"), (missing ? `<strong>${missing} question(s) not answered.</strong> ` : "") + "Submit your answers now? You will not be able to change them."))) return;
-    // v33: the button says what happens: sending, a second try on a slow network, sent (with the time). One click is enough.
-    const btn = $("submitQuizBtn"), note = $("submitState");
-    const show = (label, cls, text) => { btn.textContent = label; btn.className = cls; btn.style.width = "100%"; btn.style.fontSize = "19px"; note.textContent = text || ""; };
-    btn.disabled = true;
-    show("Sending…", "sending", "Do not close the page. No need to click again.");
-    for (let attempt = 1; attempt <= 6; attempt++) {
-      try {
-        await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id });
-        show("Sent ✓", "sent", "Received by the server at " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ". Your answers are saved.");
-        toast("Answers handed in.", "ok");
-        setTimeout(async () => { lastRendered = ""; await fetchState(); }, 1500);
-        return;
-      } catch (e) {
-        if (!e.network) { btn.disabled = false; show("Submit my answers", "green", ""); toast(e.message, "error"); return; }
-        show(`Sending… (try ${attempt + 1})`, "sending", "Slow network: your answers are kept on this device, trying again by itself.");
-        await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * attempt)));
-      }
-    }
-    btn.disabled = false; show("Submit my answers", "green", "Not sent: no network. Your answers are saved; try again in a moment.");
+    try { await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id }); toast("Answers handed in.", "ok"); lastRendered = ""; await fetchState(); }
+    catch (e) { toast(e.message, "error"); }
   };
 }
 

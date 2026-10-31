@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "33"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "32.2"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -50,9 +50,12 @@ const ERROR_MESSAGES = {
   MEMBER_NAME_REQUIRED: "This student is in none of your classes: type his last and first name.",
   BAD_STATUS: "Unknown status.",
   QUIZ_CLOSED: "This test is not open (not started yet, or already finished).",
-  VARIANT_REQUIRED: "Type the number of your board first (top of the page).",
-  VARIANT_LOCKED: "The board number cannot change once you have saved answers. Ask the teacher.",
-  BAD_VARIANT: "Type the number written on your board (1 to 99).",
+  VARIANT_REQUIRED: "Type the number of your station first (top of the page).",
+  VARIANT_LOCKED: "You already answered with this station: use « Change my station » to ask the teacher.",
+  STATION_TOO_LATE: "The test is over: only the teacher can change your station now.",
+  SAME_STATION: "This is already your station.",
+  BAD_SUBSCRIPTION: "This browser gave an invalid notification address. Try again, or use Chrome.",
+  BAD_VARIANT: "Type the number of your station (1 to 99).",
   NUMBER_NEEDS_SELF_PACE: "Numeric questions only work in a self-paced quiz (choose 'Self-paced' when you create it).",
   EDIT_BY_IMPORT: "Numeric questions are edited in the Excel file, then imported again.",
   DOC_NOT_AVAILABLE: "This document is not available for your class.",

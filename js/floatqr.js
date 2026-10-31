@@ -2,7 +2,7 @@
 // presenter mode, a PDF, a video...), that the teacher moves and resizes where it does not hide the slides.
 // It uses the "Document Picture-in-Picture" window of Chrome and Edge (computer). It is opened from the console, which must
 // stay open (in the background); closing the projector window does not close it.
-(window.CP_FILES = window.CP_FILES || {})["floatqr.js"] = "33"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["floatqr.js"] = "32.2"; // file version, checked by common.js
 
 const FQ = { win: null, last: "", session: null };
 
@@ -62,7 +62,7 @@ async function floatQrTick() {
       box.className = open ? "" : "closed";
       box.innerHTML = open
         ? `<div class="t">Scan to check in</div><div class="q">${qr.createSvgTag({ cellSize: 6, margin: 1 })}</div><div class="c">${esc(a.code)}</div>
-           <div class="s">session <b>${esc(code)}</b> · code changes every ${a.window_s >= 3600 ? "day" : a.window_s + " s"}</div>`
+           <div class="s">session <b>${esc(code)}</b> · ${a.window_s >= 999999 ? "code fixed until the attendance closes" : "code changes every " + (a.window_s >= 3600 ? "day" : a.window_s + " s")}</div>`
         : `<div class="t">Scan to join</div><div class="q">${qr.createSvgTag({ cellSize: 6, margin: 1 })}</div><div class="c">${esc(code)}</div>
            <div class="s">session code · attendance not open yet</div>`;
     }

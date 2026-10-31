@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "33"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "32.2"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -142,7 +142,7 @@ function parseQuestions(rows) {
     if (!text) return;
     if (/^(number|numeric|nombre)$/i.test(String(r.type || "").trim())) {
       const spec = parseNumericAnswer(r.answer);
-      if (!spec) { problems.push(`line ${line}: numeric question: "answer" must be a value (3.0), a range (10..40) or one value per board (1:2; 2:2.24)`); return; }
+      if (!spec) { problems.push(`line ${line}: numeric question: "answer" must be a value (3.0), a range (10..40) or one value per station (1:2; 2:2.24)`); return; }
       out.push({ ref: r.ref || `Q${line}`, chapter: r.chapter || "", text, qtype: "number", num_spec: spec,
         tolerance: r.tolerance === undefined || r.tolerance === "" ? 5 : num(r.tolerance), unit: String(r.unit || ""),
         points: Number(r.points) || 1, time_limit: Number(r.time_s || r.time_limit) || 30 });
@@ -164,7 +164,7 @@ function parseQuestions(rows) {
 }
 
 // Build and download the results workbook from the t_export data.
-function downloadResults(exp, extra) {   // v33: extra = more sheets [{name, rows}] (typed marks, final mark)
+function downloadResults(exp) {
   const KIND = { course: "Course", td: "TD", tp: "TP" };
   const statusLetter = { present: "P", late: "L", absent: "A", excused: "E" };
   const att = {};
@@ -303,7 +303,7 @@ function downloadResults(exp, extra) {   // v33: extra = more sheets [{name, row
   exp.leaves.forEach((l) => { const s = nameOf[l.student_id] || {}; lRows.push([s.matricule, s.last_name, s.first_name, quizTitle[l.quiz_id], l.leaves]); });
 
   // v25: boards corrected by the teacher (the marks of the TP sheet already include them)
-  const bfRows = [["Matricule", "Last name", "First name", "Test", "Board typed", "Board used for the mark", "Penalty (points of the test scale)"]];
+  const bfRows = [["Matricule", "Last name", "First name", "Test", "Station typed", "Station used for the mark", "Penalty (points of the test scale)"]];
   Object.entries(boardOf).forEach(([k, b]) => {
     const [quizId, studentId] = k.split("|"); const s = nameOf[studentId] || {};
     bfRows.push([s.matricule, s.last_name, s.first_name, quizTitle[quizId], b.from, b.to, b.penalty]);
@@ -323,12 +323,11 @@ function downloadResults(exp, extra) {   // v33: extra = more sheets [{name, row
   add(qRows, "Questions", [22, 8, 60, 9, 10, 12, 14]);
   add(sRows, "Surveys", [11, 24, 50, 9, 30, 8, 6]);
   add(lRows, "Left the quiz", [12, 18, 16, 26, 12]);
-  if (bfRows.length > 1) add(bfRows, "Board corrections", [12, 18, 16, 26, 12, 22, 22]);
+  if (bfRows.length > 1) add(bfRows, "Station corrections", [12, 18, 16, 26, 12, 22, 22]);
   // v26: marks corrected by hand
   const ovRows = [["Matricule", "Last name", "First name", "Quiz", "Computed mark", "Corrected mark", "Reason"]];
   (exp.overrides || []).forEach((o) => { const s = nameOf[o.student_id] || {}; ovRows.push([s.matricule, s.last_name, s.first_name, quizTitle[o.quiz_id], o.computed == null ? "" : Number(o.computed), Number(o.mark), o.reason || ""]); });
   if (ovRows.length > 1) add(ovRows, "Corrected marks", [12, 18, 16, 26, 14, 14, 40]);
-  (extra || []).forEach((x) => add(x.formula ? x.rows.concat([[], [x.formula]]) : x.rows, x.name.slice(0, 31), x.rows[0].map((h, i) => (i < 3 ? 14 : Math.max(10, String(h).length + 2)))));
   const safe = exp.class.name.replace(/[^\w-]+/g, "_");
   XLSX.writeFile(wb, `ClassPulse_${safe}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
