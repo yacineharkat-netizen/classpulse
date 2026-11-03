@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "32.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.1"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -106,18 +106,41 @@ async function showApp() {
 }
 
 // ------------------------------------------------------------------ navigation
-document.querySelectorAll("nav button[data-tab]").forEach((b) => {
-  b.onclick = () => {
-    document.querySelectorAll("nav button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
-    document.querySelectorAll("main section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab));
-    activeTab = b.dataset.tab;
-    updateBanner();
-    const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants), resources: loadResources,
-      sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats), content: loadClassContent, results: loadResults, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects, timetable: loadTimetableTab,
-      quizzes: () => { $("tplEditorCard").classList.add("hidden"); $("tplListCard").classList.remove("hidden"); return loadTemplates(); } };
-    if (loaders[b.dataset.tab]) loaders[b.dataset.tab]();
-  };
-});
+// v33.1: six spaces (left column on a computer, bottom bar on a phone). The tabs of a space are on top of its page.
+const SPACE_TABS = { live: ["live"], class: ["students", "sessions", "timetable", "results"], msg: ["messages", "announce"],
+  content: ["quizzes", "questions", "space", "demos"], agenda: ["agenda"], me: ["classes", "myspace", "supervision", "notifset", "more"] };
+let activeSpace = "live";
+function spaceOfTab(tab) { return Object.keys(SPACE_TABS).find((k) => SPACE_TABS[k].includes(tab)) || "live"; }
+function tabAllowed(b) { return b && !b.classList.contains("hidden") && getComputedStyle(b).display !== "none"; }
+function showSpace(space) {
+  let last = null; try { last = localStorage.getItem("cp_tab_" + space); } catch (e) { /* private window */ }
+  const btns = [...document.querySelectorAll(`.tabbar[data-space="${space}"] button[data-tab]`)];
+  const ok = btns.filter(tabAllowed);
+  const go = ok.find((b) => b.dataset.tab === last) || ok[0];
+  showTab(go ? go.dataset.tab : SPACE_TABS[space][0]);
+}
+function showTab(tab) {
+  // tabs of the earlier versions, now inside another page
+  if (tab === "export") { showTab("results"); if (typeof showRt === "function") showRt("quizzes"); return; }
+  if (tab === "resources" || tab === "content") tab = "space";
+  activeSpace = spaceOfTab(tab);
+  try { localStorage.setItem("cp_tab_" + activeSpace, tab); } catch (e) { /* private window */ }
+  document.querySelectorAll(".space[data-space]").forEach((el) => el.classList.toggle("hidden", el.dataset.space !== activeSpace));
+  document.querySelectorAll("button[data-space]").forEach((el) => el.classList.toggle("active", el.dataset.space === activeSpace));
+  document.querySelectorAll("button[data-tab]").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
+  document.querySelectorAll("main section[id^='tab-']").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + tab));
+  activeTab = tab;
+  updateBanner();
+  const loaders = { students: loadStudents, questions: loadQuestions, classes: () => loadClasses().then(loadAssistants),
+    sessions: loadSessions, demos: loadDemos, space: () => loadDocs().then(loadDocStats).then(loadResources).then(loadClassContent),
+    results: () => { loadResults(); gradesOnShow(); }, messages: loadMessages, myspace: loadMySpace, supervision: loadProjects, timetable: loadTimetableTab,
+    quizzes: () => { $("tplEditorCard").classList.add("hidden"); $("tplListCard").classList.remove("hidden"); return loadTemplates(); } };
+  if (loaders[tab]) loaders[tab]();
+  document.dispatchEvent(new CustomEvent("cp-tab", { detail: tab }));
+  const m = document.querySelector("main"); if (m) m.scrollTop = 0;
+}
+document.querySelectorAll("button[data-tab]").forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+document.querySelectorAll("button[data-space]").forEach((b) => { b.onclick = () => showSpace(b.dataset.space); });
 
 // ------------------------------------------------------------------ classes
 async function loadClasses() {
@@ -187,8 +210,8 @@ function applyRole() {
   if (a) {
     const c = classInfo[classId] || {};
     $("rolePill").textContent = `${ROLE_LABEL[c.asst_role] || "Assistant"}${(c.asst_groups || []).length ? " · " + c.asst_groups.join(", ") : ""}`;
-    const active = document.querySelector("nav button[data-tab].active");
-    if (active && (active.classList.contains("teacher-only") || (active.dataset.perm && !can(active.dataset.perm)))) document.querySelector("nav button[data-tab=live]").click();
+    const active = document.querySelector(".tabbar button[data-tab].active");
+    if (active && (active.classList.contains("teacher-only") || (active.dataset.perm && !can(active.dataset.perm)))) showTab("live");
   }
 }
 
@@ -207,7 +230,7 @@ async function selectClass(id) {
   if (changed && activeTab === "students") await loadStudents();
   if (changed && activeTab === "space") { $("statsDetail").dataset.doc = ""; $("statsDetail").innerHTML = ""; await loadDocs(); await loadDocStats(); }
   if (activeTab === "classes" && !isAssistant()) loadAssistants();
-  if (activeTab === "results") loadResults();
+  if (activeTab === "results") { loadResults(); gradesOnShow(); }
   if (changed) loadPushStats();   // v32.2
   if (activeTab === "messages") loadMessages();
   updateMsgBadge();
@@ -234,6 +257,7 @@ async function loadSessions() {
   $("sessionSelect").innerHTML = `<option value="">- choose a session -</option>` +
     allSessions.map((s) => `<option value="${s.id}" data-code="${s.code}">${esc(s.date)} ${timeRange(s)} · ${SESSION_KIND[s.kind] || ""}${s.group ? " " + esc(s.group) : ""} · ${esc(s.title)} · code ${s.code} · ${s.present} present</option>`).join("");
   if (keep && allSessions.some((s) => s.id === keep)) $("sessionSelect").value = keep;
+  else { const open = allSessions.find((s) => s.attendance_open && !s.ended_at); if (open) $("sessionSelect").value = open.id; }   // v33.1: another device (the phone): the session open now
   renderSessionsTable();
   await selectSession($("sessionSelect").value || null);
 }
@@ -306,7 +330,7 @@ function renderSessionsTable() {
   $("sessionsTable").querySelectorAll("[data-open]").forEach((b) => b.onclick = async () => {
     $("sessionSelect").value = b.dataset.open;
     await selectSession(b.dataset.open);
-    document.querySelector("nav button[data-tab=live]").click();
+    showTab("live");
   });
   $("sessionsTable").querySelectorAll("[data-sdel]").forEach((b) => b.onclick = async () => {
     const s = allSessions.find((x) => x.id === b.dataset.sdel);
@@ -351,6 +375,7 @@ $("createSessionBtn").onclick = async () => {
     if ($("newSessionGroup").value || $("newSessionUnit").value.trim()) await rpc("t_set_session_group", { p_session: s.id, p_group: $("newSessionGroup").value, p_unit: $("newSessionUnit").value });
     $("newSessionUnit").value = "";
     toast("Session created, code " + s.code, "ok");
+    $("dlgNew").classList.add("hidden");   // v33.1
     await loadSessions();
   } catch (e) { toast(e.message, "error"); }
 };
@@ -362,7 +387,7 @@ async function selectSession(id) {
   $("sessionCodeBox").classList.toggle("hidden", !sessionId);
   $("sessionOptions").classList.toggle("hidden", !sessionId);
   $("noSessionHelp").classList.toggle("hidden", !!sessionId);
-  if (!sessionId) { $("sessionUrl").textContent = ""; $("projMini").removeAttribute("src"); $("nowPill").classList.add("hidden"); return; }
+  if (!sessionId) { $("sessionUrl").textContent = ""; $("projMini").removeAttribute("src"); $("nowPill").classList.add("hidden"); if (window.onLiveRefresh) window.onLiveRefresh(); return; }
   const miniSrc = "projector.html?session=" + sessionId + "&mini=1";
   if ($("projMini").getAttribute("src") !== miniSrc) $("projMini").setAttribute("src", miniSrc);
   localStorage.setItem("cp_session", sessionId);
@@ -421,7 +446,7 @@ $("linkModeBtn").onclick = () => {
 async function saveSessionOptions() {
   await act("t_set_session_options", { p_session: sessionId, p_att_window: Number($("optWindow").value), p_check_location: $("optLocation").checked }, "Session settings saved.");
 }
-$("optWindow").onchange = saveSessionOptions;
+$("optWindow").onchange = async () => { await saveSessionOptions(); attCodeDue = 0; renderAttendanceCode(); };   // v33.1: the new lifetime is shown at once
 $("optLocation").onchange = saveSessionOptions;
 // ------------------------------------------------------------------ projector: ONE window, two-way channel
 // The console and the projector window talk through a BroadcastChannel (same browser).
@@ -695,6 +720,7 @@ async function refreshLiveNow() {
   renderSessionLinks();
   renderAttendanceCode();
   autoMode();
+  if (window.onLiveRefresh) window.onLiveRefresh();   // v33.1: the cards of the Live space
 }
 
 // ------------------------------------------------------------------ v10: what is happening now
@@ -811,7 +837,7 @@ function scaleMini() {
 if (window.ResizeObserver) new ResizeObserver(scaleMini).observe(document.querySelector(".proj-mini"));
 window.addEventListener("resize", scaleMini);
 
-$("bannerName").onclick = (e) => { e.preventDefault(); document.querySelector("nav button[data-tab=classes]").click(); };
+$("bannerName").onclick = (e) => { e.preventDefault(); showTab("classes"); };
 
 function renderQuizLive() {
   const q = live.quiz;
@@ -1154,15 +1180,12 @@ function renderLiveRequests() {
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.classList.toggle("hidden", guests.length + devices.length + stations.length === 0);
-  box.innerHTML = (guests.length ? `<strong>👥 ${guests.length} student(s) of another group want to join</strong>
-      <table>${guests.map((g) => `<tr><td>${esc(g.name)}</td><td class="muted">${esc(g.matricule)} · group ${esc(g.group || "-")}</td>
-        <td style="white-space:nowrap"><button class="small green" data-guest="${g.student_id}" data-ok="1">Let in</button> <button class="small secondary" data-guest="${g.student_id}" data-ok="0">Refuse</button></td></tr>`).join("")}</table>` : "") +
-    (devices.length ? `<strong>📱 ${devices.length} device request(s)</strong>
-      <table>${devices.map((d) => `<tr><td>${esc(d.name)}</td><td class="muted">${esc(d.matricule)} · ${d.kind === "session" ? "this " + esc(d.device_kind || "device") + ", for this session only" : "this " + esc(d.device_kind || "device") + " as his new class device"}</td>
-        <td style="white-space:nowrap"><button class="small green" data-devreq="${d.id}" data-ok="1">Accept</button> <button class="small secondary" data-devreq="${d.id}" data-ok="0">Refuse</button></td></tr>`).join("")}</table>` : "") +
-    (stations.length ? `<strong>🔢 ${stations.length} station change(s) asked</strong>
-      <table>${stations.map((r) => `<tr><td>${esc(r.name)}</td><td class="muted">${esc(r.matricule)} · ${esc(r.quiz)} · station ${r.from == null ? "-" : r.from} → <strong>${r.to}</strong></td>
-        <td style="white-space:nowrap"><button class="small green" data-streq="${r.id}" data-ok="1">Accept</button> <button class="small secondary" data-streq="${r.id}" data-ok="0">Refuse</button></td></tr>`).join("")}</table>` : "");
+  // v33.1: one card per request (name → the side panel of the student)
+  const item = (name, sid, what, attrs, okLabel) => `<div class="req"><div><button class="lnk" data-profile="${sid}">${esc(name)}</button> <span class="what">· ${what}</span></div>
+      <div class="row"><button class="btn gr sm" ${attrs} data-ok="1">${okLabel}</button><button class="btn sec sm" ${attrs} data-ok="0">Refuse</button></div></div>`;
+  box.innerHTML = guests.map((g) => item(g.name, g.student_id, `another group (${esc(g.group || "-")}) wants to join`, `data-guest="${g.student_id}"`, "Let in")).join("") +
+    devices.map((d) => item(d.name, d.student_id, d.kind === "session" ? `this ${esc(d.device_kind || "device")}, for this session only` : `new ${esc(d.device_kind || "device")} to allow as his class device`, `data-devreq="${d.id}"`, "Allow")).join("") +
+    stations.map((r) => item(r.name, r.student_id, `${esc(r.quiz)} · station ${r.from == null ? "-" : r.from} → <strong>${r.to}</strong> (station change)`, `data-streq="${r.id}"`, "Accept")).join("");
   box.querySelectorAll("[data-streq]").forEach((b) => b.onclick = () =>
     act("t_station_decide", { p_id: Number(b.dataset.streq), p_accept: b.dataset.ok === "1" }, b.dataset.ok === "1" ? "Station changed: his numeric answers are marked again with the new station." : "Refused."));
   box.querySelectorAll("[data-guest]").forEach((b) => b.onclick = async () => {
@@ -1198,6 +1221,7 @@ async function refreshAttendanceNow() {
 function renderAttendanceTable() {
   const list = lastAttendance;
   if (attPointerDown) { setTimeout(renderAttendanceTable, 300); return; }
+  if (window.renderLiveList) { if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.student) return; window.renderLiveList(list); return; }   // v33.1
   if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.student) return; // user is editing
   const opts = ["", "present", "late", "absent", "excused"];
   // the distance is measured to the median of the class: it only means something with at least 3 positions
@@ -1214,7 +1238,19 @@ function renderAttendanceTable() {
   // v25: by default the group checking in now (current run); or the whole session; or the whole class
   const scope = $("attScopeBox").classList.contains("hidden") ? "session" : $("attScope").value;
   const expected = scope === "all" ? list : scope === "run" ? list.filter((r) => r.run_member || r.this_run) : list.filter((r) => r.member || r.status);
-  const shown = term ? list.filter((r) => norm(r.name + " " + r.matricule).includes(term)) : expected;
+  // v33: a group filter (TD group or TP sub-group), and the list sorted: present, late, not yet, absent, excused
+  const groups = [...new Set(list.flatMap((r) => [r.td_group, r.tp_group]).filter(Boolean))].sort();
+  const gsel = $("attFilterGroup"), gval = gsel.value;
+  const gopts = `<option value="">all</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+  if (gsel.dataset.opts !== gopts) { gsel.innerHTML = gopts; gsel.dataset.opts = gopts; gsel.value = groups.includes(gval) ? gval : ""; }
+  const ORDER = { present: 0, late: 1, "": 2, absent: 3, excused: 4 };
+  const byGroup = gsel.value ? (term ? list : expected).filter((r) => r.td_group === gsel.value || r.tp_group === gsel.value) : null;
+  const shown = (term ? list.filter((r) => norm(r.name + " " + r.matricule).includes(term)) : byGroup || expected)
+    .filter((r) => !gsel.value || r.td_group === gsel.value || r.tp_group === gsel.value)
+    .slice().sort((a, b) => (ORDER[a.status || ""] - ORDER[b.status || ""]) || String(a.name).localeCompare(String(b.name)));
+  const cnt = (k) => shown.filter((r) => (r.status || "") === k).length;
+  $("attCounts").innerHTML = `<span class="badge ok">${cnt("present")} present</span> <span class="badge orange">${cnt("late")} late</span>
+    <span class="badge closed">${cnt("")} not yet</span> <span class="badge no">${cnt("absent")} absent</span> <span class="badge info">${cnt("excused")} excused</span>`;
   const far = enoughPositions ? list.filter((r) => checkLocation && r.distance > (CONFIG.farFromRoomM || 300)).length : 0;
   const html = (far ? `<p class="far">⚠ ${far} student(s) checked in far from the rest of the class.</p>` : "") +
     `<table><tr><th>Name</th><th>Matricule</th><th>Status</th><th></th>${checkLocation ? "<th>Position</th>" : ""}<th>Bonus ${SESSION_KIND[live && live.session.kind] || ""}</th></tr>` + shown.map((r) =>
@@ -1262,6 +1298,7 @@ $("attendanceTable").addEventListener("change", async (e) => {
 
 $("attSearch").oninput = () => renderAttendanceTable();
 $("attScope").onchange = () => renderAttendanceTable();
+$("attFilterGroup").onchange = () => { attLastHtml = ""; renderAttendanceTable(); };
 
 // ------------------------------------------------------------------ collapsible cards (remembered in this browser)
 function collapseKey() { return "cp_collapsed"; }
@@ -1376,6 +1413,7 @@ async function loadStudents() {
   loadAttempts();
   if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const all = await rpc("t_list_students", { p_class: classId });
+  if (window.onStudents) window.onStudents(all);   // v33.1: the list of the mockup (shell.js)
   const f = norm($("studentSearch").value);
   // v29: filter by group, tick students, move them to a group (or out of it)
   const allGroups = [...new Set(all.map((s) => s.td_group).concat(all.map((s) => s.tp_group)).filter(Boolean))].sort();
@@ -1845,7 +1883,7 @@ $("resourceSearch").oninput = () => loadResources();
 let profileData = null;
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-profile]");
-  if (b) openProfile(b.dataset.profile);
+  if (b) ((window.openDrawer && !document.body.classList.contains("dlg-inline")) ? window.openDrawer : openProfile)(b.dataset.profile);   // v33.1: the side panel; its « Full profile » opens the old window
 });
 // ------------------------------------------------------------------ student space: private documents + documents of the class
 const DOC_KIND = { course: "Course", tp: "Lab (TP)", code: "Code", other: "Other" };
@@ -2024,13 +2062,22 @@ $("docUrlAddBtn").onclick = async () => {
 // ------------------------------------------------------------------ lab assistants and their activity
 // v29: assistants: a role (preset of permissions), then any permission ticked or unticked, and the groups he works with.
 const PERM_GROUPS = [
-  ["Types of sessions", [["kind_course", "Course sessions"], ["kind_td", "TD sessions"], ["kind_tp", "TP (lab) sessions"]]],
-  ["Sessions and quizzes", [["sessions_create", "Create and edit sessions (of these types)"], ["quiz_prepare", "Prepare quizzes (of these types)"]]],
+  ["Sessions", [["kind_course", "Course sessions"], ["kind_td", "TD sessions"], ["kind_tp", "TP (lab) sessions"], ["sessions_create", "Create and edit sessions (of these types)"],
+    ["attendance", "Change a presence by hand"], ["unlock", "Unlock a student, allow a new device"]]],
+  ["Quizzes", [["quiz_prepare", "Prepare and run quizzes (of these types)"], ["quiz_all", "Reset and delete the quiz runs of the class"], ["makeup", "Open make-ups"]]],
   ["Students", [["students_edit", "Edit students, groups, registration"], ["profiles", "Open the student profiles"]]],
-  ["Results", [["results_view", "See the results"], ["results_export", "Download the results of a quiz (when the quiz allows it)"], ["export_all", "Export all the marks of the class (Excel)"], ["marks_edit", "Correct marks, fix a question, board check"]]],
-  ["Documents", [["docs_view", "See the course content"], ["docs_publish", "Upload and publish documents (Student space)"], ["docs_unlock", "Open the locked parts of documents"]]],
+  ["Results", [["results_view", "See the results"], ["results_export", "Download the results of a quiz (when the quiz allows it)"], ["export_all", "Export all the marks of the class (Excel)"],
+    ["marks_edit", "Correct and type marks, fix a question, board check"], ["grading", "Final mark: formula, what the students see, publish"]]],
+  ["Documents", [["docs_view", "See the course content"], ["docs_publish", "Upload and publish documents (Student space)"], ["docs_unlock", "Open the locked parts of documents"],
+    ["push", "Push a document or a link in a session"]]],
   ["Messages", [["messages", "Write to the students"]]],
 ];
+// v33: presets (they tick boxes; each box can then be changed)
+const PERM_PRESETS = {
+  course: ["kind_course", "sessions_create", "attendance", "quiz_prepare", "results_view", "profiles", "docs_view", "push"],
+  td: ["kind_td", "sessions_create", "attendance", "unlock", "quiz_prepare", "makeup", "results_view", "results_export", "profiles", "docs_view", "docs_unlock", "push"],
+  tp: ["kind_tp", "sessions_create", "attendance", "unlock", "quiz_prepare", "makeup", "results_view", "results_export", "profiles", "docs_view", "docs_unlock", "push"],
+};
 function roleSelect(cls, val, extra) {
   return `<select class="${cls}" ${extra || ""} style="width:auto">${Object.entries(ROLE_LABEL).map(([k, v]) => `<option value="${k}" ${k === val ? "selected" : ""}>${v}</option>`).join("")}</select>`;
 }
@@ -2041,15 +2088,20 @@ async function loadAssistants() {
     [list, log, invites] = await Promise.all([rpc("t_list_assistants", { p_class: classId }), rpc("t_activity_log", { p_class: classId }), rpc("t_list_invites", { p_class: classId })]);
   } catch (e) { return; }
   $("assistantsTable").innerHTML = list.length === 0 ? `<p class="muted">No assistant for ${esc(classNames[classId] || "this class")}.</p>` :
-    list.map((a) => `<div class="asst-card" data-user="${a.user_id}">
-      <div class="row" style="justify-content:space-between"><strong>${esc(a.email)}</strong>
-        <span>${roleSelect("a-role", a.role)} <input class="a-groups" value="${esc((a.groups || []).join(" "))}" placeholder="all groups" style="width:150px" title="Groups (empty = all), e.g. G11 G12">
-        <button class="small secondary a-save-groups">Save groups</button>
-        <button class="small red" data-arem="${a.user_id}" data-email="${esc(a.email)}">Remove</button></span></div>
-      <div class="muted" style="font-size:12px">added ${new Date(a.added_at).toLocaleDateString()}</div>
-      ${PERM_GROUPS.map(([title, perms]) => `<h4>${title}</h4><div class="perms">${perms.map(([k, label]) =>
-        `<label><input type="checkbox" class="a-perm" value="${k}" ${(a.perms || []).includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>`).join("")}
-    </div>`).join("");
+    list.map((a) => { const total = PERM_GROUPS.reduce((n, g) => n + g[1].length, 0), have = new Set(a.perms || []);
+      return `<div class="asst-card card flat" data-user="${a.user_id}">
+      <div class="row" style="gap:10px;align-items:center"><strong>${esc(a.email)}</strong>
+        <label class="small-t">Groups <input class="a-groups" value="${esc((a.groups || []).join(" "))}" placeholder="all" style="width:120px" title="Groups (empty = all), e.g. SG1 SG2"></label>
+        <button class="btn sec sm a-save-groups">Save the groups</button>
+        <span class="small-t">Preset:</span><button class="pill" data-preset="course">Course</button><button class="pill" data-preset="td">TD</button>
+        <button class="pill" data-preset="tp">TP</button><button class="pill" data-preset="all">Tick all</button><button class="pill" data-preset="none">Untick all</button>
+        <span class="grow"></span>${roleSelect("a-role", a.role)}<button class="btn sec sm" data-arem="${a.user_id}" data-email="${esc(a.email)}">Remove</button></div>
+      <div class="perm-grid">${PERM_GROUPS.map(([title, perms], gi) => { const all = perms.every(([k]) => have.has(k));
+        return `<div class="perm-box"><div class="row" style="justify-content:space-between"><strong style="font-size:14px">${title}</strong>
+          <button class="lnk" style="font-size:12px" data-pgall="${gi}" data-on="${all ? 0 : 1}">${all ? "untick all" : "tick all"}</button></div>
+          ${perms.map(([k, label]) => `<label><input type="checkbox" class="a-perm" value="${k}" ${have.has(k) ? "checked" : ""}><span>${label}</span></label>`).join("")}</div>`; }).join("")}</div>
+      <p class="muted small-t">A preset ticks boxes; then add or remove what you want. ${have.size} permission(s) of ${total}. Added ${new Date(a.added_at).toLocaleDateString()}. What he does stays in the log below.</p>
+    </div>`; }).join("");
   const save = async (card, role, perms, quiet) => {
     const groups = card.querySelector(".a-groups").value.split(/[\s,;]+/).filter(Boolean);
     try { await rpc("t_set_assistant", { p_class: classId, p_user: card.dataset.user, p_role: role, p_perms: perms, p_groups: groups }); if (!quiet) toast("Saved.", "ok"); }
@@ -2063,6 +2115,18 @@ async function loadAssistants() {
       await save(card, card.querySelector(".a-role").value, null); loadAssistants();
     };
     card.querySelector(".a-save-groups").onclick = () => save(card, card.querySelector(".a-role").value, perms());
+    card.querySelectorAll("[data-pgall]").forEach((b) => b.onclick = async () => {   // v33.1: a whole family at once
+      const keys = PERM_GROUPS[Number(b.dataset.pgall)][1].map((x) => x[0]);
+      card.querySelectorAll(".a-perm").forEach((c) => { if (keys.includes(c.value)) c.checked = b.dataset.on === "1"; });
+      await save(card, card.querySelector(".a-role").value, perms(), true); loadAssistants();
+    });
+    card.querySelectorAll("[data-preset]").forEach((b) => b.onclick = async () => {
+      const k = b.dataset.preset;
+      const list = k === "all" ? PERM_GROUPS.flatMap((g) => g[1].map((x) => x[0])) : k === "none" ? [] : PERM_PRESETS[k];
+      card.querySelectorAll(".a-perm").forEach((c) => { c.checked = list.includes(c.value); });
+      await save(card, card.querySelector(".a-role").value, perms(), true);
+      toast(`Permissions ticked: ${b.textContent}. Change any box if needed.`, "ok"); loadAssistants();
+    });
   });
   $("assistantsTable").querySelectorAll("[data-arem]").forEach((b) => b.onclick = async () => {
     if (!confirm(`Remove ${b.dataset.email} from the assistants of this class? (His activity log is kept.)`)) return;
@@ -2143,6 +2207,40 @@ async function openProfile(studentId) {
       ? `<tr><td>${esc(d.title)}</td><td colspan="7"><span class="badge no">never opened</span></td></tr>`
       : `<tr><td>${esc(d.title)}</td><td>${fmtWhen(d.first_open)}</td><td>${fmtWhen(d.last_seen)}</td><td>${d.opens}</td><td>${fmtDuration(d.active_s)}</td>
           <td>${d.scroll_pct} %</td><td>${fmtWhen(d.pdf_at)}</td><td>${fmtWhen(d.file_at)}</td></tr>`).join("") + `</table>`);
+  // v33: actions from the profile: presence in the session now, write, his marks, change of group
+  const row = (lastAttendance || []).find((r) => r.student_id === st.id);
+  const gr = typeof GT !== "undefined" && GT.b && GT.cid === classId ? GT.b.rows.find((r) => r.st.id === st.id) : null;
+  $("profileActions").innerHTML = `<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
+      <button class="small orange" id="pfWrite" data-perm="messages">✉ Write to him</button>
+      <button class="small secondary" id="pfMarks">📊 His marks</button>
+      <button class="small secondary" id="pfGroups" data-perm="students_edit">Change his groups</button>
+      ${gr ? `<span class="badge ${visOf("final").visible ? "ok" : "closed"}">Final mark ${GRADE.fmt(gr.final)} (${visOf("final").visible ? "published" : "not published"})</span>` : ""}</div>
+    ${sessionId && row ? `<div class="row" style="gap:6px;align-items:center;margin-top:8px" data-perm="attendance"><span class="muted">In the session now:</span>
+      ${["present", "late", "absent", "excused"].map((k) => `<button class="small ${row.status === k ? "" : "secondary"}" data-pfatt="${k}">${k}</button>`).join("")}</div>` : ""}`;
+  applyRole();
+  $("pfWrite").onclick = () => {
+    $("profileBox").classList.add("hidden");
+    showTab("messages");
+    $("msgKind").value = "students"; syncMsgKind(); msgPicked = new Set([st.id]); $("msgPickSearch").value = ""; renderMsgPick();
+    msgReplyTo = null; $("msgReplyNote").textContent = `To ${st.last_name} ${st.first_name}.`;
+    setTimeout(() => { $("composeWrap").classList.remove("hidden"); $("msgComposeCard").scrollIntoView({ behavior: "smooth" }); $("msgBody").focus(); }, 300);
+  };
+  $("pfMarks").onclick = () => {
+    $("profileBox").classList.add("hidden");
+    gStore("cp_rt", "marks");
+    showTab("results");
+  };
+  $("pfGroups").onclick = async () => {
+    const td = prompt(`TD group of ${st.last_name} ${st.first_name}:`, st.td_group || ""); if (td === null) return;
+    const tp = prompt(`TP sub-group of ${st.last_name} ${st.first_name}:`, st.tp_group || ""); if (tp === null) return;
+    try { await rpc("t_set_student_groups", { p_student: st.id, p_td: td.trim(), p_tp: tp.trim() }); toast("Groups saved.", "ok"); openProfile(st.id); }
+    catch (e) { toast(e.message, "error"); }
+  };
+  $("profileActions").querySelectorAll("[data-pfatt]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_set_attendance", { p_session: sessionId, p_student: st.id, p_status: b.dataset.pfatt }); toast(`${st.last_name}: ${b.dataset.pfatt}.`, "ok");
+      attForce = true; await refreshAttendance(); openProfile(st.id); }
+    catch (e) { toast(e.message, "error"); }
+  });
   $("profileBox").classList.remove("hidden");
   $("profileEmailEdit").onclick = async () => {
     const v = prompt(`E-mail of ${st.last_name} ${st.first_name} (empty = none):`, st.email || "");
@@ -2718,6 +2816,8 @@ function renderStaffCard() {
 
 // ---- v29: mailbox. One line per message (who, subject, start of the text, date); a click opens it in full.
 let mailBox = "inbox", mailItems = [], mailTotal = 0, mailOpen = null, mailSearchTimer = null;
+const mailPicked = new Set();   // v33: messages ticked for one same answer
+const EMOJIS = [["👍", "thumbs up"], ["❤️", "heart"], ["✅", "seen, ok"], ["😂", "laugh"], ["🙏", "thanks"], ["👀", "looking at it"]];
 async function loadMailList(reset) {
   if (!classId) return;
   const cid = classId;
@@ -2735,36 +2835,88 @@ function renderMailList() {
   $("mailBoxes").querySelectorAll("[data-box]").forEach((b) => { b.className = "small " + (b.dataset.box === mailBox ? "" : "secondary"); });
   const unread = mailBox === "inbox" ? mailItems.filter((m) => !m.read).length : 0;
   $("msgUnread").textContent = unread ? `${unread} new` : ""; $("msgUnread").classList.toggle("hidden", !unread);
-  $("mailList").innerHTML = mailItems.length ? mailItems.map((m) => `<div class="mail-row ${!sent && !m.read ? "unread" : ""}" data-mid="${m.id}">
-      <button class="star" data-mstar="${m.id}" title="${m.starred ? "Unstar" : "Star"}">${m.starred ? "★" : "☆"}</button>
-      <span class="who">${sent ? "To: " + esc(m.to || "") : (m.from_kind === "student" ? "👤 " : "🧑‍🏫 ") + esc(m.from || "")}</span>
-      <span class="what">${esc(m.subject || "(no subject)")} <span class="snip">— ${esc(m.snippet || "")}</span>${m.has_doc ? " 📄" : ""}</span>
-      <span class="when">${msgWhen(m.at)}${sent ? ` · read ${m.read_by}/${m.recipients}` : ""}</span></div>
-      ${mailOpen && mailOpen.id === m.id ? `<div class="mail-open" id="mailOpen">${mailOpenHtml(mailOpen, sent)}</div>` : ""}`).join("")
+  [...mailPicked].forEach((id) => { if (!mailItems.some((m) => m.id === id && m.from_kind === "student")) mailPicked.delete(id); });
+  renderMailPickBar();
+  // v33.1: the list on the left, the open message on the right (as in the mockup)
+  const reacts = (m) => (m.reactions || []).map((r) => r.emoji).join(" ");
+  $("mailList").innerHTML = mailItems.length ? mailItems.map((m) => `<div class="mail-row ${!sent && !m.read ? "unread" : ""} ${mailOpen && mailOpen.id === m.id ? "cur" : ""}" data-mid="${m.id}">
+      ${!sent && m.from_kind === "student" ? `<input type="checkbox" class="mail-pick" data-mailpick="${m.id}" ${mailPicked.has(m.id) ? "checked" : ""} aria-label="Select this message">` : `<span class="mail-pick"></span>`}
+      <div class="mail-body"><span class="top"><strong class="who">${sent ? "To: " + esc(m.to || "") : esc(m.from || "")}${m.from_kind === "student" || sent ? "" : ' <span class="chip">staff</span>'}</strong><span class="when">${msgWhen(m.at)}${sent ? ` · read ${m.read_by}/${m.recipients}` : ""}</span></span>
+        <span class="what">${esc(m.subject || "(no subject)")}${m.snippet ? ` <span class="muted">— ${esc(m.snippet)}</span>` : ""}${m.has_doc ? " 📄" : ""}</span>${reacts(m) ? `<span style="font-size:13px">${reacts(m)}</span>` : ""}</div>
+      <button class="star" data-mstar="${m.id}" title="${m.starred ? "Unstar" : "Star"}">${m.starred ? "★" : "☆"}</button></div>`).join("")
     : `<p class="muted" style="padding:8px">${{ inbox: "No message received.", starred: "No starred message.", archived: "No archived message.", sent: "No message sent." }[mailBox]}</p>`;
+  $("mailRead").innerHTML = mailOpen ? `<div id="mailOpen">${mailOpenHtml(mailOpen, sent)}</div>` : `<p class="muted">Choose a message on the left.</p>`;
   $("mailCount").textContent = mailTotal ? `${mailItems.length} / ${mailTotal}` : "";
   $("mailMore").classList.toggle("hidden", mailItems.length >= mailTotal);
-  $("mailList").querySelectorAll(".mail-row").forEach((row) => row.onclick = (e) => { if (!e.target.closest("[data-mstar]")) openMail(Number(row.dataset.mid)); });
+  $("mailList").querySelectorAll(".mail-row").forEach((row) => row.onclick = (e) => { if (!e.target.closest("[data-mstar]") && !e.target.closest("[data-mailpick]")) openMail(Number(row.dataset.mid)); });
+  $("mailList").querySelectorAll("[data-mailpick]").forEach((c) => c.onchange = () => { const id = Number(c.dataset.mailpick); if (c.checked) mailPicked.add(id); else mailPicked.delete(id); renderMailPickBar(); });
   $("mailList").querySelectorAll("[data-mstar]").forEach((b) => b.onclick = () => {
     const m = mailItems.find((x) => x.id === Number(b.dataset.mstar));
     flagMail(m, m.starred ? "unstar" : "star");
   });
   if (mailOpen) bindMailOpen(sent);
 }
+// v33: one same answer to several messages of students (each one receives it in his own conversation)
+function renderMailPickBar() {
+  const n = mailPicked.size;
+  $("mailPickBar").classList.toggle("hidden", !n);
+  $("mailPickCount").textContent = n;
+}
+$("mailPickReply").onclick = () => { $("mailManyN").textContent = mailPicked.size; $("mailManyBox").classList.remove("hidden"); $("mailManyBody").focus(); };
+$("mailManyCancel").onclick = () => { $("mailManyBox").classList.add("hidden"); };
+$("mailPickArchive").onclick = async () => {   // v33.1: archive the selected messages
+  const list = mailItems.filter((m) => mailPicked.has(m.id)); mailPicked.clear();
+  for (const m of list) await flagMail(m, "archive");
+};
+$("mailPickClear").onclick = () => { mailPicked.clear(); $("mailManyBox").classList.add("hidden"); renderMailList(); };
+$("mailManySend").onclick = async () => {
+  const body = $("mailManyBody").value.trim();
+  if (!body) { toast("Write the answer first.", "error"); return; }
+  $("mailManySend").disabled = true;
+  try {
+    const r = await rpc("t_msg_reply_many", { p_class: classId, p_ids: [...mailPicked], p_subject: $("mailManySubject").value.trim() || null, p_body: body });
+    toast(`Answer sent to ${r.sent} student(s), each in his own conversation.`, "ok");
+    mailPicked.clear(); $("mailManyBody").value = ""; $("mailManySubject").value = ""; $("mailManyBox").classList.add("hidden");
+    loadMailList(true);
+  } catch (e) { toast(e.message, "error"); }
+  $("mailManySend").disabled = false;
+};
+$("mailNewBtn").onclick = () => { $("composeWrap").classList.toggle("hidden"); if (!$("composeWrap").classList.contains("hidden")) $("msgBody").focus(); };
+function reactionsHtml(m) {
+  const list = m.reactions || [];
+  const mine = new Set(list.filter((r) => r.mine_user).map((r) => r.emoji));
+  const others = list.filter((r) => !r.mine_user);
+  return `<div class="react-row" style="margin:0">${EMOJIS.map(([e, name]) => `<button class="react ${mine.has(e) ? "on" : ""}" data-react="${e}" title="${name}" aria-label="Reaction ${name}">${e}</button>`).join("")}
+    ${others.length ? `<span class="muted" style="font-size:13px">${others.map((r) => esc(r.emoji + " " + r.who)).join(" · ")}</span>` : ""}</div>`;
+}
 function mailOpenHtml(m, sent) {
-  return `<div class="msg-head"><span>${sent ? "To: " + esc(m.to_name || m.target || "") : esc(m.from || "")}${m.from_matricule ? ` <span class="muted">${esc(m.from_matricule)}</span>` : ""}</span><span class="muted">${msgWhen(m.at)}</span></div>
-    ${m.subject ? `<div class="msg-subject">${esc(m.subject)}</div>` : ""}<div class="msg-body">${msgBodyHtml(m.body)}</div>${msgDocLink(m)}
-    <div class="msg-actions">${sent ? "" : `<button class="small" data-mact="reply">Reply</button>`}
-      ${mailBox === "archived" ? `<button class="small secondary" data-mact="unarchive">Back to Received</button>` : sent ? "" : `<button class="small secondary" data-mact="archive">🗄 Archive</button>`}
-      ${sent ? "" : `<button class="small secondary" data-mact="unread">Mark as unread</button>`}
-      <button class="small red" data-mact="delete">Delete</button></div>`;
+  const student = !sent && m.from_kind === "student" && m.from_student;
+  return `<div class="msg-head card-head"><span style="font-size:17px">${sent ? "To: " + esc(m.to_name || m.target || "") : student ? `<button class="lnk" data-profile="${m.from_student}" style="font-size:17px">${esc(m.from || "")}</button>` : esc(m.from || "")}</span>
+      <span class="grow"></span><span class="muted" style="font-size:12px">${msgWhen(m.at)}${m.from_matricule ? " · " + esc(m.from_matricule) : ""}</span></div>
+    ${m.subject ? `<strong class="msg-subject">${esc(m.subject)}</strong>` : ""}<div class="msg-body">${msgBodyHtml(m.body)}</div>${msgDocLink(m)}
+    ${m.loading ? "" : `<div class="row" style="gap:6px"><span class="muted" style="font-size:13px">React without answering:</span>${reactionsHtml(m)}</div>`}
+    ${student && can("messages") ? `<textarea id="mailQuick" rows="4" placeholder="Answer ${esc(m.from || "")}" aria-label="Answer" style="margin-top:auto"></textarea>
+      <div class="row" style="gap:8px"><button class="btn" data-mact="quick">Answer</button>` : `<div class="row" style="gap:8px;margin-top:auto">${sent ? "" : `<button class="btn" data-mact="reply">Answer</button>`}`}
+      ${mailBox === "archived" ? `<button class="btn sec" data-mact="unarchive">Back to Received</button>` : sent ? "" : `<button class="btn sec" data-mact="archive">Archive</button>`}
+      <span class="grow"></span>${sent ? "" : `<button class="lnk" data-mact="unread">Mark as unread</button>`} <button class="lnk" data-mact="delete">Delete</button></div>`;
 }
 function bindMailOpen(sent) {
-  const box = $("mailOpen");
+  const box = $("mailRead");
   if (!box) return;
+  box.querySelectorAll("[data-react]").forEach((b) => b.onclick = async () => {
+    try { mailOpen.reactions = await rpc("t_msg_react", { p_id: mailOpen.id, p_emoji: b.dataset.react }); renderMailList(); } catch (e) { toast(e.message, "error"); }
+  });
   box.querySelectorAll("[data-mact]").forEach((b) => b.onclick = async () => {
     const act = b.dataset.mact, m = mailItems.find((x) => x.id === mailOpen.id);
     if (act === "reply") { if (!mailOpen.loading) replyTo(mailOpen); return; }
+    if (act === "quick") {   // v33.1: answer from the message itself
+      const body = ($("mailQuick").value || "").trim(); if (!body) { toast("Write the answer first.", "error"); return; }
+      b.disabled = true;
+      try { await rpc("t_send_message", { p_class: classId, p_kind: "students", p_group: null, p_students: [mailOpen.from_student], p_subject: replySubject(mailOpen), p_body: body, p_doc: null, p_reply_to: mailOpen.id });
+        toast("Answer sent.", "ok"); $("mailQuick").value = ""; }
+      catch (e) { toast(e.message, "error"); }
+      b.disabled = false; return;
+    }
     if (act === "delete" && !confirm("Delete this message? (Only for you: the others keep it.)")) return;
     await flagMail(m, act);
   });
@@ -2815,7 +2967,7 @@ function replyTo(m) {
     $("msgSubject").value = replySubject(m);
     msgReplyTo = m.id;
     $("msgReplyNote").textContent = `Answer to ${m.from}.`;
-    $("msgComposeCard").scrollIntoView({ behavior: "smooth" });
+    $("composeWrap").classList.remove("hidden"); $("msgComposeCard").scrollIntoView({ behavior: "smooth" });
     $("msgBody").focus();
   } else {
     // staff: the teacher answers the assistant, the assistant answers the teacher
@@ -2823,7 +2975,7 @@ function replyTo(m) {
     $("staffSubject").value = replySubject(m);
     staffReplyTo = m.id;
     $("staffReplyNote").textContent = `Answer to ${m.from}.`;
-    $("staffCard").scrollIntoView({ behavior: "smooth" });
+    $("composeWrap").classList.remove("hidden"); $("staffCard").scrollIntoView({ behavior: "smooth" });
     $("staffBody").focus();
   }
 }
@@ -2872,6 +3024,7 @@ async function updateMsgBadge() {
   b.textContent = here ? String(here) : elsewhere ? "•" : "";
   b.title = elsewhere ? `${elsewhere} unread message(s) in your other classes` : "";
   b.classList.toggle("hidden", !here && !elsewhere);
+  if (window.onBadges) window.onBadges();   // v33.1: « To do » and the bell
 }
 poller(updateMsgBadge, 60000, () => !!classId);   // v28.1
 
@@ -3070,22 +3223,23 @@ function renderTplList() {
   const f = norm($("tplSearch").value), folder = $("tplFolderFilter").value, kind = $("tplKindFilter").value, never = $("tplNeverRun").checked;
   const list = tplList.filter((t) => (!f || norm(`${t.title} ${t.folder} ${(t.chapters || []).join(" ")} ${(t.modules || []).join(" ")}`).includes(f))
     && ($("tplFolderFilter").value === "" || t.folder === folder) && (!kind || t.kind === kind) && (!never || !t.runs.length));
-  if (!tplList.length) { $("tplList").innerHTML = `<p class="muted">No prepared quiz yet. Click <strong>＋ New quiz</strong>.</p>`; return; }
-  const folders = [...new Set(list.map((t) => t.folder))].sort();
-  const lastRun = (t) => t.runs.length ? `${t.runs.length}× · last ${esc(t.runs[0].date)}` : '<span class="muted">never run</span>';
-  $("tplList").innerHTML = folders.map((fo) => `<h3 class="tpl-folder">📁 ${esc(fo || "(no folder)")}</h3><div class="table-scroll"><table><tr><th>Quiz</th><th>Type</th><th>Questions</th><th>Mark</th><th>Runs</th><th></th></tr>` +
-    list.filter((t) => t.folder === fo).map((t) => `<tr>
-      <td><strong>${esc(t.title)}</strong><div class="muted">${esc((t.chapters || []).join(", "))}</div>
+  if (!tplList.length) { $("tplList").innerHTML = `<p class="muted">No prepared quiz yet. Click <strong>＋ New quiz</strong>.</p>`; if (window.onTplList) window.onTplList(); return; }
+  // v33.1: one table for the folder chosen on the left (Content › Quizzes), as in the mockup
+  const lastRun = (t) => t.runs.length ? `${t.runs.length}× <span class="muted">· last ${esc(t.runs[0].date)}</span>` : '<span class="muted">never</span>';
+  const vis = (t) => (window.tplVisCell ? window.tplVisCell(t) : "");
+  $("tplList").innerHTML = list.length ? `<div class="table-scroll"><table class="v-table"><thead><tr><th>Quiz</th><th>Questions</th><th>Type</th><th>Runs</th><th>Results to the students</th><th></th></tr></thead><tbody>` +
+    list.map((t) => `<tr>
+      <td><strong>${esc(t.title)}</strong>${folder === "" && t.folder ? ` <span class="chip">${esc(t.folder)}</span>` : ""}<div class="muted" style="font-size:12px">${esc((t.chapters || []).join(", "))}</div>
         ${t.runs.length ? `<details class="tpl-runs"><summary class="muted">runs</summary>${t.runs.map((r) => `<div>${esc(r.date)} · ${esc(r.class)} · ${esc(r.session)} · ${esc(r.title)} · ${r.status === "finished" ? "finished" : r.status} · ${r.answered} answered</div>`).join("")}</details>` : ""}</td>
-      <td>${KIND_LABEL[t.kind] || esc(t.kind)}${t.pace === "self" ? "<br><span class='muted'>own pace</span>" : ""}</td>
       <td>${t.per_student_count ? `${t.count} per student from ${t.pool}` : t.count}${t.shuffle ? "<br><span class='muted'>mixed order</span>" : ""}</td>
-      <td>${t.graded ? "/" + Number(t.total_points) : '<span class="muted">not graded</span>'}</td>
+      <td>${KIND_LABEL[t.kind] || esc(t.kind)}${t.pace === "self" ? "<br><span class='muted'>own pace</span>" : ""}${t.graded ? "" : '<br><span class="muted">not graded</span>'}</td>
       <td>${lastRun(t)}</td>
-      <td style="white-space:nowrap">${t.mine || isTeacher() ? `<button class="small secondary" data-tedit="${t.id}">✏ Edit</button>` : ""}
-        <button class="small secondary" data-tdup="${t.id}">⧉ Duplicate</button>
-        ${sessionId ? `<button class="small green" data-trun="${t.id}" title="Adds a run of this quiz to the session selected in the Live tab">▶ Add to the session</button>` : ""}
-        ${t.mine || isTeacher() ? `<button class="small red" data-tdel="${t.id}">🗑</button>` : ""}</td></tr>`).join("") + `</table></div>`).join("") ||
-    `<p class="muted">No prepared quiz matches.</p>`;
+      <td>${vis(t)}</td>
+      <td style="white-space:nowrap">${sessionId ? `<button class="btn gr sm" data-trun="${t.id}" title="Adds a run of this quiz to the session chosen in Live">Run</button> ` : ""}
+        ${t.mine || isTeacher() ? `<button class="btn sec sm" data-tedit="${t.id}">Edit</button> ` : ""}<button class="btn sec sm" data-tdup="${t.id}">Duplicate</button>
+        ${t.mine || isTeacher() ? `<button class="btn sec sm" data-tdel="${t.id}" title="Delete">🗑</button>` : ""}</td></tr>`).join("") + `</tbody></table></div>`
+    : `<p class="muted">No prepared quiz in this folder.</p>`;
+  if (window.onTplList) window.onTplList();
 }
 ["tplSearch"].forEach((id) => { $(id).oninput = renderTplList; });
 ["tplFolderFilter", "tplKindFilter", "tplNeverRun"].forEach((id) => { $(id).onchange = renderTplList; });
@@ -3193,7 +3347,7 @@ $("launchBtn").onclick = async () => {
   try { const qid = await rpc("t_launch_template", { p_template: id, p_session: sessionId }); await afterQuizChange("Quiz added to the session and selected. Click 1. Show the rules to run it.", qid); }
   catch (e) { toast(e.message, "error"); }
 };
-$("goQuizzesBtn").onclick = () => document.querySelector("nav button[data-tab=quizzes]").click();
+$("goQuizzesBtn").onclick = () => showTab("quizzes");
 
 
 // ------------------------------------------------------------------ v28: locked parts of a document

@@ -1,18 +1,20 @@
-(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.1"; // file version, checked by common.js
 // v33: Results space of the teacher: « Each quiz » (as before), « Marks » (every column, typed in the app or imported),
 // « Final mark » (the formula of the class) and « What students see » (opened and closed at any time, for a time).
 const GT = { raw: null, b: null, cid: null, entry: null, edit: null, saveTimer: null, busy: false };
-const RT_PAGES = ["quizzes", "marks", "formula", "vis"];
+const RT_PAGES = ["marks", "formula", "vis", "quizzes"];
 const PART_OPTIONS = [["quiz", "Quizzes"], ["tp", "TP"], ["td", "TD"], ["exam", "Exam"], ["project", "Project"]];
-const VIS_DURS = [["", "until I hide it"], ["10", "10 min"], ["60", "1 h"], ["1440", "24 h"]];
+const VIS_DURS = [["", "until I take it back"], ["10", "10 min"], ["60", "1 h"], ["1440", "24 h"]];
 function gStore(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } return null; }
-function rtCurrent() { const v = gStore("cp_rt"); return RT_PAGES.includes(v) ? v : "quizzes"; }
+function rtCurrent() { const v = gStore("cp_rt"); return RT_PAGES.includes(v) ? v : "marks"; }
 
 function showRt(name) {
   if ((name === "formula" || name === "vis") && !can("grading")) name = "marks";
   gStore("cp_rt", name);
   document.querySelectorAll("#rtBar [data-rt]").forEach((b) => b.classList.toggle("on", b.dataset.rt === name));
+  document.querySelectorAll("[data-rtgo]").forEach((b) => b.classList.toggle("active", b.dataset.rtgo === name && activeTab === "results"));
   RT_PAGES.forEach((p) => $("rt-" + p).classList.toggle("hidden", p !== name));
+  ["gPubBadge", "gPubToggle"].forEach((id) => $(id).classList.toggle("hidden", name === "quizzes" || !can("grading")));
   if (name !== "quizzes" && (!GT.raw || GT.cid !== classId)) loadGrades();
   else renderGrades();
 }
@@ -56,11 +58,11 @@ function finalsChanged() {
 function renderPubBar() {
   const v = visOf("final"), changed = v.visible && finalsChanged();
   const pubAt = (GT.raw && GT.raw.finals || [])[0] && GT.raw.finals[0].published_at;
-  $("gPubBadge").className = "badge " + (v.visible ? (changed ? "orange" : "ok") : "closed");
+  $("gPubBadge").className = "pub-badge " + (v.visible ? (changed ? "orange" : "ok") : "closed");
   $("gPubBadge").textContent = !GT.raw ? "" : v.visible ? `Final marks shown${pubAt ? " since " + fmtWhen(pubAt) : ""}${v.until ? " · hidden again at " + hm(v.until) : ""}${changed ? " · changes not published" : ""}`
     : "Final marks hidden from the students";
   $("gPubToggle").textContent = v.visible ? "Take the publication back" : `Publish the final marks (${durLabel()})`;
-  $("gPubToggle").className = "small " + (v.visible ? "red" : "green");
+  $("gPubToggle").className = "btn sm " + (v.visible ? "red" : "gr");
   $("gPubUpdate").classList.toggle("hidden", !changed);
   [$("gPubToggle"), $("gPubUpdate")].forEach((b) => { b.disabled = !GT.raw; });
 }
@@ -374,6 +376,7 @@ const chip = (on, label, attrs) => `<button class="g-chip ${on ? "on" : ""}" ${a
 function renderFormula() {
   const b = GT.b, S = b.S, ro = !GT.raw.can_grade;
   $("gModels").innerHTML = Object.entries(GRADE.MODELS).map(([k, m]) => chip(S.model === k, m.label, `data-gmodel="${k}"`)).join("") + chip(S.model === "custom", "Custom", `data-gmodel="custom"`);
+  $("gModels").querySelectorAll("button").forEach((b) => b.classList.add("model"));   // v33.1: the generic models stand out
   $("gParts").innerHTML = GRADE.PARTS.concat(b.sep ? ["bonus"] : []).map((p) => {
     const on = p === "bonus" || !!S.on[p];
     const src = p === "bonus" ? `points × ${S.bonus_factor}, at most 20` : (b.cols.filter((c) => c.counts && c.part === p).map((c) => esc(c.title)).join(", ") || (p === "td" && !on ? "no TD in this class" : "no column yet"));

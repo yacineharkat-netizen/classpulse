@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "32.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.1"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -744,6 +744,7 @@ function renderSelfPaced(live, who, head, q) {
   });
   html += watermark() + `</div>`;
   if (!handed) html += `<div class="card"><button id="submitQuizBtn" class="green" style="width:100%;font-size:19px">Submit my answers</button>
+      <p id="submitState" class="submit-state" role="status" aria-live="polite"></p>
       <p class="muted" style="margin:6px 0 0">When you submit, your answers are final. Until then they are saved anyway and the teacher receives them when he closes the test.</p></div>`;
   live.innerHTML = html;
   if ($("stationChangeBtn")) $("stationChangeBtn").onclick = () => askStation(q, board);
@@ -797,8 +798,25 @@ function renderSelfPaced(live, who, head, q) {
     const fresh = (state.quiz && state.quiz.items) || items;
     const missing = fresh.filter((it) => !it.answered).length;
     if (!(await askInPage($("submitQuizBtn"), (missing ? `<strong>${missing} question(s) not answered.</strong> ` : "") + "Submit your answers now? You will not be able to change them."))) return;
-    try { await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id }); toast("Answers handed in.", "ok"); lastRendered = ""; await fetchState(); }
-    catch (e) { toast(e.message, "error"); }
+    // v33: the button says what happens: sending, a second try on a slow network, sent (with the time). One click is enough.
+    const btn = $("submitQuizBtn"), note = $("submitState");
+    const show = (label, cls, text) => { btn.textContent = label; btn.className = cls; btn.style.width = "100%"; btn.style.fontSize = "19px"; note.textContent = text || ""; };
+    btn.disabled = true;
+    show("Sending…", "sending", "Do not close the page. No need to click again.");
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      try {
+        await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id });
+        show("Sent ✓", "sent", "Received by the server at " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ". Your answers are saved.");
+        toast("Answers handed in.", "ok");
+        setTimeout(async () => { lastRendered = ""; await fetchState(); }, 1500);
+        return;
+      } catch (e) {
+        if (!e.network) { btn.disabled = false; show("Submit my answers", "green", ""); toast(e.message, "error"); return; }
+        show(`Sending… (try ${attempt + 1})`, "sending", "Slow network: your answers are kept on this device, trying again by itself.");
+        await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * attempt)));
+      }
+    }
+    btn.disabled = false; show("Submit my answers", "green", "Not sent: no network. Your answers are saved; try again in a moment.");
   };
 }
 

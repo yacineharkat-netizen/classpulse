@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.1"; // file version, checked by common.js
 // v33: final mark of a class. One evaluation column = a quiz / test / TP (the same unit + title run once per sub-group
 // makes ONE column, as in the Excel file), or a column typed in the app (exam, project, oral…).
 // Each column counts or not, and goes into one part: quiz | tp | td | exam | project. The final mark is

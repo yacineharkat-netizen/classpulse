@@ -1,12 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" data-version="32.3">
+<html lang="en" data-version="33.1">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
-<link rel="stylesheet" href="css/style.css?v=32.3">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B2545">
+<link rel="stylesheet" href="css/style.css?v=33.1">
 </head>
-<body>
+<body class="v33b">
 
 <!-- Login -->
 <div id="loginView" class="student hidden" style="margin-top:8vh">
@@ -30,47 +32,120 @@
 </div>
 
 <div id="appView" class="teacher hidden">
-  <nav>
-    <div class="brand">ClassPulse</div>
-    <label for="classSelect" style="color:#C9DCEB">Class</label>
-    <select id="classSelect"></select>
-    <button data-tab="live" class="active">▶ Live session</button>
-    <button data-tab="sessions">📅 Sessions <span id="sessionsBadge" class="badge open hidden"></span></button>
-    <button data-tab="timetable">🗓 Timetable</button>
-    <button data-tab="students">👥 Students <span id="attemptBadge" class="badge no hidden"></span></button>
-    <button data-tab="messages">✉ Messages <span id="msgBadge" class="badge no hidden"></span></button>
-    <button data-tab="questions" class="teacher-only">❓ Questions</button>
-    <button data-tab="quizzes">📝 Quizzes</button>
-    <button data-tab="space" data-perm="docs_publish">📚 Student space</button>
-    <button data-tab="content">📂 Course content</button>
-    <button data-tab="demos" class="teacher-only">🎬 Demos</button>
-    <button data-tab="resources" class="teacher-only">📎 Resources</button>
-    <button data-tab="results">📊 Results</button>
-    <button data-tab="export" data-perm="export_all">⬇ Export results</button>
-    <button data-tab="myspace" class="teacher-only hidden" id="mySpaceTab">🌐 My space</button>
-    <button data-tab="supervision" class="hidden" id="supervisionTab">🎓 Supervision <span id="supBadge" class="badge no hidden"></span></button>
-    <button data-tab="classes">＋ Classes</button>
-    <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">🌐 My public page</button>
-    <button id="logoutBtn" style="margin-top:30px">Log out</button>
-    <div id="whoAmI" style="color:#8FA9C8;font-size:12px;margin-top:8px;word-break:break-all"></div>
-    <button id="netInfo" class="net-info" title="Average time of an answer from the server (last 2 minutes). Click: copy the details.">⏱ –</button>
-  </nav>
+  <header class="topbar">
+    <strong class="brand">ClassPulse</strong>
+    <label class="top-class"><span>Class</span><select id="classSelect"></select></label>
+    <div class="top-search"><input id="topSearch" placeholder="Search a student (name or student number)" aria-label="Search a student" autocomplete="off">
+      <div id="topSearchList" class="menu hidden"></div></div>
+    <span class="grow"></span>
+    <span id="nowPill" class="now-pill hidden"></span>
+    <button id="todoBtn" class="btn or sm" aria-label="To do">To do <span id="todoCount" class="cnt">0</span></button>
+    <button id="bellBtn" class="btn sec sm bell" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span id="bellCount" class="dot hidden"></span></button>
+    <span class="pop-anchor"><button id="avatarBtn" class="avatar" aria-label="My account">··</button>
+      <div id="avatarMenu" class="menu right hidden">
+        <div id="whoAmI" class="muted small-t"></div>
+        <span id="rolePill" class="badge info assistant-only">Assistant</span>
+        <button id="myPageBtn" class="teacher-only" title="Your personal page, in edit mode (new tab)">My public page ↗</button>
+        <button id="netInfo" class="net-info" title="Average time of an answer from the server (last 2 minutes). Click: copy the details.">⏱ –</button>
+        <button id="logoutBtn">Log out</button>
+      </div></span>
+  </header>
+  <div id="notifAsk" class="notif-ask hidden">
+    <strong>Get the notifications on this device?</strong>
+    <span class="muted">A message of a student, a request: an alert, one click, and you are at the right place.</span>
+    <span class="grow"></span><button id="notifAskOn" class="btn or sm">Turn on</button><button id="notifAskLater" class="btn sec sm">Later</button>
+  </div>
+  <div class="shell">
+    <nav id="spaces" aria-label="Spaces">
+      <span class="nav-class" id="navClass"></span>
+      <button data-space="live" class="active">Live<span class="sub">the session</span></button>
+      <button data-space="class">My class<span class="sub">students, sessions, timetable, results</span><span id="sessionsBadge" class="badge open hidden"></span></button>
+      <button data-space="msg">Messages <span id="msgBadge" class="badge no hidden"></span><span class="sub">inbox, announcements</span></button>
+      <button data-space="content">Content<span class="sub">quizzes, bank, documents</span></button>
+      <button data-space="agenda">Agenda<span class="sub">my week</span></button>
+      <button data-space="me">Me <span id="supBadge" class="badge no hidden"></span><span class="sub">assistants, classes</span></button>
+    </nav>
+    <main>
+      <div id="classBanner" class="class-banner">
+        <span class="dot"></span><span>Class: <a href="#" id="bannerName" title="Open the classes tab">-</a></span>
+        <span id="bannerNote" class="note"></span>
+      </div>
+      <div class="space" data-space="live">
+        <div class="tabbar hidden" data-space="live"><button data-tab="live" class="active">Live</button></div>
 
-  <main>
-    <div id="classBanner" class="class-banner">
-      <span class="dot"></span><span>Class: <a href="#" id="bannerName" title="Open the classes tab">-</a></span>
-      <span id="bannerNote" class="note"></span>
-      <span id="rolePill" class="badge info assistant-only">Assistant</span>
-      <span id="nowPill" class="now-pill hidden"></span>
-    </div>
-    <!-- ===================== LIVE ===================== -->
     <section id="tab-live">
-      <div class="card">
-        <h2>Session</h2>
-        <div id="ttNowBar" class="tt-now-bar hidden"></div>
+      <div id="ttNowBar" class="tt-now-bar hidden"></div>
+      <div class="live-grid">
+        <div class="card live-card" id="cardSession">
+          <div class="card-head"><h2>Session</h2><span class="chip" id="lvCodeChip" title="Code of the session"></span><span class="grow"></span>
+            <button id="lvNewBtn" class="btn sec sm" title="Create a session">＋ New</button></div>
+          <select id="sessionSelect" aria-label="Session"></select>
+          <p class="muted" id="noSessionHelp">To start a class: <strong>＋ New</strong>, a title, <strong>Create</strong>. Students join with the QR code of the projector
+            or the 6-character code of the session.</p>
+          <div id="lvSummary" class="hidden">
+            <strong id="lvTitle" class="lv-title"></strong>
+            <div class="lv-count"><strong id="lvPresent">0</strong><span id="lvExpected"></span></div>
+            <div id="lvAttCode" class="lv-att hidden"><span class="muted">Attendance code</span> <strong id="lvAttCodeTxt"></strong> <span class="muted" id="lvAttNote"></span></div>
+          </div>
+          <div class="card-actions" id="lvActions">
+            <button id="lvAttToggle" class="btn gr sm">Open the attendance</button>
+            <button id="lvFloat" class="btn or sm" title="A small check-in QR code above your slides">Floating QR</button>
+            <button id="lvProj" class="btn sec sm">Projector</button>
+            <button id="lvMoreBtn" class="btn sec sm" title="Settings, phones, projector, links, random student, end">More…</button>
+          </div>
+        </div>
+        <div id="liveArea" class="hidden">
+          <div class="card live-card" id="cardRequests">
+            <div class="card-head"><h2>Requests</h2><span class="chip red" id="reqCount">0</span></div>
+            <div class="scroll grow" id="reqScroll">
+              <div id="liveRequests" class="req-list hidden"></div>
+              <div id="lockedBox" class="locked-alert hidden">
+            <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
+            <div id="lockedList"></div>
+          </div>
+              <!-- v28.2: phones that stopped calling the server during a question (network lost, phone asleep) -->
+          <div id="silentBox" class="silent-alert hidden">
+            <strong>📶 <span id="silentCount">0</span> phone(s) without contact for 10 s or more</strong>
+            <span class="muted">(network lost or phone asleep: they may miss questions — a make-up can be given after the quiz, in Results)</span>
+            <div id="silentList"></div>
+          </div>
+              <p class="muted" id="reqNone">Nothing waiting.</p>
+            </div>
+          </div>
+          <div class="card live-card" id="cardQuiz">
+            <div class="card-head"><h2 id="lqTitle">Quiz</h2><span class="grow"></span><span class="chip" id="lqChip"></span></div>
+            <select id="quizSelect" aria-label="Quiz of this session"></select>
+            <div class="lq-bar"><div id="lqBar"></div></div>
+            <span id="lqAnswers" class="lq-answers"></span>
+            <label class="tick-line" title="Closes each question at the end of its time, then the next one after a pause"><input type="checkbox" id="autoMode"> Automatic mode (never skips a question) · next after <span id="autoDelay"></span> s</label>
+            <div class="lq-steps" id="lqSteps"><button id="openBtn" class="btn or sm">1. Rules on the phones</button><button id="startBtn" class="btn gr sm">2. Start</button><button id="finishBtn" class="btn sm red">Finish</button></div>
+            <div class="lq-grid">
+              <button id="revealBtn" class="btn">Reveal</button><button id="nextBtn" class="btn">Next</button>
+              <button id="lqAdd30" class="btn sec">+30 s</button><button id="lqPush" class="btn sec">Push a document</button>
+              <button id="lqDraw" class="btn sec phone-only">Draw a student</button><button id="lqBigQr" class="btn or phone-only">Big QR</button>
+            </div>
+            <div class="lq-foot"><button class="lnk" id="lqMoreBtn">Details, stations, results…</button> <button class="lnk" id="lqLaunchBtn">＋ Run a prepared quiz</button></div>
+            <div class="hidden"><button id="addTimeBtn"></button><select id="addTimeSel"><option>15</option><option selected>30</option><option>60</option></select></div>
+          </div>
+          <div class="card list-card" id="cardList">
+            <div class="card-head wrap"><h2>List</h2><span class="muted small-t">Show:</span><span id="attScopes" class="pills"></span><span class="grow"></span>
+              <input id="attSearch" placeholder="Name or student number" class="search-sm" aria-label="Search the list">
+              <label class="small-t">Lines <select id="attRows" aria-label="Lines per page"><option>10</option><option selected>25</option><option>50</option><option value="0">All</option></select></label></div>
+            <div class="count-line"><span id="attCounts" class="att-counts"></span><span class="muted small-t">Order: present, then late, then absent. Click a name: change his presence or his group.</span></div>
+            <div class="hidden"><span id="attScopeBox"><select id="attScope"><option value="run">Group checking in now</option><option value="session">Whole session</option><option value="all">All the students of the class</option></select></span>
+              <select id="attFilterGroup"><option value="">all</option></select></div>
+            <div id="attendanceTable" class="scroll grow"></div>
+            <p class="phone-only muted center">The detailed lists stay on the computer.</p>
+          </div>
+        </div>
+      </div>
+      <p class="muted hidden" id="phoneHint"></p>
+
+      <!-- dialogs of the Live space (everything of the earlier console, nothing lost) -->
+      <div id="dlgNew" class="modal hidden"><div class="modal-content card">
+        <div class="card-head"><h2>New session</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgNew">Close</button></div>
         <div class="row">
-          <select id="sessionSelect" style="max-width:420px"></select>
-          <span class="muted">or create:</span>
+          <strong>New session:</strong>
           <input id="newSessionTitle" placeholder="Title, e.g. S1 - Discover IoT" style="max-width:260px">
           <input id="newSessionDate" type="date" style="max-width:170px">
           <input id="newSessionTime" type="time" style="max-width:120px" title="Start">
@@ -80,8 +155,13 @@
           <input id="newSessionUnit" placeholder="Unit, e.g. TP1" style="max-width:130px" title="Same unit for the sessions of the same lab or TD run once per group: one column in the export">
           <button id="createSessionBtn" class="secondary">Create</button>
         </div>
-        <p class="muted" id="noSessionHelp">To start a class: type a title and click <strong>Create</strong>. ClassPulse gives the session a
-          6-character code. Students join by scanning the QR code of the projector window (or by typing the code on the home page).</p>
+      </div></div>
+      <div id="dlgMore" class="modal hidden"><div class="modal-content card wide">
+        <div class="card-head"><h2>Session: settings, phones, projector</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgMore">Close</button></div>
+        <div id="endedBox" class="ended-box hidden">
+            <strong>⏹ Session ended <span id="endedAt"></span></strong>: attendance and quizzes are closed.
+            <button id="reopenBtn" class="small secondary">Reopen the session</button>
+          </div>
         <div id="sessionCodeBox" class="session-code hidden">
           <div><div class="label">Session code (fixed)</div><div class="code" id="sessionCodeBig">------</div></div>
           <div class="muted" id="sessionUrl"></div>
@@ -99,37 +179,24 @@
             <label style="margin:0"><input type="checkbox" id="homeCode" style="width:auto"> …with the code written on it (attendance taken on paper)</label>
             <span id="onHomeNote" class="muted" style="font-size:13px"></span> <span id="pushStats" class="muted" style="font-size:13px"></span></div>
         </div>
-      </div>
-
-      <div id="liveArea" class="hidden">
-        <div class="card monitor nocollapse">
-          <div id="endedBox" class="ended-box hidden">
-            <strong>⏹ Session ended <span id="endedAt"></span></strong>: attendance and quizzes are closed.
-            <button id="reopenBtn" class="small secondary">Reopen the session</button>
-          </div>
-          <div class="monitor-grid">
-            <div>
-              <h4>📱 Students' phones</h4>
+        <div class="monitor-grid">
+          <div><h4>📱 Students' phones</h4>
               <div id="phoneMock" class="phone-mock"></div>
               <div class="muted" style="margin:8px 0 4px">Phones show <span class="hidden" id="activityBadge">-</span></div>
               <div class="seg" title="Follows what you do; click to change it by hand">
                 <button id="idleBtn" title="Waiting screen">⏸ Wait</button>
                 <button id="showQuizBtn" title="Current quiz">📝 Quiz</button>
                 <button id="linkModeBtn" title="Last demo or link pushed">📎 Link</button>
-              </div>
-            </div>
-            <div>
-              <h4>🖥 Projector <span id="projState" class="proj-state off">not open</span></h4>
+              </div></div>
+          <div><h4>🖥 Projector <span id="projState" class="proj-state off">not open</span></h4>
               <div class="proj-mini"><iframe id="projMini" title="Projector preview" tabindex="-1"></iframe></div>
-              <div class="row" style="gap:6px;margin-top:8px">
-                <button id="projectorBtn" class="secondary small" title="Opens the projector window once; if it is open, brings it to the front">🖥 Open projector</button>
-                <button id="joinQrBtn" class="orange small" title="Big QR code and session code on the projector, for students who closed the page">📱 Show join QR</button>
-                <button id="floatQrBtn" class="green small" title="A small check-in QR code that stays above the slides (PowerPoint, PDF...): move it and resize it where it does not hide anything">📌 Floating QR (above the slides)</button>
-              </div>
-            </div>
-            <div>
-              <h4>Controls</h4>
-              <div class="row" style="gap:6px;align-items:center">
+              
+            <div class="row" style="gap:6px;margin-top:8px">
+              <button id="projectorBtn" class="secondary small" title="Opens the projector window once; if it is open, brings it to the front">🖥 Open projector</button>
+              <button id="joinQrBtn" class="orange small" title="Big QR code and session code on the projector">📱 Show join QR</button>
+              <button id="floatQrBtn" class="green small" title="A small check-in QR code that stays above the slides">📌 Floating QR</button>
+            </div></div>
+          <div><h4>Attendance</h4><div class="row" style="gap:6px;align-items:center">
                 <span class="badge" id="attBadge">closed</span>
                 <select id="attGroup" class="hidden" style="width:auto;padding:4px 6px" title="Group checking in now: each opening has its own list and a new code"></select>
                 <button id="attOnBtn" class="green small">Open attendance</button>
@@ -150,13 +217,9 @@
               <div class="row" style="gap:6px;margin-top:6px"><button id="linkBtn" class="secondary small">📲 Push to phones</button>
                 <button id="screenBtn" class="secondary small hidden">🖥 Big screen on projector</button></div>
               <div id="sessionLinks" class="session-links"></div>
-              <button id="endSessionBtn" class="red small" style="margin-top:12px">⏹ End the session</button>
-            </div>
-          </div>
+            <button id="endSessionBtn" class="red small" style="margin-top:12px">⏹ End the session</button></div>
         </div>
-
-        <div class="card">
-          <h3>🎲 Random student</h3>
+        <div class="card flat"><h3>🎲 Random student</h3>
           <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
             <button id="draw1Btn" class="orange">Draw 1 student</button>
             <button id="draw3Btn" class="secondary">Draw 3</button>
@@ -167,23 +230,11 @@
           </div>
           <p class="muted">Draws among the students checked in (present or late). A student already drawn in this session is not drawn again until you reset.
             <strong>+0.25</strong> adds the usual bonus of this session.</p>
-          <table class="draw-list" id="drawList"></table>
-        </div>
-
-        <div class="card">
-          <h3>Quiz</h3>
-          <div class="row">
-            <select id="quizSelect" style="max-width:380px"></select>
-            <button id="openBtn" class="orange">1. Show the rules on the phones</button>
-            <button id="startBtn" class="green">2. Start question 1</button>
-            <button id="revealBtn">Close question and show answers</button>
-            <button id="nextBtn" class="orange">Next question</button>
-            <span class="row" style="gap:4px;align-items:center"><button id="addTimeBtn" class="secondary">Add</button>
-              <select id="addTimeSel" style="width:auto"><option>15</option><option>30</option><option>60</option></select>
-              <span class="muted">s to this question</span></span>
-            <button id="finishBtn" class="red">Finish quiz</button>
-          </div>
-          <div class="row" style="margin-top:8px;gap:6px;align-items:center">
+          <table class="draw-list" id="drawList"></table></div>
+      </div></div>
+      <div id="dlgQuiz" class="modal hidden"><div class="modal-content card wide">
+        <div class="card-head"><h2>Quiz of this session</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgQuiz">Close</button></div>
+        <div class="row" style="margin-top:8px;gap:6px;align-items:center">
             <span class="muted">Selected quiz:</span>
             <button id="quizRenameBtn" class="small secondary">✏ Rename</button>
             <button id="quizAgainBtn" class="small secondary" title="A new run of the same prepared quiz in this session (the answers of this run are kept)">↻ Run again</button>
@@ -192,22 +243,8 @@
             <button id="quizResetBtn" class="small secondary teacher-only" title="Erase all answers and run it again from the start">↺ Reset (erase answers)</button>
             <button id="quizDeleteBtn" class="small red teacher-only">🗑 Delete</button>
           </div>
-          <div class="row" style="margin-top:8px">
-            <label style="margin:0"><input type="checkbox" id="autoMode" style="width:auto"> Automatic mode: close each question when the time is over, then go to the next one after <span id="autoDelay"></span> s</label>
-          </div>
-          <div id="liveRequests" class="locked-alert hidden"></div>
-          <div id="lockedBox" class="locked-alert hidden">
-            <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
-            <div id="lockedList"></div>
-          </div>
-          <!-- v28.2: phones that stopped calling the server during a question (network lost, phone asleep) -->
-          <div id="silentBox" class="silent-alert hidden">
-            <strong>📶 <span id="silentCount">0</span> phone(s) without contact for 10 s or more</strong>
-            <span class="muted">(network lost or phone asleep: they may miss questions — a make-up can be given after the quiz, in Results)</span>
-            <div id="silentList"></div>
-          </div>
-          <div id="quizLive" class="grid2" style="margin-top:14px"></div>
-          <div class="row launch-row" style="margin-top:12px;gap:8px;align-items:center;flex-wrap:wrap">
+        <div id="quizLive" class="grid2" style="margin-top:14px"></div>
+        <div class="row launch-row" style="margin-top:12px;gap:8px;align-items:center;flex-wrap:wrap">
             <strong>➕ Run a prepared quiz in this session:</strong>
             <select id="tplSelect" style="max-width:420px"></select>
             <button id="launchBtn" class="green small">Add it to this session</button>
@@ -215,34 +252,33 @@
           </div>
           <p class="muted" style="margin:4px 0 0">Quizzes are prepared once in the <strong>📝 Quizzes</strong> tab, then run in any session.
             Each run keeps its own answers and marks (see 📊 Results).</p>
-        </div>
-
-        <div class="card">
-          <h3>Attendance list</h3>
-          <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
-            <input id="attSearch" placeholder="Search by name or student number" style="max-width:320px">
-            <label class="hidden" id="attScopeBox" style="margin:0"><select id="attScope" style="width:auto">
-              <option value="run">Group checking in now</option><option value="session">Whole session (all its groups)</option><option value="all">All the students of the class</option></select></label>
-          </div>
-          <div id="attendanceTable" class="att-scroll"></div>
-        </div>
-      </div>
+      </div></div>
     </section>
 
-    <!-- ===================== SESSIONS ===================== -->
-    <section id="tab-sessions" class="hidden">
-      <div class="card">
-        <h2>Sessions of this class</h2>
-        <p class="muted">A session created by mistake can be corrected (title, date, time, type) or deleted with its attendance and quizzes.
-          <strong>Open</strong> takes you to the live session. <strong>Group</strong>: the TD group or TP sub-group of the session (empty = whole class);
-          only its students are expected. <strong>Unit</strong>: the same name (e.g. TP1) for the sessions of one lab run once per sub-group.</p>
-        <div id="sessionsAlerts"></div>
-        <div id="sessionsTable"></div>
       </div>
-    </section>
+      <div class="space hidden" data-space="class">
+        <div class="tabbar" data-space="class">
+          <button data-tab="students">Students</button><button data-tab="sessions" class="pc-only">Sessions</button>
+          <button data-tab="timetable" class="pc-only">Timetable</button><button data-tab="results" class="pc-only">Results</button>
+          <button data-rtgo="marks" class="phone-only">Marks</button><button data-rtgo="formula" class="phone-only" data-perm="grading">Calculation</button>
+          <button data-rtgo="vis" class="phone-only" data-perm="grading">Visibility</button>
+        </div>
 
-    <!-- ===================== STUDENTS ===================== -->
     <section id="tab-students" class="hidden">
+      <div class="card list-card tall" id="stuCard">
+        <div class="card-head wrap">
+          <input id="stuSearch" placeholder="Name or student number" class="search-sm" aria-label="Search">
+          <label class="small-t">Group <select id="stuGroup"><option value="">All</option></select></label>
+          <label class="small-t">Lines <select id="stuRows"><option>10</option><option selected>25</option><option>50</option><option value="0">All</option></select></label>
+          <button id="stuManageBtn" class="btn sec sm">Registration, import, PIN… <span id="attemptBadge" class="badge no hidden"></span></button>
+          <span id="stuSelBar" class="selbar hidden"><strong><span id="stuSelCount">0</span> selected</strong>
+            <button id="stuSelWrite" class="btn or sm">Write</button><button id="stuSelGroup" class="btn sec sm">Change group</button><button id="stuSelReopen" class="btn sec sm">Reopen a quiz</button></span>
+        </div>
+        <div id="stuTable" class="scroll grow"><p class="muted">Loading…</p></div>
+      </div>
+      <div id="stuManage" class="hidden">
+        <div class="row" style="margin-bottom:8px"><button id="stuBackBtn" class="btn sec sm">◀ Back to the list</button></div>
+
       <div class="card teacher-only">
         <h2>Registration of the students</h2>
         <p class="muted">A student registers once, from the home page or in class: student number, last name, first name, PIN. He must be in the
@@ -317,117 +353,255 @@
         <input id="studentSearch" placeholder="🔍 Search a student (name, first name, matricule)" style="max-width:420px">
         <div id="studentsTable" style="margin-top:8px"></div>
       </div>
-    </section>
-
-    <!-- ===================== COURSE CONTENT (v25: what the lab assistants see) ===================== -->
-    <section id="tab-content" class="hidden">
-      <div class="card teacher-only">
-        <h2>What the lab assistants of this class see</h2>
-        <p class="muted">The assistants of this class (Classes tab) find here the content you give to the students: documents of the student space,
-          your resources (files and links pushed in class) and your demos. They can open it, download it if you allow it, and push it to the phones
-          in the lab sessions they run. Everything they open or download is written in their activity log. They never change or delete anything.
-          <strong>Read only</strong> removes the download buttons; it cannot stop a photo or a screenshot.</p>
-        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">
-          <label style="margin:0">For this class: <select id="caLevel" style="width:auto">
-            <option value="none">nothing</option><option value="view">read only</option><option value="download">read and download</option></select></label>
-          <label style="margin:0"><input type="checkbox" id="caPrepublish" style="width:auto"> they also see the documents <strong>not yet published</strong> to the students (to prepare the lab)</label>
-        </div>
-        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px">
-          <label style="margin:0">Results of the lab quizzes (Results tab): <select id="caResults" style="width:auto">
-            <option value="none">nothing</option><option value="view">read only</option><option value="export">read and download</option></select></label>
-          <label style="margin:0">Student profiles (click on a name): <select id="caProfiles" style="width:auto">
-            <option value="none">nothing</option><option value="view">read only</option></select></label>
-        </div>
-        <p class="muted" style="margin-top:8px">Each line below can differ from the class setting (for example: answers hidden, code downloadable).
-          Each quiz can also differ (Results tab).</p>
-      </div>
-      <div class="card">
-        <h2 id="contentTitle">Course content</h2>
-        <p class="muted assistant-only" style="display:block">Content of this class that the teacher shares with you. Open it to prepare the lab; push it to the phones
-          from the Live session tab (list "Demo, link or file"). What you open is written in the activity log of the class.</p>
-        <div id="contentTable"></div>
       </div>
     </section>
 
-    <!-- ===================== STUDENT SPACE ===================== -->
-    <section id="tab-space" class="hidden">
+    <section id="tab-sessions" class="hidden">
       <div class="card">
-        <h2>Student space of this class</h2>
-        <p class="muted">The students open ClassPulse on any device where they are signed in (home page › <strong>My documents</strong>), even outside a session,
-          and see the documents you make <strong>visible</strong> here. A document is read on the site, with the name of the student printed over it.
-          The PDF can be downloaded only if you allow it, document by document.</p>
-        <div id="docsTable"></div>
-        <details style="margin-top:12px"><summary class="muted">Add a simple link (a public web address)</summary>
-          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">
-            <label style="margin:0;min-width:200px">Title <input id="docTitle" placeholder="e.g. Datasheet DHT22"></label>
-            <label style="margin:0;flex:1;min-width:240px">Address <input id="docUrl" placeholder="https://..."></label>
-            <label style="margin:0">Type <select id="docKind" style="width:auto"><option value="course">Course</option><option value="tp">Lab (TP)</option><option value="code">Code</option><option value="other">Other</option></select></label>
-            <button id="docUrlAddBtn" class="secondary">Add</button>
-          </div></details>
-      </div>
+        <h2>Sessions of this class</h2>
+        <p class="muted">A session created by mistake can be corrected (title, date, time, type) or deleted with its attendance and quizzes.
+          <strong>Open</strong> takes you to the live session. <strong>Group</strong>: the TD group or TP sub-group of the session (empty = whole class);
+          only its students are expected. <strong>Unit</strong>: the same name (e.g. TP1) for the sessions of one lab run once per sub-group.</p>
+        <div id="sessionsAlerts"></div>
+        <div id="sessionsTable"></div>
+      </div></section>
+    <section id="tab-timetable" class="hidden">
       <div class="card">
-        <h2>Who reads what <button id="statsRefreshBtn" class="small secondary">↻ Refresh</button></h2>
-        <p class="muted">For each document: who opened it, when, how long the page stayed on the screen, how far the student went down the page,
-          and when the PDF or the attached file was downloaded. Click a student's name for all his documents.</p>
-        <div id="statsDocs"></div>
-        <div id="statsDetail"></div>
-      </div>
-      <div class="card">
-        <h2>My documents (private)</h2>
-        <p class="muted">Your documents are stored in the ClassPulse database, <strong>not on the public site</strong>: nobody can read them without being
-          registered in a class where you made them visible. One document = a page (HTML file), and optionally its PDF and an attached file (code zip…).
-          The same document can be used in several classes.</p>
-        <div id="documentsTable"></div>
-        <h3 style="margin-top:18px">Add or replace a document</h3>
-        <div class="doc-form">
-          <label>Page to read (.html) <input type="file" id="mdHtml" accept=".html,.htm"></label>
-          <label>PDF version (optional) <input type="file" id="mdPdf" accept=".pdf"></label>
-          <label>Attached file (optional: zip, code…) <input type="file" id="mdFile"></label>
-          <label>Title <input id="mdTitle" placeholder="e.g. TP1 - Acquisition et énergie"></label>
-          <label>Module <input id="mdModule" placeholder="e.g. IoT" list="moduleList"></label>
-          <label>Type <select id="mdKind"><option value="course">Course</option><option value="tp">Lab (TP)</option><option value="code">Code</option><option value="other">Other</option></select></label>
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">🗓 Timetable</h2>
+          <span class="teacher-only"><button id="ttImportBtn" class="green">⬆ Import (Excel or DeptDesk file)</button>
+          <button id="ttNewBtn" class="secondary">＋ New, by hand</button></span></div>
+        <p class="muted">One timetable per section and semester. Link each class to its module (below): its students then see the timetable
+          of their whole section, their own sessions and the next one on their home page; « Live » offers to start the session at the right time.</p>
+        <div class="tt-bar">
+          <select id="ttSelect" title="Which timetable"></select>
+          <select id="ttViewSel" title="What to show"></select>
+          <label class="tick" style="margin:0"><input type="checkbox" id="ttStudents" style="width:auto"> as the students see it</label>
         </div>
-        <button id="mdSaveBtn" class="green" style="margin-top:12px">Save the document</button>
-        <span class="muted" id="mdInfo"></span>
+        <p class="muted" id="ttWeekNote" style="margin:0 0 8px"></p>
+        <div id="ttGrid"></div>
+        <div class="row no-print" style="margin-top:10px;gap:6px">
+          <button id="ttExportXls" class="small secondary">⬇ Excel (grid)</button>
+          <button id="ttExportTpl" class="small secondary teacher-only">⬇ Excel (template, to import again)</button>
+          <button id="ttExportIcs" class="small secondary">📅 Calendar file (.ics)</button>
+          <button id="ttPrint" class="small secondary">🖨 Print</button>
+        </div>
       </div>
-    </section>
-
-    <!-- ===================== QUESTIONS ===================== -->
-    <section id="tab-questions" class="hidden">
-      <div class="card">
-        <h2>Question bank</h2>
-        <p class="muted">Fill the <a href="templates/questions_template.xlsx">Excel template</a> (one question per row, up to 5 options A-E,
-          correct answers as letters, e.g. <code>C</code> or <code>A,D</code>). Importing a row with an existing <em>ref</em> replaces the question.</p>
-        <p class="muted">The question bank is shared by all your classes: the <strong>module</strong> name is what keeps the questions of each course apart.
-          Pick an existing module in the list or type a new one.</p>
+      <div class="card" id="ttUpcomingCard">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Next 14 days</h2>
+          <button id="ttChangeBtn" class="orange teacher-only">＋ Cancel, move or add a session</button></div>
+        <p class="muted" style="margin:4px 0">The sessions of what is shown above, with the changes. A change can send a message to the students concerned.</p>
+        <div id="ttUpcoming"></div>
+        <h3 style="margin-top:14px">All the changes</h3>
+        <div id="ttChanges"></div>
+      </div>
+      <div class="card teacher-only" id="ttLinksCard">
+        <h2>My classes and their timetable</h2>
+        <p class="muted">The module of the class in that timetable; « late after » = minutes after the start of a session started from the timetable.</p>
+        <div id="ttLinks"></div>
+      </div>
+      <div class="card teacher-only hidden" id="ttSettingsCard">
+        <h2>Settings of this timetable</h2>
         <div class="row">
-          <input id="moduleName" list="moduleList" placeholder="Module, e.g. IoT" style="max-width:200px">
-          <datalist id="moduleList"></datalist>
-          <input type="file" id="questionsFile" accept=".xlsx,.xls,.ods,.csv" style="max-width:360px">
-          <button id="importQuestionsBtn">Import</button>
-          <button id="exportBankBtn" class="secondary">Download the bank (Excel)</button>
+          <input id="tsTitle" placeholder="Title, e.g. 5th year ATT · S1 2026-2027" style="max-width:340px">
+          <input id="tsLevel" placeholder="level, e.g. ING5 ATT" style="max-width:150px">
+          <input id="tsYear" placeholder="year, e.g. 2026-2027" style="max-width:130px">
+          <input id="tsPeriod" placeholder="semester, e.g. S1" style="max-width:110px">
+          <input id="tsSection" placeholder="section (if several)" style="max-width:140px">
         </div>
+        <div class="row" style="margin-top:6px">
+          <label style="margin:0">TD groups <input type="number" id="tsTd" min="0" max="12" style="width:70px"></label>
+          <label style="margin:0">TP sub-groups <input type="number" id="tsTp" min="0" max="20" style="width:70px"></label>
+          <label style="margin:0">semester from <input type="date" id="tsStarts" style="width:auto"></label>
+          <label style="margin:0">to <input type="date" id="tsEnds" style="width:auto"></label>
+          <label style="margin:0">week A = the week of <input type="date" id="tsWeekA" style="width:auto"></label>
+        </div>
+        <label for="tsKinds" style="margin-top:8px">Weeks without classes: one line per week, its first day (Saturday or any day of it) + holiday or exams</label>
+        <textarea id="tsKinds" rows="3" placeholder="2026-12-19 holiday&#10;2027-01-09 exams"></textarea>
+        <label class="tick"><input type="checkbox" id="tsShowTeachers" style="width:auto"> the students see the names of the teachers</label>
+        <p class="muted" id="tsWeeksInfo"></p>
+        <div class="row" style="margin-top:6px"><button id="tsSaveBtn" class="green">Save</button>
+          <button id="tsDeleteBtn" class="red">Delete this timetable</button></div>
+      </div></section>
+
+    <section id="tab-results" class="hidden">
+      <div class="card list-card tall" id="resCard">
+        <div class="card-head wrap" id="rtBar">
+          <button class="tabbtn" data-rt="marks">Marks</button><button class="tabbtn" data-rt="formula">Final mark calculation</button>
+          <button class="tabbtn" data-rt="vis">What the students see</button><button class="tabbtn" data-rt="quizzes">Each quiz</button>
+          <span id="gPubBadge" class="pub-badge"></span><span class="grow"></span>
+          <button id="gPubUpdate" class="btn or sm hidden">Update the publication</button><button id="gPubToggle" class="btn sm">Publish</button>
+        </div>
+        <!-- Marks -->
+        <div id="rt-marks" class="rt-page">
+          <div class="card-head wrap tools">
+            <span class="muted small-t">Click a <strong>column title</strong> to type the whole column; click a mark to correct it.</span><span class="grow"></span>
+            <button id="gAddItem" class="btn sec sm">+ Add a mark (oral, report…)</button>
+            <span class="pop-anchor"><button id="gTplBtn" class="btn sec sm">Excel model to fill ▾</button><div id="gTplMenu" class="menu hidden"></div></span>
+            <button id="gImportBtn" class="btn sec sm">Import a file</button><input type="file" id="gImportFile" accept=".xlsx,.xls,.ods,.csv" class="hidden">
+            <button id="gExportAll" class="btn sec sm">Export everything</button>
+            <label class="small-t">Lines <select id="gRows"><option>10</option><option selected>25</option><option>50</option><option value="0">All</option></select></label>
+          </div>
+          <div id="gEntryBar" class="entry-bar hidden"></div>
+          <div id="gEditBar" class="edit-bar hidden"></div>
+          <div id="gTable" class="scroll grow"></div>
+          <span id="gTableInfo" class="muted small-t"></span>
+        </div>
+        <!-- Final mark calculation -->
+        <div id="rt-formula" class="rt-page calc3 hidden">
+          <div class="scroll pane soft">
+            <strong>1 · Percentages</strong>
+            <div class="pills"><span class="muted small-t">Model:</span><span id="gModels"></span></div>
+            <div id="gParts"></div>
+            <div id="gSum" class="g-sum"></div>
+            <div class="pills"><span class="small-t">Rounding:</span><span id="gSteps"></span>
+              <label class="small-t">other <input id="gStepOther" placeholder="e.g. 0.1" inputmode="decimal" class="tiny"></label></div>
+            <span class="muted small-t">Not taken: 0. Excused absence: left out of the mean. A part with no mark for a student: its weight goes to the other parts.</span>
+          </div>
+          <div class="scroll pane line">
+            <strong>2 · What counts, and where</strong>
+            <div id="gEvals"></div>
+            <strong style="margin-top:4px">Bonus</strong>
+            <div id="gBonus"></div>
+          </div>
+          <div class="scroll pane soft">
+            <strong>3 · Preview</strong>
+            <div id="gFormulaText" class="formula"></div>
+            <label class="small-t">Student <select id="gPreviewStudent"></select></label>
+            <div id="gPreview"></div>
+            <div id="gStats" class="stats4"></div>
+          </div>
+        </div>
+        <!-- What the students see -->
+        <div id="rt-vis" class="rt-page vis2 hidden">
+          <div class="scroll">
+            <span class="muted small-t">What the students of <span class="cls-short"></span> see in their « Progress » tab. Each line opens and closes at any time.</span>
+            <div id="gVisRows"></div>
+            <div class="row" style="gap:8px;margin-top:6px"><button id="gVisAllOn" class="btn sec sm">Open all</button><button id="gVisAllOff" class="btn sec sm">Close all</button></div>
+          </div>
+          <div class="scroll pane soft">
+            <strong>When I open a line, it stays visible:</strong>
+            <div id="gDurs" class="pills"></div>
+            <span class="muted small-t">With a time, the line closes by itself (e.g. show the final mark 10 min in class, then take it back).</span>
+            <label class="tick-line"><input type="checkbox" id="gShowDetail"> Show the detail of each part with the final mark</label>
+            <strong style="margin-top:6px">History</strong>
+            <div id="gLog" class="log"></div>
+          </div>
+        </div>
+        <!-- Each quiz (as before) and the full export -->
+        <div id="rt-quizzes" class="rt-page scroll grow hidden">
+
+      <div class="card" id="resultsListCard">
+        <h2>Results of the quizzes</h2>
+        <p class="muted">Every finished quiz and test of the selected class. Open one to see the success rate of each question and the answers
+          and mark of each student. <span class="teacher-only">You can correct a mark (with a reason): the corrected mark replaces the computed one
+          in the profile, the averages and the Excel export. A quiz nobody answered is marked <strong>empty</strong>: it is left out of the marks.</span>
+          <span class="assistant-only">You see the lab quizzes the teacher shares with you.</span></p>
+        <input id="resultsSearch" placeholder="Search a quiz (title, session, date)" style="max-width:320px">
+        <div id="resultsList"></div>
+      </div>
+      <div class="card hidden" id="resultsDetailCard">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <h2 id="resultsTitle" style="margin:0"></h2>
+          <div><button id="resultsExport" class="small green">Download this quiz (Excel)</button> <button id="resultsBack" class="small secondary">◀ All the quizzes</button></div>
+        </div>
+        <div id="resultsDetail"></div>
       </div>
       <div class="card">
-        <div id="questionEditor" class="card hidden" style="margin-top:10px;background:#FFF8F1;border:2px solid #E8741E">
-          <h3>Edit the question <span class="muted" id="qeRef"></span></h3>
-          <label>Chapter</label><input id="qeChapter" style="max-width:200px">
-          <label>Question</label><textarea id="qeText" rows="3"></textarea>
-          <div id="qeOptions"></div>
-          <div class="row" style="gap:12px;margin-top:8px;flex-wrap:wrap">
-            <label style="margin:0">Points <input id="qePoints" type="number" step="0.25" min="0.25" style="width:90px"></label>
-            <label style="margin:0">Time (s) <input id="qeTime" type="number" min="5" max="600" style="width:90px"></label>
-            <button id="qeSave" class="green">Save</button><button id="qeCancel" class="secondary">Cancel</button>
-          </div>
-          <p class="muted">Tick the correct option(s). Leave an option empty to remove it (2 to 8 options).
-            A question with no correct option is a <strong>survey</strong> question (opinions, not graded).</p>
+        <h2>Export results</h2>
+        <p class="muted">One Excel file for the selected class: attendance for every session, quiz marks out of 20, average without the
+          <span id="dropLowest"></span> lowest marks, statistics per question, and the list of students who left a quiz screen.</p>
+        <button id="exportBtn" class="green">Download the Excel file</button>
+      </div>
         </div>
-        <div id="bankBrowser"></div>
       </div>
     </section>
 
-    <!-- ===================== QUIZZES (v28) ===================== -->
+      </div>
+      <div class="space hidden" data-space="msg">
+        <div class="tabbar" data-space="msg"><button data-tab="messages">Inbox</button><button data-tab="announce" class="teacher-only">Announcements</button></div>
+
+    <section id="tab-messages" class="hidden">
+      <div class="msg-top">
+        <button id="mailNewBtn" class="btn or" data-perm="messages">New message</button>
+        <span id="mailPickBar" class="selbar hidden" data-perm="messages"><strong><span id="mailPickCount">0</span> selected</strong>
+          <button id="mailPickReply" class="btn sm">Same answer to all of them</button><button id="mailPickArchive" class="btn sec sm">Archive</button><button id="mailPickClear" class="btn sec sm">Unselect</button></span>
+        <span class="grow"></span>
+        <div class="mail-boxes" id="mailBoxes">
+            <button class="small" data-box="inbox">📥 Received <span id="msgUnread" class="badge no hidden"></span></button>
+            <button class="small secondary" data-box="starred">⭐ Starred</button>
+            <button class="small secondary" data-box="archived">🗄 Archived</button>
+            <button class="small secondary" data-box="sent">📤 Sent</button>
+          </div>
+        <input id="mailSearch" placeholder="Search" class="search-sm">
+      </div>
+      <div id="mailManyBox" class="card hidden accent">
+        <strong>One answer to the <span id="mailManyN"></span> selected messages (each student receives it in his own conversation)</strong>
+        <input id="mailManySubject" placeholder="Subject (empty: « Re: » + the subject of each message)">
+        <textarea id="mailManyBody" rows="3" placeholder="Your answer"></textarea>
+        <div class="row"><button id="mailManySend" class="btn or">Send to each of them</button><button id="mailManyCancel" class="btn sec">Cancel</button></div>
+      </div>
+      <div id="composeWrap" class="hidden"><div class="card accent" data-perm="messages" id="msgComposeCard">
+        <h2>Write to students</h2>
+        <p class="muted">The students read it on their home page (✉ Messages), on any device where they are signed in. They can answer you privately;
+          they never see each other's messages.</p>
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+          <label style="margin:0">To <select id="msgKind" style="width:auto">
+            <option value="class">the whole class</option><option value="group">a TD group / TP sub-group</option><option value="students">chosen students</option></select></label>
+          <select id="msgGroup" class="hidden" style="width:auto"></select>
+        </div>
+        <div id="msgPick" class="hidden" style="margin-top:8px">
+          <input id="msgPickSearch" placeholder="Search a student (name or student number)" style="max-width:340px">
+          <div id="msgPickList" class="pick-list"></div><p class="muted" id="msgPickCount" style="margin:4px 0 0"></p>
+        </div>
+        <input id="msgSubject" placeholder="Subject (optional)" style="margin-top:8px">
+        <textarea id="msgBody" rows="4" placeholder="Your message" style="margin-top:6px"></textarea>
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <label style="margin:0">Attach a published document <select id="msgDoc" style="width:auto"><option value="">none</option></select></label>
+          <button id="msgSendBtn" class="green">Send</button> <span id="msgReplyNote" class="muted"></span>
+        </div>
+      </div>
+        <div class="card" id="staffCard">
+        <h2 id="staffTitle">Assistants of this class</h2>
+        <div class="row" style="gap:10px;align-items:center"><label style="margin:0">To <select id="staffTo" style="width:auto"></select></label></div>
+        <input id="staffSubject" placeholder="Subject (optional)" style="margin-top:8px">
+        <textarea id="staffBody" rows="3" placeholder="Your message" style="margin-top:6px"></textarea>
+        <button id="staffSendBtn" style="margin-top:6px">Send</button> <span id="staffReplyNote" class="muted"></span>
+      </div></div>
+      <div class="mail-grid">
+        <div class="card scroll" id="mailCard"><div id="mailList" class="mail-list"></div>
+          <div class="row" style="margin-top:8px"><button id="mailMore" class="small secondary hidden">Show more</button><span id="mailCount" class="muted"></span></div></div>
+        <div class="card" id="mailRead"><p class="muted">Choose a message on the left.</p></div>
+      </div>
+    </section>
+    <section id="tab-announce" class="hidden">
+      <div class="grid-2">
+        <div class="card">
+          <h2>New announcement</h2>
+          <textarea id="an2Body" rows="3" maxlength="500" placeholder="e.g. No class on Thursday: session moved to Monday 10:00, room 103D." aria-label="Text of the announcement"></textarea>
+          <div class="pills"><span class="muted small-t">For:</span><span id="an2Targets"></span></div>
+          <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><label>Until <input type="date" id="an2Until"></label>
+            <label class="tick-line"><input type="checkbox" id="an2Public"> also on my public page</label>
+            <label class="tick-line"><input type="checkbox" id="an2Notify" checked> notify the students</label></div>
+          <button id="an2Save" class="btn or">Publish</button>
+        </div>
+        <div class="card">
+          <h2>Current announcements</h2>
+          <div id="an2List" class="scroll"></div>
+          <span class="muted small-t">Students' side: a banner on top of their home page until the chosen date.</span>
+        </div>
+      </div>
+    </section>
+
+      </div>
+      <div class="space hidden" data-space="content">
+        <div class="tabbar" data-space="content"><button data-tab="quizzes">Quizzes</button><button data-tab="questions" class="teacher-only">Question bank</button>
+          <button data-tab="space">Documents</button><button data-tab="demos" class="teacher-only">Demos</button></div>
+
     <section id="tab-quizzes" class="hidden">
+      <div class="quiz-grid">
+        <div class="card scroll" id="qFolderCard"><strong class="small-t">Folders (themes)</strong><div id="qFolders"></div>
+          <button id="qFolderNew" class="btn sec sm" style="margin-top:6px">New folder</button></div>
+        <div>
       <div class="card" id="tplListCard">
         <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <h2 style="margin:0">Prepared quizzes</h2>
@@ -519,10 +693,136 @@
           <h3 style="margin-top:0">Add questions from the bank</h3>
           <div id="pickBrowser"></div>
         </div>
+      </div></div>
       </div>
     </section>
 
-    <!-- ===================== RESOURCES ===================== -->
+    <section id="tab-questions" class="hidden">
+      <div class="card">
+        <h2>Question bank</h2>
+        <p class="muted">Fill the <a href="templates/questions_template.xlsx">Excel template</a> (one question per row, up to 5 options A-E,
+          correct answers as letters, e.g. <code>C</code> or <code>A,D</code>). Importing a row with an existing <em>ref</em> replaces the question.</p>
+        <p class="muted">The question bank is shared by all your classes: the <strong>module</strong> name is what keeps the questions of each course apart.
+          Pick an existing module in the list or type a new one.</p>
+        <div class="row">
+          <input id="moduleName" list="moduleList" placeholder="Module, e.g. IoT" style="max-width:200px">
+          <datalist id="moduleList"></datalist>
+          <input type="file" id="questionsFile" accept=".xlsx,.xls,.ods,.csv" style="max-width:360px">
+          <button id="importQuestionsBtn">Import</button>
+          <button id="exportBankBtn" class="secondary">Download the bank (Excel)</button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="questionEditor" class="card hidden" style="margin-top:10px;background:#FFF8F1;border:2px solid #E8741E">
+          <h3>Edit the question <span class="muted" id="qeRef"></span></h3>
+          <label>Chapter</label><input id="qeChapter" style="max-width:200px">
+          <label>Question</label><textarea id="qeText" rows="3"></textarea>
+          <div id="qeOptions"></div>
+          <div class="row" style="gap:12px;margin-top:8px;flex-wrap:wrap">
+            <label style="margin:0">Points <input id="qePoints" type="number" step="0.25" min="0.25" style="width:90px"></label>
+            <label style="margin:0">Time (s) <input id="qeTime" type="number" min="5" max="600" style="width:90px"></label>
+            <button id="qeSave" class="green">Save</button><button id="qeCancel" class="secondary">Cancel</button>
+          </div>
+          <p class="muted">Tick the correct option(s). Leave an option empty to remove it (2 to 8 options).
+            A question with no correct option is a <strong>survey</strong> question (opinions, not graded).</p>
+        </div>
+        <div id="bankBrowser"></div>
+      </div></section>
+
+    <section id="tab-space" class="hidden">
+      <div data-perm="docs_publish">
+      <div class="card">
+        <h2>Student space of this class</h2>
+        <p class="muted">The students open ClassPulse on any device where they are signed in (home page › <strong>My documents</strong>), even outside a session,
+          and see the documents you make <strong>visible</strong> here. A document is read on the site, with the name of the student printed over it.
+          The PDF can be downloaded only if you allow it, document by document.</p>
+        <div id="docsTable"></div>
+        <details style="margin-top:12px"><summary class="muted">Add a simple link (a public web address)</summary>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">
+            <label style="margin:0;min-width:200px">Title <input id="docTitle" placeholder="e.g. Datasheet DHT22"></label>
+            <label style="margin:0;flex:1;min-width:240px">Address <input id="docUrl" placeholder="https://..."></label>
+            <label style="margin:0">Type <select id="docKind" style="width:auto"><option value="course">Course</option><option value="tp">Lab (TP)</option><option value="code">Code</option><option value="other">Other</option></select></label>
+            <button id="docUrlAddBtn" class="secondary">Add</button>
+          </div></details>
+      </div>
+      <div class="card">
+        <h2>Who reads what <button id="statsRefreshBtn" class="small secondary">↻ Refresh</button></h2>
+        <p class="muted">For each document: who opened it, when, how long the page stayed on the screen, how far the student went down the page,
+          and when the PDF or the attached file was downloaded. Click a student's name for all his documents.</p>
+        <div id="statsDocs"></div>
+        <div id="statsDetail"></div>
+      </div>
+      <div class="card">
+        <h2>My documents (private)</h2>
+        <p class="muted">Your documents are stored in the ClassPulse database, <strong>not on the public site</strong>: nobody can read them without being
+          registered in a class where you made them visible. One document = a page (HTML file), and optionally its PDF and an attached file (code zip…).
+          The same document can be used in several classes.</p>
+        <div id="documentsTable"></div>
+        <h3 style="margin-top:18px">Add or replace a document</h3>
+        <div class="doc-form">
+          <label>Page to read (.html) <input type="file" id="mdHtml" accept=".html,.htm"></label>
+          <label>PDF version (optional) <input type="file" id="mdPdf" accept=".pdf"></label>
+          <label>Attached file (optional: zip, code…) <input type="file" id="mdFile"></label>
+          <label>Title <input id="mdTitle" placeholder="e.g. TP1 - Acquisition et énergie"></label>
+          <label>Module <input id="mdModule" placeholder="e.g. IoT" list="moduleList"></label>
+          <label>Type <select id="mdKind"><option value="course">Course</option><option value="tp">Lab (TP)</option><option value="code">Code</option><option value="other">Other</option></select></label>
+        </div>
+        <button id="mdSaveBtn" class="green" style="margin-top:12px">Save the document</button>
+        <span class="muted" id="mdInfo"></span>
+      </div></div>
+
+      <div class="card">
+        <h2>My resources</h2>
+        <p class="muted">Links and files you can push to the phones from the Live session tab. They belong to you and are not shown to other teachers.
+          Files stay private: the phones receive a temporary link valid for <span id="signedHours"></span> hours.
+          Maximum <span id="maxMb"></span> MB per file (images, PDF, short videos...).</p>
+        <h3>Add a link</h3>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input id="resLinkTitle" placeholder="Title shown on the phones" style="max-width:260px">
+          <input id="resLinkUrl" placeholder="https://..." style="max-width:320px">
+          <input id="resLinkModule" list="moduleList" placeholder="Module (optional)" style="max-width:160px">
+          <button id="resLinkBtn">Add the link</button>
+        </div>
+        <h3>Add a file</h3>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input id="resFileTitle" placeholder="Title shown on the phones" style="max-width:260px">
+          <input type="file" id="resFile" style="max-width:320px">
+          <input id="resFileModule" list="moduleList" placeholder="Module (optional)" style="max-width:160px">
+          <button id="resFileBtn">Upload the file</button>
+        </div>
+      </div>
+      <div class="card">
+        <input id="resourceSearch" placeholder="🔍 Search a resource (title, module)" style="max-width:420px">
+        <div id="resourcesTable" style="margin-top:8px"></div>
+      </div>
+      <div class="card teacher-only">
+        <h2>What the lab assistants of this class see</h2>
+        <p class="muted">The assistants of this class (Classes tab) find here the content you give to the students: documents of the student space,
+          your resources (files and links pushed in class) and your demos. They can open it, download it if you allow it, and push it to the phones
+          in the lab sessions they run. Everything they open or download is written in their activity log. They never change or delete anything.
+          <strong>Read only</strong> removes the download buttons; it cannot stop a photo or a screenshot.</p>
+        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">
+          <label style="margin:0">For this class: <select id="caLevel" style="width:auto">
+            <option value="none">nothing</option><option value="view">read only</option><option value="download">read and download</option></select></label>
+          <label style="margin:0"><input type="checkbox" id="caPrepublish" style="width:auto"> they also see the documents <strong>not yet published</strong> to the students (to prepare the lab)</label>
+        </div>
+        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <label style="margin:0">Results of the lab quizzes (Results tab): <select id="caResults" style="width:auto">
+            <option value="none">nothing</option><option value="view">read only</option><option value="export">read and download</option></select></label>
+          <label style="margin:0">Student profiles (click on a name): <select id="caProfiles" style="width:auto">
+            <option value="none">nothing</option><option value="view">read only</option></select></label>
+        </div>
+        <p class="muted" style="margin-top:8px">Each line below can differ from the class setting (for example: answers hidden, code downloadable).
+          Each quiz can also differ (Results tab).</p>
+      </div>
+      <div class="card">
+        <h2 id="contentTitle">Course content</h2>
+        <p class="muted assistant-only" style="display:block">Content of this class that the teacher shares with you. Open it to prepare the lab; push it to the phones
+          from the Live session tab (list "Demo, link or file"). What you open is written in the activity log of the class.</p>
+        <div id="contentTable"></div>
+      </div>
+    </section>
+
     <section id="tab-demos" class="hidden">
       <div class="card">
         <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
@@ -556,113 +856,70 @@
           <p class="muted">The demo is online at once, at an address of this site: no GitHub needed. Only web pages (they run in the browser); no server code (Python, PHP).</p>
         </div>
         <div id="demosList"></div>
+      </div></section>
       </div>
-    </section>
+      <div class="space hidden" data-space="agenda">
+        <div class="tabbar hidden" data-space="agenda"><button data-tab="agenda">Agenda</button></div>
 
-    <section id="tab-resources" class="hidden">
+    <section id="tab-agenda" class="hidden">
       <div class="card">
-        <h2>My resources</h2>
-        <p class="muted">Links and files you can push to the phones from the Live session tab. They belong to you and are not shown to other teachers.
-          Files stay private: the phones receive a temporary link valid for <span id="signedHours"></span> hours.
-          Maximum <span id="maxMb"></span> MB per file (images, PDF, short videos...).</p>
-        <h3>Add a link</h3>
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          <input id="resLinkTitle" placeholder="Title shown on the phones" style="max-width:260px">
-          <input id="resLinkUrl" placeholder="https://..." style="max-width:320px">
-          <input id="resLinkModule" list="moduleList" placeholder="Module (optional)" style="max-width:160px">
-          <button id="resLinkBtn">Add the link</button>
-        </div>
-        <h3>Add a file</h3>
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          <input id="resFileTitle" placeholder="Title shown on the phones" style="max-width:260px">
-          <input type="file" id="resFile" style="max-width:320px">
-          <input id="resFileModule" list="moduleList" placeholder="Module (optional)" style="max-width:160px">
-          <button id="resFileBtn">Upload the file</button>
+        <div class="card-head"><h2>My week (all my classes)</h2><span class="grow"></span>
+          <button id="agPrev" class="btn sec sm">◀</button><span id="agWeek" class="small-t"></span><button id="agNext" class="btn sec sm">▶</button></div>
+        <div id="agGrid" class="week6"></div>
+        <p class="muted small-t" id="agLegend"></p>
+      </div>
+      <div class="card"><h2>Office hours</h2><div id="agOffice" class="muted">—</div>
+        <span><button class="lnk" id="agOfficeEdit">cancel or add a date</button></span></div>
+    </section>
+
+      </div>
+      <div class="space hidden" data-space="me">
+        <div class="tabbar" data-space="me"><button data-tab="classes">Classes and assistants</button>
+          <button data-tab="myspace" class="teacher-only hidden" id="mySpaceTab">Office hours, proposals</button>
+          <button data-tab="supervision" class="hidden" id="supervisionTab">Supervision</button>
+          <button data-tab="notifset">Notifications</button><button data-tab="more" class="phone-only">All</button></div>
+    <section id="tab-classes" class="hidden">
+      <!-- v29: an account with an invitation code joins a class as assistant -->
+      <div class="card" id="joinCard">
+        <h2>Join a class as assistant</h2>
+        <div class="row"><input id="joinCode" placeholder="invitation code (8 characters)" style="max-width:260px;text-transform:uppercase"><button id="joinBtn">Join</button></div>
+      </div>
+      <div class="card hidden" id="newClassCard">
+        <h2>New class</h2>
+        <div class="row">
+          <input id="className" placeholder="e.g. IoT - 4th year engineering" style="max-width:320px">
+          <input id="classYear" placeholder="2026-2027" style="max-width:160px">
+          <button id="createClassBtn">Create</button>
         </div>
       </div>
       <div class="card">
-        <input id="resourceSearch" placeholder="🔍 Search a resource (title, module)" style="max-width:420px">
-        <div id="resourcesTable" style="margin-top:8px"></div>
+        <label class="tick"><input type="checkbox" id="showArchived"> Show the archived classes</label>
+        <div id="classesTable"></div>
+        <p class="muted"><strong>Archive</strong>: the class leaves your lists, nothing is lost, and you can bring it back. <strong>Delete</strong> erases its students, sessions, attendance and marks for ever.</p>
       </div>
-    </section>
-
-    <!-- ===================== EXPORT ===================== -->
-    <section id="tab-messages" class="hidden">
-      <!-- v29: a mailbox: one line per message, opened on a click; folders, search, star, archive, delete (for me) -->
-      <div class="card" id="mailCard">
-        <div class="row mail-tools">
-          <div class="mail-boxes" id="mailBoxes">
-            <button class="small" data-box="inbox">📥 Received <span id="msgUnread" class="badge no hidden"></span></button>
-            <button class="small secondary" data-box="starred">⭐ Starred</button>
-            <button class="small secondary" data-box="archived">🗄 Archived</button>
-            <button class="small secondary" data-box="sent">📤 Sent</button>
-          </div>
-          <input id="mailSearch" placeholder="🔍 Search (name, subject, text)" style="max-width:280px">
+      <div class="card teacher-only">
+        <h2>Assistants of this class</h2>
+        <p class="muted">An assistant works with his own account. Choose his <strong>role</strong> (TP, TD, course, co-teacher): it ticks a set of
+          permissions; then tick or untick any permission, whenever you want, and limit him to some groups if needed. Everything he does is recorded below.</p>
+        <h3>Invite an assistant (he creates his account himself)</h3>
+        <div class="row" style="gap:8px">
+          <select id="inviteRole" style="width:auto"><option value="tp">TP assistant</option><option value="td">TD assistant</option><option value="course">Course assistant</option><option value="co">Co-teacher</option></select>
+          <input id="inviteGroups" placeholder="groups (empty = all), e.g. G11 G12" style="max-width:240px">
+          <button id="inviteBtn" class="green">Create an invitation code</button>
         </div>
-        <div id="mailList" class="mail-list"></div>
-        <div class="row" style="margin-top:8px"><button id="mailMore" class="small secondary hidden">Show more</button><span id="mailCount" class="muted"></span></div>
-      </div>
-      <div class="card" data-perm="messages" id="msgComposeCard">
-        <h2>Write to students</h2>
-        <p class="muted">The students read it on their home page (✉ Messages), on any device where they are signed in. They can answer you privately;
-          they never see each other's messages.</p>
-        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
-          <label style="margin:0">To <select id="msgKind" style="width:auto">
-            <option value="class">the whole class</option><option value="group">a TD group / TP sub-group</option><option value="students">chosen students</option></select></label>
-          <select id="msgGroup" class="hidden" style="width:auto"></select>
-        </div>
-        <div id="msgPick" class="hidden" style="margin-top:8px">
-          <input id="msgPickSearch" placeholder="Search a student (name or student number)" style="max-width:340px">
-          <div id="msgPickList" class="pick-list"></div><p class="muted" id="msgPickCount" style="margin:4px 0 0"></p>
-        </div>
-        <input id="msgSubject" placeholder="Subject (optional)" style="margin-top:8px">
-        <textarea id="msgBody" rows="4" placeholder="Your message" style="margin-top:6px"></textarea>
-        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
-          <label style="margin:0">Attach a published document <select id="msgDoc" style="width:auto"><option value="">none</option></select></label>
-          <button id="msgSendBtn" class="green">Send</button> <span id="msgReplyNote" class="muted"></span>
-        </div>
-      </div>
-      <div class="card" id="staffCard">
-        <h2 id="staffTitle">Assistants of this class</h2>
-        <div class="row" style="gap:10px;align-items:center"><label style="margin:0">To <select id="staffTo" style="width:auto"></select></label></div>
-        <input id="staffSubject" placeholder="Subject (optional)" style="margin-top:8px">
-        <textarea id="staffBody" rows="3" placeholder="Your message" style="margin-top:6px"></textarea>
-        <button id="staffSendBtn" style="margin-top:6px">Send</button> <span id="staffReplyNote" class="muted"></span>
-      </div>
-    </section>
-
-    <section id="tab-results" class="hidden">
-      <div class="card" id="resultsListCard">
-        <h2>Results of the quizzes</h2>
-        <p class="muted">Every finished quiz and test of the selected class. Open one to see the success rate of each question and the answers
-          and mark of each student. <span class="teacher-only">You can correct a mark (with a reason): the corrected mark replaces the computed one
-          in the profile, the averages and the Excel export. A quiz nobody answered is marked <strong>empty</strong>: it is left out of the marks.</span>
-          <span class="assistant-only">You see the lab quizzes the teacher shares with you.</span></p>
-        <input id="resultsSearch" placeholder="Search a quiz (title, session, date)" style="max-width:320px">
-        <div id="resultsList"></div>
-      </div>
-      <div class="card hidden" id="resultsDetailCard">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <h2 id="resultsTitle" style="margin:0"></h2>
-          <div><button id="resultsExport" class="small green">Download this quiz (Excel)</button> <button id="resultsBack" class="small secondary">◀ All the quizzes</button></div>
-        </div>
-        <div id="resultsDetail"></div>
-      </div>
-    </section>
-
-    <section id="tab-export" class="hidden">
-      <div class="card">
-        <h2>Export results</h2>
-        <p class="muted">One Excel file for the selected class: attendance for every session, quiz marks out of 20, average without the
-          <span id="dropLowest"></span> lowest marks, statistics per question, and the list of students who left a quiz screen.</p>
-        <button id="exportBtn" class="green">Download the Excel file</button>
-      </div>
-    </section>
-
-    <!-- ===================== CLASSES ===================== -->
-    <!-- ===================== v30: MY SPACE (the teacher, all his classes) ===================== -->
+        <div id="invitesTable" style="margin-top:8px"></div>
+        <p class="muted" style="margin-top:6px">Give him the code and the address of the teacher page. On the login screen he opens
+          « I am an assistant and I have an invitation code ». A code is valid 14 days, once.</p>
+        <h3>Or add an existing account</h3>
+        <div class="row" style="gap:8px"><input id="assistantEmail" placeholder="assistant e-mail" style="max-width:300px">
+          <select id="assistantRole" style="width:auto"><option value="tp">TP assistant</option><option value="td">TD assistant</option><option value="course">Course assistant</option><option value="co">Co-teacher</option></select>
+          <button id="addAssistantBtn">Add assistant</button></div>
+        <div id="assistantsTable" style="margin-top:10px"></div>
+        <h3 style="margin-top:18px">What the assistants did <button id="logRefreshBtn" class="small secondary">↻ Refresh</button></h3>
+        <div id="activityLog" style="max-height:360px;overflow:auto"></div>
+      </div></section>
     <section id="tab-myspace" class="hidden">
-      <div class="card">
+      <div class="card hidden" id="oldAnnCard">
         <h2>📌 Announcement to the students</h2>
         <p class="muted">A short message pinned on the home page of your students (and in « My teachers ») until the date you choose, then it disappears by itself.</p>
         <textarea id="annBody" rows="2" maxlength="500" placeholder="e.g. Absent on Thursday 16: office hours moved to Monday 10:00."></textarea>
@@ -719,10 +976,7 @@
           <div class="row" style="margin-top:6px"><button id="propSaveBtn" class="green">Save</button><button id="propCancelBtn" class="secondary">Cancel</button></div>
         </div>
         <div id="propList"></div>
-      </div>
-    </section>
-
-    <!-- ===================== v31: SUPERVISION (final-year projects, theses, mini-projects) ===================== -->
+      </div></section>
     <section id="tab-supervision" class="hidden">
       <div id="projListCard" class="card">
         <div class="row" style="justify-content:space-between"><h2 style="margin:0">🎓 My supervised projects</h2>
@@ -830,111 +1084,30 @@
           <div class="row" style="margin-top:6px"><button id="psSaveBtn" class="green">Save</button>
             <button id="psArchiveBtn" class="secondary teacher-only-sup">Archive the project</button></div>
         </div>
+      </div></section>
+
+    <section id="tab-notifset" class="hidden">
+      <div class="card"><h2>Notifications on this device</h2>
+        <p class="muted">A message of a student, a request (device, station, another group): an alert on this computer or this phone, one click and you are at the right place.</p>
+        <div id="tNotifState" class="muted"></div>
+        <div class="row" style="gap:8px"><button id="tNotifOn" class="btn or">Turn on</button><button id="tNotifOff" class="btn sec">Turn off on this device</button></div>
+        <p class="muted small-t">iPhone: first « Add to Home Screen », then open ClassPulse from the icon.</p>
       </div>
+    </section>
+    <section id="tab-more" class="hidden">
+      <div class="more-list" id="moreList"></div>
     </section>
 
-    <!-- ===================== v32: TIMETABLE ===================== -->
-    <section id="tab-timetable" class="hidden">
-      <div class="card">
-        <div class="row" style="justify-content:space-between"><h2 style="margin:0">🗓 Timetable</h2>
-          <span class="teacher-only"><button id="ttImportBtn" class="green">⬆ Import (Excel or DeptDesk file)</button>
-          <button id="ttNewBtn" class="secondary">＋ New, by hand</button></span></div>
-        <p class="muted">One timetable per section and semester. Link each class to its module (below): its students then see the timetable
-          of their whole section, their own sessions and the next one on their home page; « Live » offers to start the session at the right time.</p>
-        <div class="tt-bar">
-          <select id="ttSelect" title="Which timetable"></select>
-          <select id="ttViewSel" title="What to show"></select>
-          <label class="tick" style="margin:0"><input type="checkbox" id="ttStudents" style="width:auto"> as the students see it</label>
-        </div>
-        <p class="muted" id="ttWeekNote" style="margin:0 0 8px"></p>
-        <div id="ttGrid"></div>
-        <div class="row no-print" style="margin-top:10px;gap:6px">
-          <button id="ttExportXls" class="small secondary">⬇ Excel (grid)</button>
-          <button id="ttExportTpl" class="small secondary teacher-only">⬇ Excel (template, to import again)</button>
-          <button id="ttExportIcs" class="small secondary">📅 Calendar file (.ics)</button>
-          <button id="ttPrint" class="small secondary">🖨 Print</button>
-        </div>
       </div>
-      <div class="card" id="ttUpcomingCard">
-        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Next 14 days</h2>
-          <button id="ttChangeBtn" class="orange teacher-only">＋ Cancel, move or add a session</button></div>
-        <p class="muted" style="margin:4px 0">The sessions of what is shown above, with the changes. A change can send a message to the students concerned.</p>
-        <div id="ttUpcoming"></div>
-        <h3 style="margin-top:14px">All the changes</h3>
-        <div id="ttChanges"></div>
-      </div>
-      <div class="card teacher-only" id="ttLinksCard">
-        <h2>My classes and their timetable</h2>
-        <p class="muted">The module of the class in that timetable; « late after » = minutes after the start of a session started from the timetable.</p>
-        <div id="ttLinks"></div>
-      </div>
-      <div class="card teacher-only hidden" id="ttSettingsCard">
-        <h2>Settings of this timetable</h2>
-        <div class="row">
-          <input id="tsTitle" placeholder="Title, e.g. 5th year ATT · S1 2026-2027" style="max-width:340px">
-          <input id="tsLevel" placeholder="level, e.g. ING5 ATT" style="max-width:150px">
-          <input id="tsYear" placeholder="year, e.g. 2026-2027" style="max-width:130px">
-          <input id="tsPeriod" placeholder="semester, e.g. S1" style="max-width:110px">
-          <input id="tsSection" placeholder="section (if several)" style="max-width:140px">
-        </div>
-        <div class="row" style="margin-top:6px">
-          <label style="margin:0">TD groups <input type="number" id="tsTd" min="0" max="12" style="width:70px"></label>
-          <label style="margin:0">TP sub-groups <input type="number" id="tsTp" min="0" max="20" style="width:70px"></label>
-          <label style="margin:0">semester from <input type="date" id="tsStarts" style="width:auto"></label>
-          <label style="margin:0">to <input type="date" id="tsEnds" style="width:auto"></label>
-          <label style="margin:0">week A = the week of <input type="date" id="tsWeekA" style="width:auto"></label>
-        </div>
-        <label for="tsKinds" style="margin-top:8px">Weeks without classes: one line per week, its first day (Saturday or any day of it) + holiday or exams</label>
-        <textarea id="tsKinds" rows="3" placeholder="2026-12-19 holiday&#10;2027-01-09 exams"></textarea>
-        <label class="tick"><input type="checkbox" id="tsShowTeachers" style="width:auto"> the students see the names of the teachers</label>
-        <p class="muted" id="tsWeeksInfo"></p>
-        <div class="row" style="margin-top:6px"><button id="tsSaveBtn" class="green">Save</button>
-          <button id="tsDeleteBtn" class="red">Delete this timetable</button></div>
-      </div>
-    </section>
-
-    <section id="tab-classes" class="hidden">
-      <!-- v29: an account with an invitation code joins a class as assistant -->
-      <div class="card" id="joinCard">
-        <h2>Join a class as assistant</h2>
-        <div class="row"><input id="joinCode" placeholder="invitation code (8 characters)" style="max-width:260px;text-transform:uppercase"><button id="joinBtn">Join</button></div>
-      </div>
-      <div class="card hidden" id="newClassCard">
-        <h2>New class</h2>
-        <div class="row">
-          <input id="className" placeholder="e.g. IoT - 4th year engineering" style="max-width:320px">
-          <input id="classYear" placeholder="2026-2027" style="max-width:160px">
-          <button id="createClassBtn">Create</button>
-        </div>
-      </div>
-      <div class="card">
-        <label class="tick"><input type="checkbox" id="showArchived"> Show the archived classes</label>
-        <div id="classesTable"></div>
-        <p class="muted"><strong>Archive</strong>: the class leaves your lists, nothing is lost, and you can bring it back. <strong>Delete</strong> erases its students, sessions, attendance and marks for ever.</p>
-      </div>
-      <div class="card teacher-only">
-        <h2>Assistants of this class</h2>
-        <p class="muted">An assistant works with his own account. Choose his <strong>role</strong> (TP, TD, course, co-teacher): it ticks a set of
-          permissions; then tick or untick any permission, whenever you want, and limit him to some groups if needed. Everything he does is recorded below.</p>
-        <h3>Invite an assistant (he creates his account himself)</h3>
-        <div class="row" style="gap:8px">
-          <select id="inviteRole" style="width:auto"><option value="tp">TP assistant</option><option value="td">TD assistant</option><option value="course">Course assistant</option><option value="co">Co-teacher</option></select>
-          <input id="inviteGroups" placeholder="groups (empty = all), e.g. G11 G12" style="max-width:240px">
-          <button id="inviteBtn" class="green">Create an invitation code</button>
-        </div>
-        <div id="invitesTable" style="margin-top:8px"></div>
-        <p class="muted" style="margin-top:6px">Give him the code and the address of the teacher page. On the login screen he opens
-          « I am an assistant and I have an invitation code ». A code is valid 14 days, once.</p>
-        <h3>Or add an existing account</h3>
-        <div class="row" style="gap:8px"><input id="assistantEmail" placeholder="assistant e-mail" style="max-width:300px">
-          <select id="assistantRole" style="width:auto"><option value="tp">TP assistant</option><option value="td">TD assistant</option><option value="course">Course assistant</option><option value="co">Co-teacher</option></select>
-          <button id="addAssistantBtn">Add assistant</button></div>
-        <div id="assistantsTable" style="margin-top:10px"></div>
-        <h3 style="margin-top:18px">What the assistants did <button id="logRefreshBtn" class="small secondary">↻ Refresh</button></h3>
-        <div id="activityLog" style="max-height:360px;overflow:auto"></div>
-      </div>
-    </section>
-  </main>
+    </main>
+    <aside id="drawer" class="drawer hidden" aria-label="Student"></aside>
+  </div>
+  <div id="todoPanel" class="panel hidden"></div>
+  <div id="notifPanel" class="panel hidden"></div>
+  <nav id="bottomBar" class="bottom-bar" aria-label="Spaces">
+    <button data-space="live" class="active">Live</button><button data-space="class">Class</button>
+    <button data-space="msg">Messages<span id="bbMsg" class="dot hidden"></span></button><button data-space="agenda">Agenda</button><button data-space="me" data-more="1">More</button>
+  </nav>
   <div id="boardBox" class="modal hidden">
     <div class="modal-content card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -967,9 +1140,11 @@
         <h2 id="profileTitle" style="margin:0">Student</h2>
         <div><button id="profileExport" class="small secondary">Download (Excel)</button> <button id="profileClose" class="small">Close</button></div>
       </div>
+      <div id="profileActions" class="profile-actions"></div>
       <div id="profileBody"></div>
     </div>
   </div>
+
 </div>
 
 <script src="lib/supabase.js"></script>
@@ -977,14 +1152,17 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=32.3"></script>
-<script src="js/excel.js?v=32.3"></script>
-<script src="js/teacher.js?v=32.3"></script>
-<script src="js/supervision.js?v=32.3"></script>
-<script src="js/ttview.js?v=32.3"></script>
-<script src="js/timetable.js?v=32.3"></script>
-<script src="js/tt_teacher.js?v=32.3"></script>
-<script src="js/floatqr.js?v=32.3"></script>
+<script src="js/common.js?v=33.1"></script>
+<script src="js/excel.js?v=33.1"></script>
+<script src="js/teacher.js?v=33.1"></script>
+<script src="js/grading.js?v=33.1"></script>
+<script src="js/grades_teacher.js?v=33.1"></script>
+<script src="js/shell.js?v=33.1"></script>
+<script src="js/supervision.js?v=33.1"></script>
+<script src="js/ttview.js?v=33.1"></script>
+<script src="js/timetable.js?v=33.1"></script>
+<script src="js/tt_teacher.js?v=33.1"></script>
+<script src="js/floatqr.js?v=33.1"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
