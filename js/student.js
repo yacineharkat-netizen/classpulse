@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.2"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -110,6 +110,38 @@ let gateLinkedAt = null;
 function linkedOn(t) {
   return t ? new Date(t).toLocaleString([], { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 }
+// v33.2: right after a device request, on the device that asks: « Tell me on this device when the teacher answers »
+function offerDeviceNotif() {
+  const ok = typeof CONFIG !== "undefined" && CONFIG.vapidPublicKey && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  if (!ok || Notification.permission === "denied") return;
+  const live = $("viewLive");
+  const box = document.createElement("div");
+  box.className = "card"; box.id = "devNotifBox";
+  box.innerHTML = Notification.permission === "granted" ? `<p class="muted" id="devNotifTxt">🔔 Notifications on: you will be told on this device when the teacher answers.</p>`
+    : `<p><strong>🔔 Be told on this device when the teacher answers?</strong></p><p class="muted">Useful if you close this page: a notification arrives (and a reminder tomorrow).</p>
+       <button id="devNotifOn" class="green" style="width:100%">Turn on the notifications</button><p class="muted hidden" id="devNotifTxt"></p>`;
+  live.appendChild(box);
+  const sub = async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("sw-push.js", { scope: "./" });
+      await navigator.serviceWorker.ready;
+      let s = await reg.pushManager.getSubscription();
+      if (!s) {
+        const b = CONFIG.vapidPublicKey, pad = "=".repeat((4 - (b.length % 4)) % 4), raw = atob((b + pad).replace(/-/g, "+").replace(/_/g, "/"));
+        s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from([...raw].map((c) => c.charCodeAt(0))) });
+      }
+      const j = s.toJSON();
+      await rpc("s_push_subscribe", { p_device: deviceToken, p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+      return true;
+    } catch (e) { return false; }
+  };
+  if (Notification.permission === "granted") { sub(); return; }
+  $("devNotifOn").onclick = async () => {
+    const perm = await Notification.requestPermission();
+    const t = $("devNotifTxt"); t.classList.remove("hidden"); $("devNotifOn").classList.add("hidden");
+    t.textContent = perm === "granted" && await sub() ? "🔔 Done: you will be told on this device." : "Notifications refused by the browser: keep this page open.";
+  };
+}
 function renderDeviceGate(otherKind, status) {
   show("viewLive");
   $("presence").innerHTML = '<span class="badge no">Not your class device</span>';
@@ -132,6 +164,7 @@ function renderDeviceGate(otherKind, status) {
     try {
       await rpc("s_device_request", { p_token: deviceToken, p_code: sessionCode, p_kind: kind, p_device_kind: deviceKind() });
       renderDeviceGate(otherKind, "pending");
+      offerDeviceNotif();   // v33.2
       clearInterval(gateTimer);
       gateTimer = setInterval(async () => {
         let st;
@@ -743,7 +776,8 @@ function renderSelfPaced(live, who, head, q) {
     html += `<div class="item-state" id="itemState${it.index}">${handed ? "" : it.answered ? "✔ saved" : "not answered yet"}</div></div>`;
   });
   html += watermark() + `</div>`;
-  if (!handed) html += `<div class="card"><button id="submitQuizBtn" class="green" style="width:100%;font-size:19px">Submit my answers</button>
+  const waiting = !handed && outboxRead().some((x) => x.quiz === q.quiz_id);   // v33.2: handed in on this phone, still on its way
+  if (!handed) html += `<div class="card"><button id="submitQuizBtn" class="${waiting ? "sending" : "green"}" style="width:100%;font-size:19px" ${waiting ? "disabled" : ""}>${waiting ? "Saved on this phone ✓, sending…" : "Submit my answers"}</button>
       <p id="submitState" class="submit-state" role="status" aria-live="polite"></p>
       <p class="muted" style="margin:6px 0 0">When you submit, your answers are final. Until then they are saved anyway and the teacher receives them when he closes the test.</p></div>`;
   live.innerHTML = html;
@@ -793,32 +827,64 @@ function renderSelfPaced(live, who, head, q) {
     clearTimeout(numTimers["c" + it.index]); numTimers["c" + it.index] = setTimeout(() => saveItem(it), 250);
   });
   $("submitQuizBtn").onclick = async () => {
-    // pending numbers are saved first
-    for (const it of items) if (drafts[key(it.index)] !== undefined) await saveItem(it);
-    const fresh = (state.quiz && state.quiz.items) || items;
-    const missing = fresh.filter((it) => !it.answered).length;
+    // v33.2: no waiting before the answer of the button: the count of the missing answers is read from the screen
+    const missing = items.filter((it) => !it.answered && drafts[key(it.index)] === undefined).length;
     if (!(await askInPage($("submitQuizBtn"), (missing ? `<strong>${missing} question(s) not answered.</strong> ` : "") + "Submit your answers now? You will not be able to change them."))) return;
-    // v33: the button says what happens: sending, a second try on a slow network, sent (with the time). One click is enough.
-    const btn = $("submitQuizBtn"), note = $("submitState");
-    const show = (label, cls, text) => { btn.textContent = label; btn.className = cls; btn.style.width = "100%"; btn.style.fontSize = "19px"; note.textContent = text || ""; };
-    btn.disabled = true;
-    show("Sending…", "sending", "Do not close the page. No need to click again.");
-    for (let attempt = 1; attempt <= 6; attempt++) {
-      try {
-        await rpc("s_submit_quiz", { p_device: deviceToken, p_code: sessionCode, p_quiz: q.quiz_id });
-        show("Sent ✓", "sent", "Received by the server at " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ". Your answers are saved.");
-        toast("Answers handed in.", "ok");
-        setTimeout(async () => { lastRendered = ""; await fetchState(); }, 1500);
-        return;
-      } catch (e) {
-        if (!e.network) { btn.disabled = false; show("Submit my answers", "green", ""); toast(e.message, "error"); return; }
-        show(`Sending… (try ${attempt + 1})`, "sending", "Slow network: your answers are kept on this device, trying again by itself.");
-        await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * attempt)));
-      }
-    }
-    btn.disabled = false; show("Submit my answers", "green", "Not sent: no network. Your answers are saved; try again in a moment.");
+    const btn0 = $("submitQuizBtn"); btn0.disabled = true; btn0.textContent = "Saved on this phone ✓, sending…"; btn0.className = "sending";
+    $("submitState").textContent = "You can close the page: the answers leave by themselves as soon as the network allows.";
+    outboxPut(q, items, drafts, key);
+    outboxFlush(true);
   };
 }
+
+// ------------------------------------------------------------------ v33.2: the answers handed in wait on the phone, then leave in the background
+// One entry per test: the answers still in the boxes (numbers typed, choices ticked) and the « submit ». Sent again until the
+// server says yes; a second sending is ignored by the server (the time of the first one is kept).
+const OUTBOX = "cp_outbox";
+function outboxRead() { try { return JSON.parse(localStorage.getItem(OUTBOX) || "[]"); } catch (e) { return []; } }
+function outboxWrite(l) { try { localStorage.setItem(OUTBOX, JSON.stringify(l)); } catch (e) { /* private window: the sending is tried now only */ } }
+function outboxPut(q, items, drafts, key) {
+  const pending = items.filter((it) => drafts[key(it.index)] !== undefined).map((it) => {
+    const raw = drafts[key(it.index)];
+    if (it.qtype === "number") { const v = parseFloat(String(raw).trim().replace(/\s/g, "").replace(",", ".")); return isNaN(v) ? null : { index: it.index, number: v }; }
+    return raw && raw.length ? { index: it.index, positions: raw } : null;
+  }).filter(Boolean);
+  const l = outboxRead().filter((x) => x.quiz !== q.quiz_id);
+  l.push({ quiz: q.quiz_id, code: sessionCode, device: deviceToken, answers: pending, at: Date.now() });
+  outboxWrite(l);
+}
+let outboxBusy = false;
+async function outboxFlush(fromButton) {
+  if (outboxBusy) return; outboxBusy = true;
+  try {
+    for (const e of outboxRead()) {
+      let ok = true;
+      for (const a of e.answers) {
+        try { await rpc("s_answer_self", { p_device: e.device, p_code: e.code, p_quiz: e.quiz, p_index: a.index, p_positions: a.positions || null, p_number: a.number == null ? null : a.number }); a.done = true; }
+        catch (err) { if (err.network) { ok = false; break; } a.done = true; }   // refused (closed, already submitted): no use trying again
+      }
+      if (!ok) continue;
+      try {
+        const r = await rpc("s_submit_quiz", { p_device: e.device, p_code: e.code, p_quiz: e.quiz });
+        outboxWrite(outboxRead().filter((x) => x.quiz !== e.quiz));
+        const at = new Date((r && r.submitted_at) || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const btn = $("submitQuizBtn");
+        if (btn) { btn.textContent = "Sent ✓ " + at; btn.className = "sent"; }
+        if ($("submitState")) $("submitState").textContent = "Received by the server at " + at + ". Your answers are final.";
+        toast("Answers handed in (" + at + ").", "ok");
+        setTimeout(async () => { lastRendered = ""; try { await fetchState(); } catch (err) { /* next poll */ } }, 1500);
+      } catch (err) {
+        if (err.network) continue;
+        outboxWrite(outboxRead().filter((x) => x.quiz !== e.quiz));   // refused for good (test closed…): said once
+        if (fromButton) { const btn = $("submitQuizBtn"); if (btn) { btn.disabled = false; btn.textContent = "Submit my answers"; btn.className = "green"; } }
+        toast(err.message, "error");
+      }
+    }
+  } finally { outboxBusy = false; }
+  if (outboxRead().length) setTimeout(() => outboxFlush(false), 4000);
+}
+window.addEventListener("online", () => outboxFlush(false));
+setTimeout(() => outboxFlush(false), 1500);   // answers handed in before the page was closed
 
 function toggleOption(pos, multiple) {
   if (multiple) selection = selection.includes(pos) ? selection.filter((p) => p !== pos) : selection.concat(pos);

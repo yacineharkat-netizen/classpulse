@@ -6,7 +6,6 @@ const CONFIG = {
   // The anon key is meant to be public: it only allows calling the s_ functions.
   supabaseUrl: "https://iuhhdkirmbzmpjeyyuvp.supabase.co",
   supabaseAnonKey: "sb_publishable_aJhZsCv8Ij-A4RKC6lXfbA_bJxDoUqE",
-    vapidPublicKey: "BNRVgD6XXwqh9o1MmeZFScvORZkFavQAfrahYr1fTlhP7sxIPxyiybxwPtKSHmHmSNfGUPCVfabBzZ8yAb8hWiQ",
 
   appName: "ClassPulse",
   institution: "USTHB · Faculty of Electrical Engineering",

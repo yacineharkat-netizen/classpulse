@@ -1,6 +1,9 @@
-(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.1"; // file version, checked by common.js
-// v33: final mark of a class. One evaluation column = a quiz / test / TP (the same unit + title run once per sub-group
-// makes ONE column, as in the Excel file), or a column typed in the app (exam, project, oral…).
+(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.2"; // file version, checked by common.js
+// v33: final mark of a class. One evaluation column = a quiz / test / TP, or a column typed in the app (exam, project, oral…).
+// v33.2: in a unit (TP1) the quizzes are grouped by UNIT, whatever their title (the same quiz reused, or one quiz per
+// sub-group): the n-th graded quiz of each pass (attendance run) goes to column n (« TP1 · test 2 »). A quiz concerns only
+// the students checked in during its pass; checked in during another pass of the unit = not concerned (neither absent nor
+// « no answer »); absent only when he came to no pass of the unit.
 // Each column counts or not, and goes into one part: quiz | tp | td | exam | project. The final mark is
 // the weighted mean of the parts (out of 20), with the bonus added to its part (capped) or as a part of its own.
 const GRADE = (() => {
@@ -49,18 +52,29 @@ const GRADE = (() => {
       return gs.includes(st.td_group) || gs.includes(st.tp_group);
     };
     const cols = [], colOf = {};
-    d.quizzes.filter((q) => q.status === "finished" && q.graded !== false && q.kind !== "survey").forEach((q) => {
-      const ses = sessionOf[q.session_id] || {};
-      const key = "q:" + (ses.unit ? ses.unit + "|" + q.title : "id|" + q.id);
+    const graded = d.quizzes.filter((q) => q.status === "finished" && q.graded !== false && q.kind !== "survey");
+    const unitOf = (q) => String(q.unit || (sessionOf[q.session_id] || {}).unit || "").toUpperCase();
+    const multi = {}; graded.forEach((q) => { if (unitOf(q) && Number(q.pass_index) > 1) multi[unitOf(q)] = true; });
+    graded.forEach((q) => {
+      const ses = sessionOf[q.session_id] || {}, unit = unitOf(q), n = Math.max(1, Number(q.pass_index) || 1);
+      const key = q.key || "q:" + (unit ? unit + "#" + n : "id|" + q.id);
       if (!colOf[key]) {
         const e = evals[key] || {};
-        colOf[key] = { key, type: "quiz", kind: q.kind || "quiz", title: (ses.unit ? ses.unit + " " : "") + q.title, date: q.date,
+        colOf[key] = { key, type: "quiz", kind: q.kind || "quiz", unit, title: unit ? unit + (multi[unit] ? " · test " + n : "") : q.title, date: q.date,
           scale: Number(q.total_points || 20), quizzes: [],
-          counts: e.counts == null ? true : !!e.counts, part: e.component || (q.kind === "tp" ? "tp" : "quiz") };
+          counts: e.counts == null ? true : !!e.counts, part: e.component || (q.kind === "tp" || ses.kind === "tp" ? "tp" : ses.kind === "td" ? "td" : "quiz") };
         cols.push(colOf[key]);
       }
       colOf[key].quizzes.push(q);
     });
+    // attendance by session: who came, in which pass (run)
+    const came = {}, excusedIn = {};
+    d.attendance.forEach((a) => {
+      if (a.status === "present" || a.status === "late") (came[a.session_id + "|" + a.student_id] = came[a.session_id + "|" + a.student_id] || []).push(a.run_id == null ? null : Number(a.run_id));
+      if (a.status === "excused") excusedIn[a.session_id + "|" + a.student_id] = true;
+    });
+    const unitSessions = {}; d.sessions.forEach((x) => { const u = String(x.unit || "").toUpperCase(); if (u) (unitSessions[u] = unitSessions[u] || []).push(x); });
+    const inPass = (q, st) => { const r = came[q.session_id + "|" + st.id]; if (!r) return false; return q.run_id == null || r.some((x) => x == null || x === Number(q.run_id)); };
     (g.items || []).forEach((it) => {
       const key = "i:" + it.id, e = evals[key] || {};
       const c = { key, type: "item", kind: "typed", item: it, title: it.title, date: it.date || "", scale: Number(it.scale || 20),
@@ -77,6 +91,7 @@ const GRADE = (() => {
         return { v: Number(m.mark), st: "mark", reason: m.reason };
       }
       const forced = statusOf[col.key + "|" + st.id];
+      if (col.unit) return unitCell(col, st, forced);
       const own = col.quizzes.filter((q) => inGroup(sessionOf[q.session_id] || {}, st));
       const target = col.quizzes.find((q) => overrideOf[q.id + "|" + st.id] !== undefined || pts[q.id + "|" + st.id] !== undefined) || own[0] || col.quizzes[0];
       if (forced) return { v: forced.status === "abs" ? 0 : null, st: forced.status, forced: true, quiz: target, reason: forced.reason };
@@ -90,6 +105,25 @@ const GRADE = (() => {
       if (!own.length) return { v: null, st: "none", quiz: target };
       if (own.some((q) => att[q.session_id + "|" + st.id] === "excused")) return { v: null, st: "exc", quiz: target };
       return { v: 0, st: "abs", quiz: target };
+    };
+    // a column of a unit: the passes of the sub-groups put together
+    const unitCell = (col, st, forced) => {
+      const corrected = col.quizzes.find((q) => overrideOf[q.id + "|" + st.id] !== undefined);
+      const done = col.quizzes.find((q) => pts[q.id + "|" + st.id] !== undefined);
+      const mine = col.quizzes.filter((q) => inPass(q, st));
+      const target = corrected || done || mine[0] || col.quizzes[0];
+      if (forced) return { v: forced.status === "abs" ? 0 : null, st: forced.status, forced: true, quiz: target, reason: forced.reason };
+      if (corrected) return { v: overrideOf[corrected.id + "|" + st.id] * col.scale / Number(corrected.total_points || 20), st: "mark", corrected: true, quiz: corrected };
+      if (done) {
+        const k = done.id + "|" + st.id, scale = Number(done.total_points || 20), max = maxOf[k] || Number(done.max_points) || 1;
+        return { v: Math.max(0, (pts[k] / max) * scale - (penaltyOf[k] || 0)) * col.scale / scale, st: "mark", quiz: done };
+      }
+      if (mine.length) return { v: 0, st: "abs", noans: true, quiz: target };                     // checked in during the pass, no answer
+      const ses = unitSessions[col.unit] || [];
+      if (ses.some((x) => came[x.id + "|" + st.id])) return { v: null, st: "none", other: true, quiz: target };   // came in another pass
+      if (ses.some((x) => excusedIn[x.id + "|" + st.id])) return { v: null, st: "exc", quiz: target };
+      if (ses.some((x) => inGroup(x, st))) return { v: 0, st: "abs", quiz: target };             // came to no pass of the unit
+      return { v: null, st: "none", quiz: target };
     };
     const bonus = {}; (d.bonuses || []).forEach((b) => { bonus[b.student_id + "|" + b.category] = Number(b.points); });
     const bonusOf = (st) => ({ course: bonus[st.id + "|course"] || 0, td: bonus[st.id + "|td"] || 0, tp: bonus[st.id + "|tp"] || 0 });
@@ -109,7 +143,8 @@ const GRADE = (() => {
         const notes = [];
         if (kept.length) notes.push("mean of " + kept.length);
         const exc = mine.filter(({ x }) => x.st === "exc").map(({ c }) => c.title); if (exc.length) notes.push("excused: " + exc.join(", "));
-        const abs = mine.filter(({ x }) => x.st === "abs").map(({ c }) => c.title); if (abs.length) notes.push("absent (0): " + abs.join(", "));
+        const abs = mine.filter(({ x }) => x.st === "abs" && !x.noans).map(({ c }) => c.title); if (abs.length) notes.push("absent (0): " + abs.join(", "));
+        const noans = mine.filter(({ x }) => x.st === "abs" && x.noans).map(({ c }) => c.title); if (noans.length) notes.push("no answer (0): " + noans.join(", "));
         if (dropped.length) notes.push("left out (not in the " + N + " best): " + dropped.map((x) => x.c.title).join(", "));
         if (add) notes.push("+" + fmt(add) + " bonus");
         parts[p] = { n, notes: notes.join(" · ") || "no mark" };

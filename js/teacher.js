@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.2"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -273,13 +273,64 @@ async function loadGroups() {
   } catch (e) { /* no group */ }
   fillGroupSelect($("newSessionGroup"), $("newSessionKind").value, "");
 }
+// v33.2: « TD G1 » and « TP SG1 » are written apart (a TD group and a TP sub-group may have the same name)
 function groupOptions(kind, current) {
-  const names = kind === "td" ? classGroups.td : kind === "tp" ? classGroups.tp : classGroups.td.concat(classGroups.tp);
-  const all = [...new Set(names.concat(current ? [current] : []))];
-  return `<option value="">Whole class</option>` + all.map((g) => `<option value="${esc(g)}" ${g === current ? "selected" : ""}>${esc(g)}</option>`).join("");
+  const pairs = kind === "td" ? classGroups.td.map((g) => ["td", g]) : kind === "tp" ? classGroups.tp.map((g) => ["tp", g])
+    : classGroups.td.map((g) => ["td", g]).concat(classGroups.tp.filter((g) => !classGroups.td.includes(g)).map((g) => ["tp", g]));
+  if (current && !pairs.some((p) => p[1] === current)) pairs.push([kind === "tp" ? "tp" : "td", current]);
+  return `<option value="">Whole class</option>` + pairs.map(([k, g]) => `<option value="${esc(g)}" ${g === current ? "selected" : ""}>${k === "td" ? "TD" : "TP"} ${esc(g)}</option>`).join("");
 }
 function fillGroupSelect(select, kind, current) { select.innerHTML = groupOptions(kind, current); }
-$("newSessionKind").addEventListener("change", () => fillGroupSelect($("newSessionGroup"), $("newSessionKind").value, ""));
+$("newSessionKind").addEventListener("change", () => { fillGroupSelect($("newSessionGroup"), $("newSessionKind").value, ""); fillUnitSelect($("newSessionKind").value, ""); });
+// v33.2: the unit in a list that follows the type (C1… for a course, TD1… for a TD, TP1… for a lab), plus the units already used
+function fillUnitSelect(kind, current) {
+  const pre = kind === "td" ? "TD" : kind === "tp" ? "TP" : "C", n = kind === "course" ? 12 : 6;
+  const used = allSessions.filter((x) => x.kind === kind && x.unit).map((x) => String(x.unit).toUpperCase());
+  const list = [...new Set(Array.from({ length: n }, (_, i) => pre + (i + 1)).concat(used, current ? [String(current).toUpperCase()] : []))]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  $("newSessionUnit").innerHTML = `<option value="">— no unit —</option>` + list.map((u) => `<option ${u === String(current || "").toUpperCase() ? "selected" : ""}>${esc(u)}</option>`).join("");
+  if (!current && kind !== "course") {   // the next unit not used yet
+    const next = list.find((u) => u.startsWith(pre) && !used.includes(u)); if (next) $("newSessionUnit").value = next;
+  }
+}
+// the title: chosen among the documents put in this class (or typed)
+async function fillDocTitles(current) {
+  let docs = [];
+  try { docs = await rpc("t_list_docs", { p_class: classId }); } catch (e) { docs = []; }
+  const titles = [...new Set(docs.map((d) => d.title).filter(Boolean))];
+  $("newSessionDoc").innerHTML = `<option value="">— type a title below, or choose a document —</option>` + titles.map((t) => `<option ${t === current ? "selected" : ""}>${esc(t)}</option>`).join("");
+}
+$("newSessionDoc").onchange = () => { if ($("newSessionDoc").value) $("newSessionTitle").value = $("newSessionDoc").value; };
+// the « New session » dialog, also used to edit one (v33.2)
+let sessionEditing = null;
+async function openSessionDialog(s) {
+  sessionEditing = s || null;
+  $("dlgNewTitle").textContent = s ? "Edit the session" : "New session";
+  $("createSessionBtn").classList.toggle("hidden", !!s); $("saveSessionBtn").classList.toggle("hidden", !s);
+  $("dlgNewNote").textContent = s ? `Code ${s.code} · ${s.present} present · ${s.quizzes} quiz(zes): they are kept.` : "";
+  const kind = s ? s.kind : ($("newSessionKind").value || "course");
+  $("newSessionKind").value = kind; $("newSessionKind").disabled = !!s && isAssistant();
+  fillGroupSelect($("newSessionGroup"), kind, s ? s.group || "" : "");
+  fillUnitSelect(kind, s ? s.unit || "" : "");
+  $("newSessionTitle").value = s ? s.title : "";
+  $("newSessionDate").value = s ? s.date : new Date().toISOString().slice(0, 10);
+  $("newSessionTime").value = s ? s.time || "" : ""; $("newSessionEnd").value = s ? s.end_time || "" : "";
+  $("newSessionRemark").value = s ? s.remark || "" : ""; $("newSessionRemarkVis").checked = !!(s && s.remark_visible);
+  $("dlgNew").classList.remove("hidden");
+  fillDocTitles(s ? s.title : "");
+  setTimeout(() => $("newSessionTitle").focus(), 60);
+}
+$("saveSessionBtn").onclick = async () => {
+  const s = sessionEditing; if (!s) return;
+  try {
+    await rpc("t_update_session", { p_session: s.id, p_title: $("newSessionTitle").value, p_date: $("newSessionDate").value, p_time: $("newSessionTime").value || null, p_kind: $("newSessionKind").value });
+    await rpc("t_set_session_end_time", { p_session: s.id, p_end_time: $("newSessionEnd").value || null });
+    await rpc("t_set_session_group", { p_session: s.id, p_group: $("newSessionGroup").value, p_unit: $("newSessionUnit").value });
+    const r = await rpc("t_set_session_remark", { p_session: s.id, p_remark: $("newSessionRemark").value, p_visible: $("newSessionRemarkVis").checked });
+    toast("Session updated." + (r && r.notified ? " The students are told." : ""), "ok");
+    $("dlgNew").classList.add("hidden"); sessionEditing = null; loadSessions();
+  } catch (e) { toast(e.message, "error"); }
+};
 
 // An attendance forgotten open is closed here (once per session, when this page loads the list).
 const autoClosed = new Set();
@@ -318,51 +369,64 @@ function renderSessionAlerts() {
   $("sessionsBadge").title = open.length + " attendance open";
 }
 
+// v33.2: the list sorts (date, type, unit, group, present) and filters; « Edit » opens the dialog of the session
+const sesSort = { k: "date", dir: -1 };
+function sessionFilters() {
+  const keepU = $("sesUnit").value, keepG = $("sesGroup").value;
+  const units = [...new Set(allSessions.map((x) => String(x.unit || "").toUpperCase()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  $("sesUnit").innerHTML = `<option value="">All</option>` + units.map((u) => `<option ${u === keepU ? "selected" : ""}>${esc(u)}</option>`).join("");
+  const groups = [...new Set(allSessions.map((x) => x.group ? (x.kind === "tp" ? "TP " : x.kind === "td" ? "TD " : "") + x.group : "").filter(Boolean))].sort();
+  $("sesGroup").innerHTML = `<option value="">All</option><option value="-" ${keepG === "-" ? "selected" : ""}>Whole class</option>` + groups.map((g) => `<option ${g === keepG ? "selected" : ""}>${esc(g)}</option>`).join("");
+}
 function renderSessionsTable() {
   renderSessionAlerts();
-  $("sessionsTable").innerHTML = allSessions.length === 0 ? `<p class="muted">No session yet. Create one in the Live session tab.</p>` :
-    `<table><tr><th>Date</th><th>Time</th><th>Type</th><th>Group</th><th>Unit</th><th>Title</th><th>Code</th><th>Present</th><th>Quizzes</th><th></th></tr>` +
-    allSessions.map((s) => `<tr data-id="${s.id}"><td class="c-date">${esc(s.date)}</td><td class="c-time">${timeRange(s)}${s.ended_at ? ' <span class="badge closed">ended</span>' : ""}${s.attendance_open && !s.ended_at ? ' <span class="badge open">attendance open</span>' : ""}</td>
-      <td class="c-kind"><span class="kind ${s.kind}">${SESSION_KIND[s.kind] || s.kind}</span></td><td class="c-group">${esc(s.group || "")}</td><td class="c-unit">${esc(s.unit || "")}</td><td class="c-title">${esc(s.title)}</td>
-      <td>${s.code}</td><td>${s.present}</td><td>${s.quizzes}</td>
-      <td style="white-space:nowrap"><button class="small green" data-open="${s.id}">Open</button>
-        ${s.mine === false ? "" : `<button class="small secondary" data-sedit="${s.id}">Edit</button> <button class="small red" data-sdel="${s.id}">Delete</button>`}</td></tr>`).join("") + `</table>`;
+  sessionFilters();
+  const t = norm($("sesSearch").value), fk = $("sesKind").value, fu = $("sesUnit").value, fg = $("sesGroup").value;
+  const gLabel = (x) => x.group ? (x.kind === "tp" ? "TP " : x.kind === "td" ? "TD " : "") + x.group : "";
+  let list = allSessions.filter((x) => (!t || norm(`${x.title} ${x.unit || ""} ${x.code} ${x.remark || ""}`).includes(t)) && (!fk || x.kind === fk)
+    && (!fu || String(x.unit || "").toUpperCase() === fu) && (!fg || (fg === "-" ? !x.group : gLabel(x) === fg)));
+  const val = { date: (x) => x.date + " " + (x.time || ""), kind: (x) => x.kind, unit: (x) => String(x.unit || "").toUpperCase(), group: gLabel, present: (x) => Number(x.present) };
+  list = list.slice().sort((a, b) => { const A = val[sesSort.k](a), B = val[sesSort.k](b); return (typeof A === "number" ? A - B : String(A).localeCompare(String(B), undefined, { numeric: true })) * sesSort.dir; });
+  const th = (k, l) => `<th class="sortable ${sesSort.k === k ? "on" : ""}" data-ssort="${k}">${l}${sesSort.k === k ? (sesSort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+  $("sessionsTable").innerHTML = allSessions.length === 0 ? `<p class="muted">No session yet: « ＋ New session ».</p>` :
+    `<table><thead><tr>${th("date", "Date")}<th>Time</th>${th("kind", "Type")}${th("unit", "Unit")}${th("group", "Group")}<th>Title</th><th>Remark</th><th>Code</th>${th("present", "Present")}<th>Quizzes</th><th></th></tr></thead><tbody>` +
+    list.map((x) => `<tr data-id="${x.id}"><td>${esc(x.date)}</td><td>${timeRange(x)}${x.ended_at ? ' <span class="badge closed">ended</span>' : ""}${x.attendance_open && !x.ended_at ? ' <span class="badge open">attendance open</span>' : ""}</td>
+      <td><span class="kind ${x.kind}">${SESSION_KIND[x.kind] || x.kind}</span></td><td>${esc(x.unit || "")}</td><td>${esc(gLabel(x))}</td><td>${esc(x.title)}</td>
+      <td class="ses-remark">${x.remark ? `${esc(x.remark)} <span class="${x.remark_visible ? "vis" : "muted"}">${x.remark_visible ? "· seen by the students" : "· for me"}</span>` : ""}</td>
+      <td>${x.code}</td><td>${x.present}</td><td>${x.quizzes}</td>
+      <td style="white-space:nowrap"><button class="small green" data-open="${x.id}">Open</button>
+        ${x.mine === false ? "" : `<button class="small secondary" data-sedit="${x.id}">Edit</button> <button class="small red" data-sdel="${x.id}">Delete</button>`}</td></tr>`).join("") +
+    `</tbody></table>` + (list.length < allSessions.length ? `<p class="muted small-t">${list.length} / ${allSessions.length} session(s) shown (filters).</p>` : "");
+  if (window.matchMedia("(max-width: 760px)").matches && allSessions.length) {   // v33.2: on a phone, one card per session
+    $("sessionsTable").innerHTML = `<div class="ses-cards">` + list.map((x) => `<div class="ses-card" data-id="${x.id}">
+        <div class="l1"><span class="kind ${x.kind}">${SESSION_KIND[x.kind] || x.kind}</span>${x.unit ? `<strong>${esc(x.unit)}</strong>` : ""}${gLabel(x) ? `<span>${esc(gLabel(x))}</span>` : ""}
+          <span>${esc(x.date)} ${timeRange(x)}</span>${x.attendance_open && !x.ended_at ? ' <span class="badge open">attendance open</span>' : x.ended_at ? ' <span class="badge closed">ended</span>' : ""}</div>
+        <strong>${esc(x.title)}</strong><span class="small-t">${x.present} present · ${x.quizzes} quiz(zes) · code ${x.code}</span>
+        ${x.remark ? `<span class="ses-remark">📝 ${esc(x.remark)} <span class="${x.remark_visible ? "vis" : "muted"}">${x.remark_visible ? "· seen by the students" : "· for me"}</span></span>` : ""}
+        <div class="acts"><button class="small green" data-open="${x.id}">Open</button>${x.mine === false ? "" : `<button class="small secondary" data-sedit="${x.id}">Edit</button><button class="small red" data-sdel="${x.id}">Delete</button>`}</div></div>`).join("") + `</div>`
+      + `<p class="small-t muted">Sort: <button class="lnk" data-ssort="date">date</button> · <button class="lnk" data-ssort="unit">unit</button> · <button class="lnk" data-ssort="present">present</button></p>`;
+  }
+  $("sessionsTable").querySelectorAll("[data-ssort]").forEach((h) => h.onclick = () => {
+    const k = h.dataset.ssort; sesSort.dir = sesSort.k === k ? -sesSort.dir : (k === "date" || k === "present" ? -1 : 1); sesSort.k = k; renderSessionsTable();
+  });
   $("sessionsTable").querySelectorAll("[data-open]").forEach((b) => b.onclick = async () => {
     $("sessionSelect").value = b.dataset.open;
     await selectSession(b.dataset.open);
     showTab("live");
   });
   $("sessionsTable").querySelectorAll("[data-sdel]").forEach((b) => b.onclick = async () => {
-    const s = allSessions.find((x) => x.id === b.dataset.sdel);
-    if (!confirm(`Delete the session "${s.title}" of ${s.date}?\nIts attendance (${s.present} present) and its ${s.quizzes} quiz(zes) with all answers are deleted too.`)) return;
+    const x = allSessions.find((y) => y.id === b.dataset.sdel);
+    if (!confirm(`Delete the session "${x.title}" of ${x.date}?\nIts attendance (${x.present} present) and its ${x.quizzes} quiz(zes) with all answers are deleted too.`)) return;
     try {
-      await rpc("t_delete_session", { p_session: s.id });
-      if (sessionId === s.id) { sessionId = null; localStorage.removeItem("cp_session"); }
+      await rpc("t_delete_session", { p_session: x.id });
+      if (sessionId === x.id) { sessionId = null; localStorage.removeItem("cp_session"); }
       toast("Session deleted.", "ok"); loadSessions();
     } catch (e) { toast(e.message, "error"); }
   });
-  $("sessionsTable").querySelectorAll("[data-sedit]").forEach((b) => b.onclick = () => {
-    const tr = b.closest("tr"), s = allSessions.find((x) => x.id === b.dataset.sedit);
-    tr.querySelector(".c-date").innerHTML = `<input type="date" class="e-date" value="${s.date}" style="width:150px">`;
-    tr.querySelector(".c-time").innerHTML = `<input type="time" class="e-time" value="${s.time || ""}" style="width:110px" title="Start">
-      <input type="time" class="e-end" value="${s.end_time || ""}" style="width:110px" title="End">`;
-    tr.querySelector(".c-kind").innerHTML = `<select class="e-kind" style="width:auto" ${isAssistant() ? "disabled" : ""}>${Object.entries(SESSION_KIND).map(([k, v]) => `<option value="${k}" ${k === s.kind ? "selected" : ""}>${v}</option>`).join("")}</select>`;
-    tr.querySelector(".c-title").innerHTML = `<input class="e-title" value="${esc(s.title)}">`;
-    tr.querySelector(".c-group").innerHTML = `<select class="e-group" style="width:auto">${groupOptions(s.kind, s.group || "")}</select>`;
-    tr.querySelector(".c-unit").innerHTML = `<input class="e-unit" value="${esc(s.unit || "")}" placeholder="TP1" style="width:80px">`;
-    tr.querySelector(".e-kind").onchange = () => { tr.querySelector(".e-group").innerHTML = groupOptions(tr.querySelector(".e-kind").value, ""); };
-    b.textContent = "Save"; b.className = "small green";
-    b.onclick = async () => {
-      try {
-        await rpc("t_update_session", { p_session: s.id, p_title: tr.querySelector(".e-title").value, p_date: tr.querySelector(".e-date").value,
-          p_time: tr.querySelector(".e-time").value || null, p_kind: tr.querySelector(".e-kind").value });
-        await rpc("t_set_session_end_time", { p_session: s.id, p_end_time: tr.querySelector(".e-end").value || null });
-        await rpc("t_set_session_group", { p_session: s.id, p_group: tr.querySelector(".e-group").value, p_unit: tr.querySelector(".e-unit").value });
-        toast("Session updated.", "ok"); loadSessions();
-      } catch (e) { toast(e.message, "error"); }
-    };
-  });
+  $("sessionsTable").querySelectorAll("[data-sedit]").forEach((b) => b.onclick = () => openSessionDialog(allSessions.find((y) => y.id === b.dataset.sedit)));
 }
+["sesSearch", "sesKind", "sesUnit", "sesGroup"].forEach((id) => { $(id).addEventListener(id === "sesSearch" ? "input" : "change", renderSessionsTable); });
+$("sesNewBtn").onclick = () => openSessionDialog(null);
 
 $("sessionSelect").onchange = () => selectSession($("sessionSelect").value);
 
@@ -373,7 +437,8 @@ $("createSessionBtn").onclick = async () => {
     sessionId = s.id;
     if ($("newSessionEnd").value) await rpc("t_set_session_end_time", { p_session: s.id, p_end_time: $("newSessionEnd").value });
     if ($("newSessionGroup").value || $("newSessionUnit").value.trim()) await rpc("t_set_session_group", { p_session: s.id, p_group: $("newSessionGroup").value, p_unit: $("newSessionUnit").value });
-    $("newSessionUnit").value = "";
+    if ($("newSessionRemark").value.trim()) await rpc("t_set_session_remark", { p_session: s.id, p_remark: $("newSessionRemark").value, p_visible: $("newSessionRemarkVis").checked });
+    $("newSessionUnit").value = ""; $("newSessionRemark").value = ""; $("newSessionRemarkVis").checked = false;
     toast("Session created, code " + s.code, "ok");
     $("dlgNew").classList.add("hidden");   // v33.1
     await loadSessions();
@@ -1417,15 +1482,19 @@ async function loadStudents() {
   const f = norm($("studentSearch").value);
   // v29: filter by group, tick students, move them to a group (or out of it)
   const allGroups = [...new Set(all.map((s) => s.td_group).concat(all.map((s) => s.tp_group)).filter(Boolean))].sort();
-  if (stuGroupFilter && !allGroups.includes(stuGroupFilter) && stuGroupFilter !== "-") stuGroupFilter = "";
+  // v33.2: the filter keeps the TD groups and the TP sub-groups apart (« td:1 » / « tp:1 »)
+  const fGroups = [...new Set(all.map((s) => s.td_group).filter(Boolean))].sort().map((g) => ["td:" + g, "TD " + g])
+    .concat([...new Set(all.map((s) => s.tp_group).filter(Boolean))].sort().map((g) => ["tp:" + g, "TP " + g]));
+  if (stuGroupFilter && !fGroups.some((x) => x[0] === stuGroupFilter) && stuGroupFilter !== "-") stuGroupFilter = "";
+  const inF = (s) => stuGroupFilter.startsWith("td:") ? s.td_group === stuGroupFilter.slice(3) : s.tp_group === stuGroupFilter.slice(3);
   const list = all.filter((s) => (!f || norm(`${s.matricule} ${s.last_name} ${s.first_name}`).includes(f))
-    && (!stuGroupFilter || (stuGroupFilter === "-" ? !s.td_group && !s.tp_group : s.td_group === stuGroupFilter || s.tp_group === stuGroupFilter)));
+    && (!stuGroupFilter || (stuGroupFilter === "-" ? !s.td_group && !s.tp_group : inF(s))));
   stuPicked = new Set([...stuPicked].filter((id) => all.some((s) => s.id === id)));
   const edit = can("students_edit");
   lockedPins = all.filter((s) => s.pin_locked).length;
   updateStudentsBadge();
   $("studentsTable").innerHTML = `<div class="row" style="gap:8px"><label style="margin:0">Group <select id="stuGroupFilter" style="width:auto">
-      <option value="">all</option>${allGroups.map((g) => `<option value="${esc(g)}" ${g === stuGroupFilter ? "selected" : ""}>${esc(g)}</option>`).join("")}
+      <option value="">all</option>${fGroups.map(([k, l]) => `<option value="${esc(k)}" ${k === stuGroupFilter ? "selected" : ""}>${esc(l)}</option>`).join("")}
       <option value="-" ${stuGroupFilter === "-" ? "selected" : ""}>without group</option></select></label>
       <span class="muted">${all.length} students${f || stuGroupFilter ? ` · ${list.length} shown` : ""} · ${list.filter((s) => s.registered).length} with a class device${lockedPins ? ` · <span class="badge no">${lockedPins} PIN locked</span>` : ""}</span></div>
     ${edit ? `<div class="bulk-bar"><strong id="stuSelCount">${stuPicked.size} ticked</strong>
@@ -2553,6 +2622,8 @@ async function loadResults() {
   try { resultsList = await rpc("t_results_list", { p_class: classId }); } catch (e) { $("resultsList").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
   renderResultsList();
 }
+// v33.2: a quiz of a TP: its unit and the sub-group of its pass are added to its name (« TP1 · SG2 · TP test »)
+function resName(q) { return q.unit ? [String(q.unit).toUpperCase(), q.run_group || "", q.title].filter(Boolean).join(" · ") : q.title; }
 function renderResultsList() {
   const r = resultsList;
   if (!r) return;
@@ -2565,7 +2636,7 @@ function renderResultsList() {
   $("resultsList").innerHTML = `<table><tr><th>Date</th><th>Quiz</th><th>Type</th><th>Session</th><th>Answered</th><th>Mean</th>
       ${r.is_teacher ? "<th>Assistants</th>" : ""}<th></th></tr>` + list.map((q) => `<tr>
       <td style="white-space:nowrap">${esc(q.date)}${q.time ? " " + esc(q.time) : ""}</td>
-      <td><strong>${esc(q.title)}</strong>${q.graded ? "" : ' <span class="muted">(not graded)</span>'}${q.empty ? ' <span class="badge no">empty: nobody answered</span>' : ""}
+      <td><strong>${esc(resName(q))}</strong>${q.graded ? "" : ' <span class="muted">(not graded)</span>'}${q.empty ? ' <span class="badge no">empty: nobody answered</span>' : ""}
         ${q.corrected ? ` <span class="badge info">${q.corrected} corrected</span>` : ""}</td>
       <td>${KIND_LABEL[q.kind] || esc(q.kind)}${q.pace === "self" ? " · own pace" : ""}</td>
       <td>${esc(q.session)}${q.unit ? ` <span class="muted">(${esc(q.unit)})</span>` : ""}</td>
@@ -2619,7 +2690,8 @@ async function openResult(quizId) {
 }
 function renderResult() {
   const d = resultsData, q = d.quiz, edit = d.level === "edit";
-  $("resultsTitle").textContent = q.title;
+  const rl = resultsList && resultsList.quizzes ? resultsList.quizzes.find((x) => x.id === q.id) : null;
+  $("resultsTitle").textContent = rl ? resName(rl) : q.title;
   $("resultsExport").classList.toggle("hidden", !(edit || d.level === "export"));
   const qById = {};
   d.questions.forEach((qu) => { qById[qu.id] = qu; });
@@ -2648,6 +2720,15 @@ function renderResult() {
   }).join("");
   // ---- students: one column per question (in the order of the quiz)
   const cols = d.questions;
+  const fmtN = (x) => String(Math.round(Number(x) * 100) / 100);
+  const maxPts = cols.filter((qu) => qu.fix !== "drop").reduce((a, qu) => a + Number(qu.points || 0), 0);
+  // the calculation of a mark, shown on hover: mark = points / total of the points × scale − penalty
+  const calcText = (s) => {
+    if (s.status !== "answered") return STATUS_TEXT[s.status] || s.status;
+    const max = s.max != null ? Number(s.max) : maxPts, pen = Number(s.penalty || 0);
+    const line = `${fmtN(s.points || 0)} / ${fmtN(max)} × ${Number(q.total_points)}${pen ? " − " + fmtN(pen) + " (penalty)" : ""} = ${s.computed == null ? "—" : fmtN(s.computed)}`;
+    return s.override != null ? `Corrected by hand: ${fmtN(s.mark)} (computed: ${line})` : line;
+  };
   const sRows = d.students.map((s) => {
     const byQ = {};
     (s.answers || []).forEach((a) => { byQ[a.question_id] = a; });
@@ -2658,8 +2739,8 @@ function renderResult() {
         <div class="muted">${esc(s.matricule)}${s.tp_group ? " · " + esc(s.tp_group) : ""}</div>${makeupBadge(s.makeup)}</td>` +
       cols.map((qu) => { const a = byQ[qu.id]; return `<td class="${scoreClass(qu, a)}" title="${a ? "score " + Number(a.score) + " / " + Number(qu.points) : "no answer"}">${esc(answerText(qu, a))}</td>`; }).join("") +
       `<td>${s.points == null ? "" : Number(s.points)}</td>
-       <td>${s.computed == null ? "" : Number(s.computed)}</td>
-       <td>${markCell}</td>
+       <td class="calc" title="${esc(calcText(s))}">${s.computed == null ? "" : Number(s.computed)}</td>
+       <td class="calc" title="${esc(calcText(s))}">${markCell}</td>
        <td>${s.left_screen || ""}${s.locked ? ' <span class="badge no">locked</span>' : ""}${awayText(s.away, q)}</td>
        <td>${s.submitted_at ? fmtWhen(s.submitted_at) : ""}${s.board != null ? `<div class="muted">board ${s.board}${s.board_used != null ? " → " + s.board_used : ""}</div>` : ""}</td>
        <td style="white-space:nowrap">${edit && s.status !== "other group" ? `<button class="small secondary" data-rmark="${s.id}" title="Correct this mark">✏ Mark</button>` : ""}
@@ -2667,6 +2748,7 @@ function renderResult() {
          ${edit && s.submitted_at && q.status !== "finished" ? `<button class="small secondary" data-rreopen="${s.id}">Let him change</button>` : ""}</td></tr>`;
   }).join("");
   $("resultsDetail").innerHTML = head +
+    `<p><button class="small secondary" id="resCompareBtn">⇆ Compare two students</button></p>` +
     (edit && q.ask_variant ? `<p><button class="small secondary" id="resBoardBtn">🔢 Board check</button></p>` : "") +
     (edit && q.status === "finished" ? `<p><button class="small orange" id="resMakeupBtn">📝 Make-up for late or cut-off students…</button></p><div id="makeupPanel"></div>` : "") +
     `<h3>Questions</h3><div class="table-scroll"><table><tr><th>#</th><th>Question</th><th>Answers</th><th>Full marks</th><th>Average score</th><th>Choices (✓ in green)</th></tr>${qRows}</table></div>
@@ -2674,7 +2756,9 @@ function renderResult() {
     <p class="muted">Cells: the letters chosen (or the number typed). Green = full marks, orange = part of the points, red = 0. Hover a cell for its score.
       <em>Computed</em> = mark from the answers (penalty of a board correction included); <em>Mark</em> = the mark used everywhere.</p>
     <div class="table-scroll"><table class="res-students"><tr><th>Student</th>${cols.map((qu) => `<th title="${esc(qu.text)}">Q${qu.n}</th>`).join("")}
-      <th>Points</th><th>Computed</th><th>Mark /${Number(q.total_points)}</th><th>Left</th><th>Handed in</th><th></th></tr>${sRows}</table></div>`;
+      <th title="Sum of the points of his answers, on the total of the points of his questions">Points (on ${fmtN(maxPts)})</th>
+      <th title="Mark computed from the points: points / total of the points × ${Number(q.total_points)} − penalty">Computed</th>
+      <th title="The mark used everywhere (corrected or computed). Hover a mark: its calculation">Mark on ${Number(q.total_points)}</th><th>Left</th><th>Handed in</th><th></th></tr>${sRows}</table></div>`;
   const stOf = (id) => d.students.find((x) => x.id === id);
   const reload = () => openResult(q.id);
   $("resultsDetail").querySelectorAll("[data-rmark]").forEach((b) => b.onclick = () => {
@@ -2692,6 +2776,7 @@ function renderResult() {
     catch (e) { toast(e.message, "error"); }
   });
   if ($("resBoardBtn")) $("resBoardBtn").onclick = () => openBoardCheck(q.id);
+  $("resCompareBtn").onclick = () => window.openCompare(d);
   if ($("resMakeupBtn")) $("resMakeupBtn").onclick = () => openMakeupPanel(q.id, reload);
   // v27: a badly worded question: dropped for everybody, or full points to everybody who answered it
   $("resultsDetail").querySelectorAll(".res-fix").forEach((sel) => sel.onchange = async () => {
@@ -2768,12 +2853,12 @@ async function loadMessages() {
   updateMsgBadge();
 }
 
-function fillMsgGroups() {
-  const groups = [...new Set(classGroups.td.concat(classGroups.tp))];
+function fillMsgGroups() {   // v33.2: « TD G1 » and « TP SG1 » apart
+  const groups = classGroups.td.map((g) => ["TD:" + g, "TD " + g]).concat(classGroups.tp.map((g) => ["TP:" + g, "TP " + g]));
   const keep = $("msgGroup").value;
-  $("msgGroup").innerHTML = groups.length ? groups.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("")
+  $("msgGroup").innerHTML = groups.length ? groups.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")
                                           : `<option value="">no group in the student list</option>`;
-  if (groups.includes(keep)) $("msgGroup").value = keep;
+  if (groups.some((g) => g[0] === keep)) $("msgGroup").value = keep;
 }
 
 function syncMsgKind() {
@@ -2846,6 +2931,7 @@ function renderMailList() {
       <button class="star" data-mstar="${m.id}" title="${m.starred ? "Unstar" : "Star"}">${m.starred ? "★" : "☆"}</button></div>`).join("")
     : `<p class="muted" style="padding:8px">${{ inbox: "No message received.", starred: "No starred message.", archived: "No archived message.", sent: "No message sent." }[mailBox]}</p>`;
   $("mailRead").innerHTML = mailOpen ? `<div id="mailOpen">${mailOpenHtml(mailOpen, sent)}</div>` : `<p class="muted">Choose a message on the left.</p>`;
+  $("mailRead").classList.toggle("reading", !!mailOpen && window.matchMedia("(max-width: 760px)").matches);   // v33.2: never under the list
   $("mailCount").textContent = mailTotal ? `${mailItems.length} / ${mailTotal}` : "";
   $("mailMore").classList.toggle("hidden", mailItems.length >= mailTotal);
   $("mailList").querySelectorAll(".mail-row").forEach((row) => row.onclick = (e) => { if (!e.target.closest("[data-mstar]") && !e.target.closest("[data-mailpick]")) openMail(Number(row.dataset.mid)); });

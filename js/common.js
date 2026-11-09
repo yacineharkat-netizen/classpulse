@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "33.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "33.2"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -39,7 +39,10 @@ const ERROR_MESSAGES = {
   BAD_LEVEL: "Unknown access level.",
   LOCKED: "You are locked. Ask the teacher.",
   EMPTY_ANSWER: "Choose at least one answer.",
-  NOT_LOGGED_IN: "Please log in again.",
+  NOT_LOGGED_IN: "Your session has expired: log in again.",
+  SESSION_EXPIRED: "Your session has expired: log in again.",
+  CONFIRM_NAME: "Type the name of the student exactly as written to confirm.",
+  HAS_HISTORY: "This student has attendance or marks: first « Take out of the class », then « Erase for good » from his card.",
   CLASS_NOT_FOUND: "Class not found.",
   QUIZ_NOT_FOUND: "Quiz not found.",
   QUIZ_FINISHED: "This quiz is finished. To run it again: Reset it (answers erased) or Duplicate it (new quiz).",
@@ -99,7 +102,23 @@ function errorText(err) {
 // Call a database function. Returns the data, or throws an Error with a readable message.
 // v28.1: every call is timed (window.CP_NET), so that a slow network can be told from a slow server.
 const CP_NET = window.CP_NET = { calls: [], inFlight: 0, maxInFlight: 0 };
-async function rpc(fn, args) {
+// v33.2: the connection of a teacher expired (token too old, refresh refused): « session expired », not « permission denied ».
+// One quiet refresh is tried first; if it fails, the page asks the password again (onSessionExpired) without leaving.
+const EXPIRED_RE = /JWT expired|PGRST30[123]|invalid JWT|JWSError|permission denied for function|\bNOT_LOGGED_IN\b/i;
+async function rpc(fn, args, again) {
+  try { return await rpcOnce(fn, args); }
+  catch (e) {
+    const raw = e.raw || "";
+    if (!EXPIRED_RE.test(raw) || !/^t_/.test(fn)) throw e;
+    if (!again) {
+      try { const r = await db.auth.refreshSession(); if (r && r.data && r.data.session) return await rpc(fn, args, true); } catch (x) { /* no session to refresh */ }
+    }
+    const x = new Error(ERROR_MESSAGES.SESSION_EXPIRED); x.code = "SESSION_EXPIRED";
+    if (typeof window.onSessionExpired === "function") window.onSessionExpired();
+    throw x;
+  }
+}
+async function rpcOnce(fn, args) {
   const t0 = performance.now();
   CP_NET.inFlight++; CP_NET.maxInFlight = Math.max(CP_NET.maxInFlight, CP_NET.inFlight);
   let result;
@@ -124,6 +143,7 @@ async function rpc(fn, args) {
   const { data, error } = result;
   if (error) {
     const e = new Error(errorText(error));
+    e.raw = (error.code ? error.code + " " : "") + (error.message || "");
     e.code = (error.message || "").split(":")[0].trim();
     // v28.2: no answer from the server (network down, timeout): the caller may try again
     e.network = !error.code && /fetch|network|abort|timeout|load failed/i.test(error.message || "");

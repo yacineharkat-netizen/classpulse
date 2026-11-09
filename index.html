@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.1">
+<html lang="en" data-version="33.2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=33.1">
+<link rel="stylesheet" href="css/style.css?v=33.2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -131,9 +131,9 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.1"></script>
-<script src="js/ttview.js?v=33.1"></script>
-<script src="js/timetable.js?v=33.1"></script>
+<script src="js/common.js?v=33.2"></script>
+<script src="js/ttview.js?v=33.2"></script>
+<script src="js/timetable.js?v=33.2"></script>
 <script>
   // automated tests of the earlier versions: the « Courses » page stays shown under « Today » (see css)
   try { if (navigator.webdriver && localStorage.getItem("cp_test_real") !== "1") document.body.classList.add("dlg-inline"); } catch (e) { /* private window */ }
@@ -209,7 +209,10 @@
         pending = Math.max(pending, Number(sp.pending || 0)); matricule = sp.student.matricule;   // v31
         if (sp.tt && !ttTokens[sp.tt]) ttTokens[sp.tt] = t.token;   // v32
         // v30; v33.1: only the announcements for his groups, and the teacher knows who read them
-        const mineAnn = (sp.announcements || []).filter((a) => !(a.groups || []).length || a.groups.includes(String(sp.td_group || "").toUpperCase()) || a.groups.includes(String(sp.tp_group || "").toUpperCase()));
+        // v33.2: « TD:G1 » = his TD group only, « TP:SG1 » = his TP sub-group only, a bare « G1 » = either (earlier announcements)
+        const td = String(sp.td_group || "").toUpperCase(), tp = String(sp.tp_group || "").toUpperCase();
+        const mineAnn = (sp.announcements || []).filter((a) => !(a.groups || []).length || a.groups.some((g) => { g = String(g).toUpperCase();
+          return g.startsWith("TD:") ? g.slice(3) === td : g.startsWith("TP:") ? g.slice(3) === tp : g === td || g === tp; }));
         mineAnn.forEach((a) => { if (!anns.has(a.id)) anns.set(a.id, Object.assign({ who: tl.name, course: sp.class_name }, a)); });
         if (mineAnn.length) rpc("s_announce_seen", { p_device: t.token, p_ids: mineAnn.map((a) => a.id) }).catch(() => {});
         courses.push({ token: t.token, class_id: sp.class_id, class_name: sp.class_name, teacher: tl, unread: Number(sp.unread || 0) });
@@ -231,6 +234,7 @@
         try {
           const hs = await rpc("s_home_session", { p_device: t.token });
           if (hs) live.unshift(`<div class="home-session"><strong>✅ ${esc(sp.class_name)} · ${esc(hs.title)}</strong>
+            ${hs.remark ? `<div class="hs-remark">📝 ${esc(hs.remark)}</div>` : ""}
             ${hs.checked_in ? `<div style="margin-top:4px">You are checked in.</div>` : (hs.att_code ? `<div class="muted" style="margin-top:4px">Attendance code (type it on the next page)</div><div class="hs-code">${esc(hs.att_code)}</div>` : `<div class="muted" style="margin-top:4px">Attendance is open: tap, then scan the QR code or type the code given in class.</div>`)}
             ${hs.checked_in ? "" : `<a href="student.html?s=${encodeURIComponent(hs.session_code)}" style="text-decoration:none"><button class="green">Check in</button></a>`}</div>`);
         } catch (e) { /* older database */ }
@@ -520,7 +524,7 @@
       const pres = p.presence, n = pres ? pres.sessions.length : 0;
       const presHtml = pres ? `<strong class="prog-big" style="font-size:30px">${n ? Math.round((100 * pres.present) / n) : 0} %</strong>
           <span>${n} session(s) for me: ${pres.present - pres.late} present, ${pres.late} late, ${pres.absent} absent${pres.excused ? ", " + pres.excused + " excused" : ""}${untilTxt(pres.until)}</span>
-          <div class="prog-chips">${pres.sessions.map((x) => `<span class="chip ${x.status === "absent" ? "abs" : x.status === "late" ? "late" : x.status === "excused" ? "exc" : "ok"}">${esc(x.title)}${x.status === "late" ? " · late" : x.status === "absent" ? " · absent" : x.status === "excused" ? " · excused" : " ✓"}</span>`).join("")}</div>
+          <div class="prog-chips">${pres.sessions.map((x) => `<span class="chip ${x.status === "absent" ? "abs" : x.status === "late" ? "late" : x.status === "excused" ? "exc" : "ok"}" ${x.remark ? `title="${esc(x.remark)}"` : ""}>${esc(x.title)}${x.status === "late" ? " · late" : x.status === "absent" ? " · absent" : x.status === "excused" ? " · excused" : " ✓"}${x.remark ? " 📝" : ""}</span>`).join("")}</div>
           <span class="muted" style="font-size:12px">Only the sessions of your groups.</span>`
         : `<span class="muted">Not opened by the teacher yet.</span>`;
       const finHtml = p.final ? `<div class="row" style="justify-content:space-between;align-items:baseline"><span class="muted" style="font-size:12px">Published ${new Date(p.final.published_at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}${untilTxt(p.final.until)}</span>
@@ -532,8 +536,11 @@
       const resHtml = (p.results || []).length ? `<table class="prog-table">${p.results.map((r) => { const [t, k] = tag(r);
           return `<tr class="${r.counts === false || r.status === "none" ? "muted" : ""}"><td>${esc(r.title)}${untilTxt(r.until)}</td><td><strong>${progMark(r)}</strong></td><td><span class="chip ${k}">${t}</span></td></tr>`; }).join("")}</table>`
         : `<span class="muted">No result opened by the teacher yet.</span>`;
+      // v33.2: the notes of the teacher on the sessions (next to each session)
+      const remHtml = (p.remarks || []).length ? `<section class="card s-card"><h2>Notes on the sessions</h2>${p.remarks.map((r) => `<div class="prog-line"><span><strong>${esc(r.title)}</strong>
+          <span class="muted" style="font-size:12px">${esc(r.date)}${r.unit ? " · " + esc(r.unit) : ""}</span><span style="display:block">${esc(r.remark)}</span></span></div>`).join("")}</section>` : "";
       out.push(`<h2 class="s-course-title">${esc(p.class_name)}</h2><div class="s-prog-grid"><div class="s-col">
-          <section class="card s-card"><h2>My attendance</h2>${presHtml}</section>
+          <section class="card s-card"><h2>My attendance</h2>${presHtml}</section>${remHtml}
           <section class="card s-card ${p.final ? "s-final" : ""}"><h2>Final mark</h2>${finHtml}</section></div>
         <section class="card s-card"><h2>My results</h2>${resHtml}<span class="muted" style="font-size:12px">The teacher opens and closes each result; what is not opened stays hidden.</span></section></div>`);
     }

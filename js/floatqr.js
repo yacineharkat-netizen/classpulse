@@ -2,7 +2,7 @@
 // presenter mode, a PDF, a video...), that the teacher moves and resizes where it does not hide the slides.
 // It uses the "Document Picture-in-Picture" window of Chrome and Edge (computer). It is opened from the console, which must
 // stay open (in the background); closing the projector window does not close it.
-(window.CP_FILES = window.CP_FILES || {})["floatqr.js"] = "33.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["floatqr.js"] = "33.2"; // file version, checked by common.js
 
 const FQ = { win: null, last: "", session: null };
 

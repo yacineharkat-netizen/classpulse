@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.2"; // file version, checked by common.js
 // v33: Results space of the teacher: « Each quiz » (as before), « Marks » (every column, typed in the app or imported),
 // « Final mark » (the formula of the class) and « What students see » (opened and closed at any time, for a time).
 const GT = { raw: null, b: null, cid: null, entry: null, edit: null, saveTimer: null, busy: false };
@@ -93,7 +93,7 @@ setInterval(() => {
 }, 20000);
 
 // ---------------------------------------------------------------- marks table
-function cellText(x) { return x.st === "abs" ? "abs (0)" : x.st === "exc" ? "exc" : x.v == null ? "—" : GRADE.fmt(x.v); }
+function cellText(x) { return x.st === "abs" ? (x.noans ? "no answer (0)" : "abs (0)") : x.st === "exc" ? "exc" : x.v == null ? (x.other ? "other pass" : "—") : GRADE.fmt(x.v); }   // v33.2
 function renderMarks() {
   const b = GT.b, lim = Number($("gRows").value) || 0;
   const rows = lim ? b.rows.slice(0, lim) : b.rows;

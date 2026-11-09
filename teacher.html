@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.1">
+<html lang="en" data-version="33.2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B2545">
-<link rel="stylesheet" href="css/style.css?v=33.1">
+<link rel="stylesheet" href="css/style.css?v=33.2">
 </head>
 <body class="v33b">
 
@@ -58,15 +58,18 @@
   <div class="shell">
     <nav id="spaces" aria-label="Spaces">
       <span class="nav-class" id="navClass"></span>
-      <button data-space="live" class="active">Live<span class="sub">the session</span></button>
-      <button data-space="class">My class<span class="sub">students, sessions, timetable, results</span><span id="sessionsBadge" class="badge open hidden"></span></button>
-      <button data-space="msg">Messages <span id="msgBadge" class="badge no hidden"></span><span class="sub">inbox, announcements</span></button>
-      <button data-space="content">Content<span class="sub">quizzes, bank, documents</span></button>
-      <button data-space="agenda">Agenda<span class="sub">my week</span></button>
-      <button data-space="me">Me <span id="supBadge" class="badge no hidden"></span><span class="sub">assistants, classes</span></button>
+      <button data-space="live" class="active"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg><span class="lbl">Live</span><span id="liveBadge" class="badge no hidden"></span><span class="sub">the session</span></button>
+      <button data-space="class"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2c2.9.3 5.5 2.6 5.5 5.8"/></svg><span class="lbl">My class</span><span class="sub">students, sessions, timetable, results</span><span id="sessionsBadge" class="badge open hidden"></span></button>
+      <button data-space="msg"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span class="lbl">Messages</span> <span id="msgBadge" class="badge no hidden"></span><span class="sub">inbox, announcements</span></button>
+      <button data-space="content"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M14 4v5h5M8 13h8M8 17h6"/></svg><span class="lbl">Content</span><span class="sub">quizzes, bank, documents</span></button>
+      <button data-space="agenda"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><span class="lbl">Agenda</span><span class="sub">my week</span></button>
+      <button data-space="me"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="lbl">Me</span> <span id="supBadge" class="badge no hidden"></span><span class="sub">assistants, classes</span></button>
+      <span class="grow"></span>
+      <button id="navCollapse" class="nav-fold" type="button">« Fold</button>
     </nav>
     <main>
-      <div id="classBanner" class="class-banner">
+      <div id="pageHead" class="page-head"><span id="crumbSpace"></span><span id="crumbSep1" class="sep">›</span><span id="crumbPage"></span><span id="crumbSep2" class="sep hidden">›</span><span id="crumbSub" class="sub"></span></div>
+      <div id="classBanner" class="class-banner hidden-always">
         <span class="dot"></span><span>Class: <a href="#" id="bannerName" title="Open the classes tab">-</a></span>
         <span id="bannerNote" class="note"></span>
       </div>
@@ -75,6 +78,7 @@
 
     <section id="tab-live">
       <div id="ttNowBar" class="tt-now-bar hidden"></div>
+      <button id="reqBanner" class="req-banner hidden" type="button"><strong id="reqBannerText">1 request waiting</strong><span class="grow"></span><span class="go">Open ›</span></button>
       <div class="live-grid">
         <div class="card live-card" id="cardSession">
           <div class="card-head"><h2>Session</h2><span class="chip" id="lvCodeChip" title="Code of the session"></span><span class="grow"></span>
@@ -95,23 +99,6 @@
           </div>
         </div>
         <div id="liveArea" class="hidden">
-          <div class="card live-card" id="cardRequests">
-            <div class="card-head"><h2>Requests</h2><span class="chip red" id="reqCount">0</span></div>
-            <div class="scroll grow" id="reqScroll">
-              <div id="liveRequests" class="req-list hidden"></div>
-              <div id="lockedBox" class="locked-alert hidden">
-            <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
-            <div id="lockedList"></div>
-          </div>
-              <!-- v28.2: phones that stopped calling the server during a question (network lost, phone asleep) -->
-          <div id="silentBox" class="silent-alert hidden">
-            <strong>📶 <span id="silentCount">0</span> phone(s) without contact for 10 s or more</strong>
-            <span class="muted">(network lost or phone asleep: they may miss questions — a make-up can be given after the quiz, in Results)</span>
-            <div id="silentList"></div>
-          </div>
-              <p class="muted" id="reqNone">Nothing waiting.</p>
-            </div>
-          </div>
           <div class="card live-card" id="cardQuiz">
             <div class="card-head"><h2 id="lqTitle">Quiz</h2><span class="grow"></span><span class="chip" id="lqChip"></span></div>
             <select id="quizSelect" aria-label="Quiz of this session"></select>
@@ -135,27 +122,12 @@
             <div class="hidden"><span id="attScopeBox"><select id="attScope"><option value="run">Group checking in now</option><option value="session">Whole session</option><option value="all">All the students of the class</option></select></span>
               <select id="attFilterGroup"><option value="">all</option></select></div>
             <div id="attendanceTable" class="scroll grow"></div>
-            <p class="phone-only muted center">The detailed lists stay on the computer.</p>
           </div>
         </div>
       </div>
       <p class="muted hidden" id="phoneHint"></p>
 
       <!-- dialogs of the Live space (everything of the earlier console, nothing lost) -->
-      <div id="dlgNew" class="modal hidden"><div class="modal-content card">
-        <div class="card-head"><h2>New session</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgNew">Close</button></div>
-        <div class="row">
-          <strong>New session:</strong>
-          <input id="newSessionTitle" placeholder="Title, e.g. S1 - Discover IoT" style="max-width:260px">
-          <input id="newSessionDate" type="date" style="max-width:170px">
-          <input id="newSessionTime" type="time" style="max-width:120px" title="Start">
-          <input id="newSessionEnd" type="time" style="max-width:120px" title="End">
-          <select id="newSessionKind" style="width:auto"><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select>
-          <select id="newSessionGroup" style="width:auto" title="The group of this session: only its students are expected"><option value="">Whole class</option></select>
-          <input id="newSessionUnit" placeholder="Unit, e.g. TP1" style="max-width:130px" title="Same unit for the sessions of the same lab or TD run once per group: one column in the export">
-          <button id="createSessionBtn" class="secondary">Create</button>
-        </div>
-      </div></div>
       <div id="dlgMore" class="modal hidden"><div class="modal-content card wide">
         <div class="card-head"><h2>Session: settings, phones, projector</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgMore">Close</button></div>
         <div id="endedBox" class="ended-box hidden">
@@ -258,10 +230,8 @@
       </div>
       <div class="space hidden" data-space="class">
         <div class="tabbar" data-space="class">
-          <button data-tab="students">Students</button><button data-tab="sessions" class="pc-only">Sessions</button>
-          <button data-tab="timetable" class="pc-only">Timetable</button><button data-tab="results" class="pc-only">Results</button>
-          <button data-rtgo="marks" class="phone-only">Marks</button><button data-rtgo="formula" class="phone-only" data-perm="grading">Calculation</button>
-          <button data-rtgo="vis" class="phone-only" data-perm="grading">Visibility</button>
+          <button data-tab="students">Students</button><button data-tab="sessions">Sessions</button>
+          <button data-tab="timetable">Timetable</button><button data-tab="results">Results</button>
         </div>
 
     <section id="tab-students" class="hidden">
@@ -269,6 +239,7 @@
         <div class="card-head wrap">
           <input id="stuSearch" placeholder="Name or student number" class="search-sm" aria-label="Search">
           <label class="small-t">Group <select id="stuGroup"><option value="">All</option></select></label>
+          <label class="small-t"><input type="checkbox" id="stuRemoved"> Taken out (<span id="stuRemovedN">0</span>)</label>
           <label class="small-t">Lines <select id="stuRows"><option>10</option><option selected>25</option><option>50</option><option value="0">All</option></select></label>
           <button id="stuManageBtn" class="btn sec sm">Registration, import, PIN… <span id="attemptBadge" class="badge no hidden"></span></button>
           <span id="stuSelBar" class="selbar hidden"><strong><span id="stuSelCount">0</span> selected</strong>
@@ -363,7 +334,13 @@
           <strong>Open</strong> takes you to the live session. <strong>Group</strong>: the TD group or TP sub-group of the session (empty = whole class);
           only its students are expected. <strong>Unit</strong>: the same name (e.g. TP1) for the sessions of one lab run once per sub-group.</p>
         <div id="sessionsAlerts"></div>
-        <div id="sessionsTable"></div>
+        <div class="card-head wrap ses-filters">
+          <input id="sesSearch" class="search-sm" placeholder="Title, unit, code" aria-label="Search a session">
+          <label class="small-t">Type <select id="sesKind"><option value="">All</option><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select></label>
+          <label class="small-t">Unit <select id="sesUnit"><option value="">All</option></select></label>
+          <label class="small-t">Group <select id="sesGroup"><option value="">All</option></select></label>
+          <span class="grow"></span><button id="sesNewBtn" class="btn sec sm">＋ New session</button></div>
+        <div id="sessionsTable" class="scroll ses-scroll"></div>
       </div></section>
     <section id="tab-timetable" class="hidden">
       <div class="card">
@@ -1108,6 +1085,58 @@
     <button data-space="live" class="active">Live</button><button data-space="class">Class</button>
     <button data-space="msg">Messages<span id="bbMsg" class="dot hidden"></span></button><button data-space="agenda">Agenda</button><button data-space="me" data-more="1">More</button>
   </nav>
+  <!-- v33.2: the dialog of a session (create or edit), reachable from Live and from My class › Sessions -->
+      <div id="dlgNew" class="modal hidden"><div class="modal-content card">
+        <div class="card-head"><h2 id="dlgNewTitle">New session</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgNew">Close</button></div>
+        <div class="form-grid">
+          <label>Type <select id="newSessionKind"><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select></label>
+          <label>Unit <select id="newSessionUnit" title="The sessions of the same unit (TP1 run once per sub-group) make one column of marks"></select></label>
+          <label class="span2">Title <select id="newSessionDoc" aria-label="Title from my documents"></select></label>
+          <label class="span2" id="newTitleWrap">Title (free) <input id="newSessionTitle" placeholder="e.g. S1 - Discover IoT"></label>
+          <label>Group <select id="newSessionGroup" title="The group of this session: only its students are expected"><option value="">Whole class</option></select></label>
+          <label>Date <input id="newSessionDate" type="date"></label>
+          <label>Start <input id="newSessionTime" type="time"></label>
+          <label>End <input id="newSessionEnd" type="time"></label>
+          <label class="span2">Remark <textarea id="newSessionRemark" rows="2" maxlength="600" placeholder="e.g. Bring your laptop charged · TP2 moved to room 12"></textarea></label>
+          <label class="tick span2"><input type="checkbox" id="newSessionRemarkVis"> The students see the remark (session card, their Progress, a notification)</label>
+        </div>
+        <div class="row" style="margin-top:10px;gap:8px"><button id="createSessionBtn" class="btn gr">Create</button><button id="saveSessionBtn" class="btn gr hidden">Save</button>
+          <span id="dlgNewNote" class="muted small-t"></span></div>
+      </div></div>
+  <div id="reqPanel" class="panel req-window hidden" role="dialog" aria-label="Requests">
+    <div class="card-head"><h2>Requests</h2><span class="chip red" id="reqCount">0</span><span class="grow"></span><button class="btn sec sm" data-close="reqPanel">Close</button></div>
+    <div id="reqScroll" class="req-scroll">
+              <div id="liveRequests" class="req-list hidden"></div>
+              <div id="lockedBox" class="locked-alert hidden">
+            <strong>🔒 <span id="lockedCount">0</span> locked student(s)</strong> <span class="muted">(left the quiz screen)</span>
+            <div id="lockedList"></div>
+          </div>
+              <!-- v28.2: phones that stopped calling the server during a question (network lost, phone asleep) -->
+          <div id="silentBox" class="silent-alert hidden">
+            <strong>📶 <span id="silentCount">0</span> phone(s) without contact for 10 s or more</strong>
+            <span class="muted">(network lost or phone asleep: they may miss questions — a make-up can be given after the quiz, in Results)</span>
+            <div id="silentList"></div>
+          </div>
+              <p class="muted" id="reqNone">Nothing waiting.</p>
+            
+      <div id="reqDevOut" class="req-list"></div>
+      <div id="reqAttempts" class="req-list"></div>
+    </div>
+  </div>
+  <div id="dlgCompare" class="modal hidden"><div class="modal-content card wide">
+    <div class="card-head"><h2>Compare two students</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgCompare">Close</button></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><select id="cmpA" aria-label="First student"></select><select id="cmpB" aria-label="Second student"></select>
+      <button id="cmpGo" class="btn or sm">Compare</button></div>
+    <div id="cmpOut" class="table-scroll"></div>
+  </div></div>
+  <div id="dlgRelogin" class="modal hidden"><div class="modal-content card" style="max-width:460px">
+    <div class="card-head"><h2>Your session has expired</h2></div>
+    <p class="muted">For your security, the connection stops after a while. Log in again: you stay on this page.</p>
+    <label for="reloginEmail">E-mail</label><input id="reloginEmail" type="email" autocomplete="username">
+    <label for="reloginPassword">Password</label><input id="reloginPassword" type="password" autocomplete="current-password">
+    <div class="row" style="gap:8px;margin-top:12px"><button id="reloginBtn" class="btn gr">Log in</button><button id="reloginOut" class="btn sec">Log out</button></div>
+  </div></div>
+  <div id="navBackBar" class="nav-back-bar hidden"><button id="navBack" type="button">‹ Back</button><strong id="navBackTitle"></strong></div>
   <div id="boardBox" class="modal hidden">
     <div class="modal-content card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -1152,17 +1181,18 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.1"></script>
-<script src="js/excel.js?v=33.1"></script>
-<script src="js/teacher.js?v=33.1"></script>
-<script src="js/grading.js?v=33.1"></script>
-<script src="js/grades_teacher.js?v=33.1"></script>
-<script src="js/shell.js?v=33.1"></script>
-<script src="js/supervision.js?v=33.1"></script>
-<script src="js/ttview.js?v=33.1"></script>
-<script src="js/timetable.js?v=33.1"></script>
-<script src="js/tt_teacher.js?v=33.1"></script>
-<script src="js/floatqr.js?v=33.1"></script>
+<script src="js/common.js?v=33.2"></script>
+<script src="js/excel.js?v=33.2"></script>
+<script src="js/teacher.js?v=33.2"></script>
+<script src="js/grading.js?v=33.2"></script>
+<script src="js/grades_teacher.js?v=33.2"></script>
+<script src="js/shell.js?v=33.2"></script>
+<script src="js/nav.js?v=33.2"></script>
+<script src="js/supervision.js?v=33.2"></script>
+<script src="js/ttview.js?v=33.2"></script>
+<script src="js/timetable.js?v=33.2"></script>
+<script src="js/tt_teacher.js?v=33.2"></script>
+<script src="js/floatqr.js?v=33.2"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {
