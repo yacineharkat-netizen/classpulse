@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.2"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.3"; // file version, checked by common.js
 // v33: Results space of the teacher: « Each quiz » (as before), « Marks » (every column, typed in the app or imported),
 // « Final mark » (the formula of the class) and « What students see » (opened and closed at any time, for a time).
 const GT = { raw: null, b: null, cid: null, entry: null, edit: null, saveTimer: null, busy: false };
@@ -463,7 +463,9 @@ $("rt-formula").addEventListener("change", async (e) => {
 
 // ---------------------------------------------------------------- what the students see
 function visItems() {
-  return [{ item: "presence", label: "Attendance", sub: "his own sessions: rate and the status of each one" }]
+  const bd = (typeof V3 !== "undefined" && V3.bonus.detail) || "total";   // v33.3: the bonuses, with the detail chosen
+  return [{ item: "presence", label: "Attendance", sub: "his own sessions: rate and the status of each one" },
+    { item: "bonus", label: "Bonus", sub: "his bonuses (course, TD, TP) and his claims", bonus: bd }]
     .concat(GT.b.cols.map((c) => ({ item: c.key, label: "Result · " + c.title, sub: (c.counts ? "counts in the final mark" : "does not count") + " · /" + GRADE.fmt(c.scale) })))
     .concat([{ item: "final", label: "Final mark", sub: GT.b.S.show_detail ? "with the detail of each part" : "the mark only", final: true }]);
 }
@@ -472,6 +474,7 @@ function renderVis() {
   $("gVisRows").innerHTML = visItems().map((x) => {
     const v = visOf(x.item);
     return `<div class="g-vrow ${x.final ? "final" : ""}"><span style="flex:1"><strong>${esc(x.label)}</strong><span class="muted" style="display:block;font-size:12px">${esc(x.sub)}</span></span>
+      ${x.bonus ? `<select data-gbdetail aria-label="Detail of the bonuses" ${ro ? "disabled" : ""}>${[["total", "Total"], ["category", "By category"], ["session", "By session"]].map(([k, l]) => `<option value="${k}" ${k === x.bonus ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}
       <span class="badge ${v.visible ? "ok" : "closed"}">${v.visible ? "shown" + (v.until ? " until " + hm(v.until) : "") : "hidden"}</span>
       <button class="small ${v.visible ? "secondary" : "green"}" data-gvis="${esc(x.item)}" data-label="${esc(x.label)}" ${ro ? "disabled" : ""}>${v.visible ? "Hide" : x.final ? "Publish" : "Show"}</button></div>`;
   }).join("");
@@ -504,4 +507,5 @@ $("rt-vis").addEventListener("click", async (e) => {
 $("rt-vis").addEventListener("change", (e) => {
   if (e.target.id === "gDurOther") { const v = parseInt(e.target.value, 10); if (v > 0) { gStore("cp_vis_dur", String(v)); renderVis(); renderPubBar(); } }
   if (e.target.id === "gShowDetail") setS((S) => { S.show_detail = e.target.checked; });
+  if (e.target.matches("[data-gbdetail]") && window.v3BonusDetail) window.v3BonusDetail(e.target.value);   // v33.3
 });

@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["nav.js"] = "33.2"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["nav.js"] = "33.3"; // file version, checked by common.js
 // v33.2: navigation of the teacher console.
 // - one panel open at a time (menu, To do, bell, requests, student, dialog); Escape closes it;
 // - on a phone what opens takes the whole screen, with « ‹ Back » on top; the Back button of the phone goes back one step;
@@ -118,7 +118,7 @@ window.addEventListener("popstate", (e) => {
 });
 
 // ------------------------------------------------------------------ the title « Space › page »
-const SPACE_LABEL = { live: "Live", class: "My class", msg: "Messages", content: "Content", agenda: "Agenda", me: "Me" };
+const SPACE_LABEL = { live: "Live", class: "My class", msg: "Messages", content: "Course", agenda: "Agenda", me: "Me" };
 const TAB_LABEL = { live: "Session", students: "Students", sessions: "Sessions", timetable: "Timetable", results: "Results", messages: "Inbox", announce: "Announcements",
   quizzes: "Quizzes", questions: "Question bank", space: "Documents", demos: "Demos", agenda: "My week", classes: "Classes and assistants", myspace: "Office hours, proposals",
   supervision: "Supervision", notifset: "Notifications", more: "More" };
@@ -174,9 +174,9 @@ function navSubtabs(tab, groups) {
 }
 function cardWith(tab, text) { return [...document.querySelectorAll(`#tab-${tab} > .card, #tab-${tab} > div > .card`)].find((c) => { const h = c.querySelector("h2"); return h && h.textContent.includes(text); }); }
 function navBuildSubtabs() {
-  navSubtabs("space", [["Students' space", [cardWith("space", "Student space"), cardWith("space", "Course content")]], ["Who reads what", [cardWith("space", "Who reads what")]],
-    ["My library", [cardWith("space", "My documents")]], ["Resources and links", [cardWith("space", "My resources"), ($("resourceSearch") || {}).closest ? $("resourceSearch").closest(".card") : null]],
-    ["What the assistants see", [cardWith("space", "What the lab assistants")]]]);
+  // v33.3: these pages are the tabs of the « Course » space (Visible documents, Who reads what, My library, Resources and links)
+  navSubtabs("space", [["Visible documents", [cardWith("space", "Student space"), cardWith("space", "Course content"), cardWith("space", "What the lab assistants")]], ["Who reads what", [cardWith("space", "Who reads what")]],
+    ["My library", [cardWith("space", "My documents")]], ["Resources and links", [cardWith("space", "My resources"), ($("resourceSearch") || {}).closest ? $("resourceSearch").closest(".card") : null]]]);
   navSubtabs("classes", [["My classes", ["#joinCard", "#newClassCard", cardWith("classes", "My classes") || "#tab-classes > .card:nth-of-type(3)"]], ["Assistants", [cardWith("classes", "Assistants of this class")]]]);
   navSubtabs("myspace", [["Office hours", [cardWith("myspace", "Office hours")]], ["Proposals", [cardWith("myspace", "Proposals")]]]);
 }

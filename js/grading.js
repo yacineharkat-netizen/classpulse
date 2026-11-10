@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.2"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.3"; // file version, checked by common.js
 // v33: final mark of a class. One evaluation column = a quiz / test / TP, or a column typed in the app (exam, project, oral…).
 // v33.2: in a unit (TP1) the quizzes are grouped by UNIT, whatever their title (the same quiz reused, or one quiz per
 // sub-group): the n-th graded quiz of each pass (attendance run) goes to column n (« TP1 · test 2 »). A quiz concerns only

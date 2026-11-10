@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.2"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.3"; // file version, checked by common.js
 // v33.1 (« 33 bis »): the teacher console as in the mockups. This file draws the new parts and leans on teacher.js
 // for everything else (same ids, same server calls): header (search, « To do », bell, account), the cards of Live,
 // the list of the session, the side panel of a student, the student list, the announcements, the folders of the
@@ -671,6 +671,7 @@ $("agOfficeEdit").onclick = () => showTab("myspace");
 function shMore() {
   const items = [["Marks, calculation, visibility", () => { showTab("results"); showRt("marks"); }, true], ["Quizzes", () => showTab("quizzes")],
     ["Question bank", () => showTab("questions")], ["Documents (course, TD, TP)", () => showTab("space")], ["Demos", () => showTab("demos")],
+    ["Exercises", () => showTab("exercises")], ["Bonus claims", () => showTab("bonus")],
     ["Announcements", () => showTab("announce")],
     ["Sessions of the class", () => showTab("sessions")], ["Timetable", () => showTab("timetable")], ["My classes and assistants", () => showTab("classes")],
     ["Supervision", () => showTab("supervision"), false, "supervisionTab"], ["Office hours, proposals", () => showTab("myspace"), false, "mySpaceTab"],

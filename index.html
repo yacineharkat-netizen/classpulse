@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.2">
+<html lang="en" data-version="33.3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=33.2">
+<link rel="stylesheet" href="css/style.css?v=33.3">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -131,9 +131,10 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.2"></script>
-<script src="js/ttview.js?v=33.2"></script>
-<script src="js/timetable.js?v=33.2"></script>
+<script src="js/common.js?v=33.3"></script>
+<script src="js/ttview.js?v=33.3"></script>
+<script src="js/timetable.js?v=33.3"></script>
+<script src="js/student_v333.js?v=33.3"></script>
 <script>
   // automated tests of the earlier versions: the « Courses » page stays shown under « Today » (see css)
   try { if (navigator.webdriver && localStorage.getItem("cp_test_real") !== "1") document.body.classList.add("dlg-inline"); } catch (e) { /* private window */ }
@@ -289,6 +290,7 @@
     $("liveBox").innerHTML = live.join("") + ttHtml;
     $("todoList").innerHTML = todo.join("") || '<span class="muted">Nothing to do now.</span>';
     $("todoList").classList.toggle("muted", !todo.length);
+    if (window.stuV333) stuV333.today(courses, { progress: showProgress });   // v33.3: exercises, bonus to claim
     $("ttNav").classList.toggle("hidden", !Object.keys(ttTokens).length);
     const feed = [];
     courses.filter((c) => c.unread).forEach((c) => feed.push({ kind: "Message", cls: "msg", title: `${c.unread} new message(s)`, sub: c.class_name + (c.teacher.name ? " · " + c.teacher.name : ""), go: () => showMessages() }));
@@ -540,12 +542,13 @@
       const remHtml = (p.remarks || []).length ? `<section class="card s-card"><h2>Notes on the sessions</h2>${p.remarks.map((r) => `<div class="prog-line"><span><strong>${esc(r.title)}</strong>
           <span class="muted" style="font-size:12px">${esc(r.date)}${r.unit ? " · " + esc(r.unit) : ""}</span><span style="display:block">${esc(r.remark)}</span></span></div>`).join("")}</section>` : "";
       out.push(`<h2 class="s-course-title">${esc(p.class_name)}</h2><div class="s-prog-grid"><div class="s-col">
-          <section class="card s-card"><h2>My attendance</h2>${presHtml}</section>${remHtml}
+          <section class="card s-card"><h2>My attendance</h2>${presHtml}</section><div class="v3-bonus" data-cls="${c.class_id}"></div>${remHtml}
           <section class="card s-card ${p.final ? "s-final" : ""}"><h2>Final mark</h2>${finHtml}</section></div>
         <section class="card s-card"><h2>My results</h2>${resHtml}<span class="muted" style="font-size:12px">The teacher opens and closes each result; what is not opened stays hidden.</span></section></div>`);
     }
     $("progressList").classList.toggle("muted", !out.length);
     $("progressList").innerHTML = out.join("") || "No course on this device.";
+    if (window.stuV333) stuV333.progress(homeCourses);   // v33.3: my bonus, claim a bonus
     $("progressList").querySelectorAll("[data-progask]").forEach((b) => b.onclick = () => showMessages({ class_id: b.dataset.progask, subject: "Question about my final mark" }));
   }
   document.querySelectorAll(".backHome").forEach((a) => a.onclick = (e) => { e.preventDefault(); setViewUrl(""); showHome(); });

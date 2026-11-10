@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.2">
+<html lang="en" data-version="33.3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B2545">
-<link rel="stylesheet" href="css/style.css?v=33.2">
+<link rel="stylesheet" href="css/style.css?v=33.3">
 </head>
 <body class="v33b">
 
@@ -61,7 +61,7 @@
       <button data-space="live" class="active"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg><span class="lbl">Live</span><span id="liveBadge" class="badge no hidden"></span><span class="sub">the session</span></button>
       <button data-space="class"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2c2.9.3 5.5 2.6 5.5 5.8"/></svg><span class="lbl">My class</span><span class="sub">students, sessions, timetable, results</span><span id="sessionsBadge" class="badge open hidden"></span></button>
       <button data-space="msg"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span class="lbl">Messages</span> <span id="msgBadge" class="badge no hidden"></span><span class="sub">inbox, announcements</span></button>
-      <button data-space="content"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M14 4v5h5M8 13h8M8 17h6"/></svg><span class="lbl">Content</span><span class="sub">quizzes, bank, documents</span></button>
+      <button data-space="content"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M14 4v5h5M8 13h8M8 17h6"/></svg><span class="lbl">Course</span><span class="sub">documents, quizzes, exercises</span></button>
       <button data-space="agenda"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><span class="lbl">Agenda</span><span class="sub">my week</span></button>
       <button data-space="me"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="lbl">Me</span> <span id="supBadge" class="badge no hidden"></span><span class="sub">assistants, classes</span></button>
       <span class="grow"></span>
@@ -89,6 +89,7 @@
           <div id="lvSummary" class="hidden">
             <strong id="lvTitle" class="lv-title"></strong>
             <div class="lv-count"><strong id="lvPresent">0</strong><span id="lvExpected"></span></div>
+            <div id="lvPassLine" class="pass-line hidden"></div>
             <div id="lvAttCode" class="lv-att hidden"><span class="muted">Attendance code</span> <strong id="lvAttCodeTxt"></strong> <span class="muted" id="lvAttNote"></span></div>
           </div>
           <div class="card-actions" id="lvActions">
@@ -96,11 +97,13 @@
             <button id="lvFloat" class="btn or sm" title="A small check-in QR code above your slides">Floating QR</button>
             <button id="lvProj" class="btn sec sm">Projector</button>
             <button id="lvMoreBtn" class="btn sec sm" title="Settings, phones, projector, links, random student, end">More…</button>
+            <button id="lvNextSg" class="btn or sm hidden" title="End this session and start the session of the next sub-group">Next sub-group ›</button>
           </div>
         </div>
         <div id="liveArea" class="hidden">
           <div class="card live-card" id="cardQuiz">
             <div class="card-head"><h2 id="lqTitle">Quiz</h2><span class="grow"></span><span class="chip" id="lqChip"></span></div>
+            <div id="lqSuggest" class="lq-suggest hidden"></div>
             <select id="quizSelect" aria-label="Quiz of this session"></select>
             <div class="lq-bar"><div id="lqBar"></div></div>
             <span id="lqAnswers" class="lq-answers"></span>
@@ -111,7 +114,8 @@
               <button id="lqAdd30" class="btn sec">+30 s</button><button id="lqPush" class="btn sec">Push a document</button>
               <button id="lqDraw" class="btn sec phone-only">Draw a student</button><button id="lqBigQr" class="btn or phone-only">Big QR</button>
             </div>
-            <div class="lq-foot"><button class="lnk" id="lqMoreBtn">Details, stations, results…</button> <button class="lnk" id="lqLaunchBtn">＋ Run a prepared quiz</button></div>
+            <div class="lq-foot"><button class="lnk" id="lqMoreBtn">Details, stations, results…</button> <button class="lnk" id="lqLaunchBtn">＋ Run a prepared quiz</button> <button class="lnk" id="lqExBtn">＋ Exercise</button></div>
+            <div id="lvExList" class="lv-ex hidden"></div>
             <div class="hidden"><button id="addTimeBtn"></button><select id="addTimeSel"><option>15</option><option selected>30</option><option>60</option></select></div>
           </div>
           <div class="card list-card" id="cardList">
@@ -231,7 +235,7 @@
       <div class="space hidden" data-space="class">
         <div class="tabbar" data-space="class">
           <button data-tab="students">Students</button><button data-tab="sessions">Sessions</button>
-          <button data-tab="timetable">Timetable</button><button data-tab="results">Results</button>
+          <button data-tab="timetable">Timetable</button><button data-tab="results">Results</button><button data-tab="bonus">Bonus<span id="bonusBadge" class="badge red hidden"></span></button>
         </div>
 
     <section id="tab-students" class="hidden">
@@ -341,6 +345,22 @@
           <label class="small-t">Group <select id="sesGroup"><option value="">All</option></select></label>
           <span class="grow"></span><button id="sesNewBtn" class="btn sec sm">＋ New session</button></div>
         <div id="sessionsTable" class="scroll ses-scroll"></div>
+      </div></section>
+    <section id="tab-bonus" class="hidden">
+      <div class="bonus-grid">
+        <div class="card" id="bonusSetCard"><h2>Bonus of this class</h2>
+          <div class="form-grid">
+            <label>Value of one bonus <input id="bonusValue" type="number" step="0.05" min="0.05" max="5" inputmode="decimal"> <span class="muted small-t">point(s)</span></label>
+            <label>The students see <select id="bonusDetail"><option value="total">the total only</option><option value="category">the total by category (course, TD, TP)</option><option value="session">the detail of each session</option></select></label>
+          </div>
+          <div class="row" style="gap:8px;margin-top:8px"><button id="bonusSaveBtn" class="btn gr sm">Save</button>
+            <span class="muted small-t" id="bonusVisNote"></span></div>
+          <p class="muted small-t">A student claims 1, 2 or 3 bonuses for a session where he checked in, during the session and up to 48 h after it.
+            <strong>Grant</strong> gives the number asked × the value above; <strong>Adjust</strong> gives another number of points. The bonus goes to the session, in its category.</p>
+        </div>
+        <div class="card list-card" id="bonusListCard"><div class="card-head wrap"><h2>Claims</h2><span class="chip red" id="bonusPending">0</span><span class="grow"></span>
+            <span id="bonusFilters" class="pills"><button class="pill on" data-bf="pending">Waiting</button><button class="pill" data-bf="granted">Granted</button><button class="pill" data-bf="refused">Refused</button><button class="pill" data-bf="">All</button></span></div>
+          <div id="bonusList" class="scroll grow"></div></div>
       </div></section>
     <section id="tab-timetable" class="hidden">
       <div class="card">
@@ -571,9 +591,16 @@
 
       </div>
       <div class="space hidden" data-space="content">
-        <div class="tabbar" data-space="content"><button data-tab="quizzes">Quizzes</button><button data-tab="questions" class="teacher-only">Question bank</button>
-          <button data-tab="space">Documents</button><button data-tab="demos" class="teacher-only">Demos</button></div>
+        <div class="tabbar course-tabs" data-space="content"><button data-tab="space" data-sub="0">Visible documents</button><button data-tab="space" data-sub="2">My library</button>
+          <button data-tab="space" data-sub="1">Who reads what</button><button data-tab="space" data-sub="3">Resources and links</button>
+          <button data-tab="quizzes">Quizzes</button><button data-tab="questions" class="teacher-only">Question bank</button>
+          <button data-tab="demos" class="teacher-only">Demos</button><button data-tab="exercises">Exercises</button></div>
 
+    <section id="tab-exercises" class="hidden">
+      <div class="card list-card"><div class="card-head wrap"><h2>Exercises</h2><span class="muted small-t">The statement is on your slide; the students answer here. Published from Live (« ＋ Exercise ») or here.</span>
+          <span class="grow"></span><button id="exNewBtn" class="btn gr sm">＋ New exercise</button></div>
+        <div id="exList" class="scroll grow"></div></div>
+    </section>
     <section id="tab-quizzes" class="hidden">
       <div class="quiz-grid">
         <div class="card scroll" id="qFolderCard"><strong class="small-t">Folders (themes)</strong><div id="qFolders"></div>
@@ -1094,6 +1121,11 @@
           <label class="span2">Title <select id="newSessionDoc" aria-label="Title from my documents"></select></label>
           <label class="span2" id="newTitleWrap">Title (free) <input id="newSessionTitle" placeholder="e.g. S1 - Discover IoT"></label>
           <label>Group <select id="newSessionGroup" title="The group of this session: only its students are expected"><option value="">Whole class</option></select></label>
+          <label class="span2 hidden" id="newPassWrap">Sub-groups <select id="newSessionPass" title="How the sub-groups of this lab pass">
+            <option value="">One group, or the whole class at once</option>
+            <option value="subgroup">One session per sub-group · « Next sub-group » at the end</option>
+            <option value="day">One session for the day · one pass per sub-group</option></select>
+            <span class="muted small-t" id="newPassHelp"></span></label>
           <label>Date <input id="newSessionDate" type="date"></label>
           <label>Start <input id="newSessionTime" type="time"></label>
           <label>End <input id="newSessionEnd" type="time"></label>
@@ -1119,10 +1151,47 @@
           </div>
               <p class="muted" id="reqNone">Nothing waiting.</p>
             
+      <div id="reqBonus" class="req-list"></div>
       <div id="reqDevOut" class="req-list"></div>
       <div id="reqAttempts" class="req-list"></div>
     </div>
   </div>
+  <!-- v33.3: next sub-group, exercise (publish), answers of an exercise -->
+  <div id="dlgNextSg" class="modal hidden"><div class="modal-content card" style="max-width:520px">
+    <div class="card-head"><h2>Next sub-group</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgNextSg">Close</button></div>
+    <p id="nsText" class="muted"></p>
+    <div class="form-grid"><label>Sub-group <select id="nsGroup"></select></label><label class="tick"><input type="checkbox" id="nsOpen" checked> Open its attendance now</label></div>
+    <div class="row" style="gap:8px;margin-top:10px"><button id="nsGo" class="btn or">End this one and start it</button></div>
+  </div></div>
+  <div id="dlgExercise" class="modal hidden"><div class="modal-content card wide">
+    <div class="card-head"><h2 id="exDlgTitle">New exercise</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgExercise">Close</button></div>
+    <div class="form-grid">
+      <label class="span2">Title <input id="exTitle" maxlength="200" placeholder="e.g. Exercise 2 · link budget"></label>
+      <label class="span2">Statement (optional: it is on your slide) <textarea id="exBody" rows="2" maxlength="4000"></textarea></label>
+      <label>Answer <select id="exType"><option value="number">A number (checked)</option><option value="choice">A choice (checked)</option><option value="text">Free text (you mark it)</option></select></label>
+      <label class="ex-num">Expected value <input id="exNum" inputmode="decimal" placeholder="e.g. 3.3"></label>
+      <label class="ex-num">Tolerance ± <input id="exTol" inputmode="decimal" value="0" style="width:90px"> <select id="exTolKind"><option value="abs">same unit</option><option value="pct">%</option></select></label>
+      <label class="span2 ex-choice hidden">Options, one per line; the right one starts with * <textarea id="exOptions" rows="3" placeholder="433 MHz&#10;*868 MHz&#10;2.4 GHz"></textarea></label>
+      <label>Who answers <select id="exMode"><option value="session">During this session (checked-in students)</option><option value="after">Open also after (class or group, no check-in)</option></select></label>
+      <label class="ex-after hidden">Group <select id="exGroup"></select></label>
+      <label>Closes <select id="exClose"><option value="">with the button</option><option value="5">in 5 min</option><option value="10">in 10 min</option><option value="15">in 15 min</option><option value="60">in 1 hour</option><option value="1440">in 24 h</option><option value="at">at…</option></select>
+        <input id="exCloseAt" type="datetime-local" class="hidden"></label>
+      <label>First N win <input id="exN" type="number" min="0" max="200" value="3" style="width:80px"></label>
+      <label>Winners <select id="exWin"><option value="precheck">pre-ticked, then I validate</option><option value="manual">I tick them</option><option value="auto">automatic (the first N right ones)</option></select></label>
+      <label>Each winner gets <select id="exBonus"><option value="1">+1 bonus</option><option value="2">+2 bonuses</option><option value="3">+3 bonuses</option></select></label>
+    </div>
+    <div class="row" style="gap:8px;margin-top:10px"><button id="exPublish" class="btn gr">Publish now</button><button id="exSave" class="btn sec">Save without opening</button>
+      <span class="muted small-t" id="exNote"></span></div>
+  </div></div>
+  <div id="dlgExAnswers" class="modal hidden"><div class="modal-content card wide">
+    <div class="card-head wrap"><h2 id="eaTitle">Answers</h2><span class="chip" id="eaState"></span><span class="grow"></span>
+      <button id="eaOpen" class="btn gr sm">Open</button><button id="eaClose" class="btn sec sm">Close it</button><button id="eaEdit" class="btn sec sm">Edit</button>
+      <button class="btn sec sm" data-close="dlgExAnswers">Close</button></div>
+    <p id="eaInfo" class="muted small-t"></p>
+    <div id="eaTable" class="table-scroll"></div>
+    <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button id="eaWinners" class="btn or">Validate the winners</button><button id="eaNotify" class="btn sec">Notify the winners</button>
+      <span class="muted small-t" id="eaNote">The students never see this list.</span></div>
+  </div></div>
   <div id="dlgCompare" class="modal hidden"><div class="modal-content card wide">
     <div class="card-head"><h2>Compare two students</h2><span class="grow"></span><button class="btn sec sm" data-close="dlgCompare">Close</button></div>
     <div class="row" style="gap:8px;flex-wrap:wrap"><select id="cmpA" aria-label="First student"></select><select id="cmpB" aria-label="Second student"></select>
@@ -1181,18 +1250,19 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.2"></script>
-<script src="js/excel.js?v=33.2"></script>
-<script src="js/teacher.js?v=33.2"></script>
-<script src="js/grading.js?v=33.2"></script>
-<script src="js/grades_teacher.js?v=33.2"></script>
-<script src="js/shell.js?v=33.2"></script>
-<script src="js/nav.js?v=33.2"></script>
-<script src="js/supervision.js?v=33.2"></script>
-<script src="js/ttview.js?v=33.2"></script>
-<script src="js/timetable.js?v=33.2"></script>
-<script src="js/tt_teacher.js?v=33.2"></script>
-<script src="js/floatqr.js?v=33.2"></script>
+<script src="js/common.js?v=33.3"></script>
+<script src="js/excel.js?v=33.3"></script>
+<script src="js/teacher.js?v=33.3"></script>
+<script src="js/grading.js?v=33.3"></script>
+<script src="js/grades_teacher.js?v=33.3"></script>
+<script src="js/shell.js?v=33.3"></script>
+<script src="js/nav.js?v=33.3"></script>
+<script src="js/supervision.js?v=33.3"></script>
+<script src="js/ttview.js?v=33.3"></script>
+<script src="js/timetable.js?v=33.3"></script>
+<script src="js/tt_teacher.js?v=33.3"></script>
+<script src="js/floatqr.js?v=33.3"></script>
+<script src="js/v333.js?v=33.3"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

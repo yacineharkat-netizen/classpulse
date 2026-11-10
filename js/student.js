@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.2"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.3"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -321,6 +321,9 @@ async function fetchState() {
     if (e.code === "UNKNOWN_DEVICE") { forgetDevice(); return; }
     return; // network hiccup: keep the last screen, retry at next poll
   }
+  // v33.3: the quiz of another pass (another sub-group): a line, never the questions
+  state.otherPass = state.quiz && state.quiz.other_pass ? state.quiz : null;
+  if (state.otherPass) state.quiz = null;
   const q = state.quiz;
   if (q && q.phase === "question") localDeadline = Date.now() + q.remaining_ms;
   // After a leave, if the report could not be confirmed, send it again. v28: with the time of the leave, so that the
@@ -341,6 +344,8 @@ async function fetchState() {
   }
   render();
   updateFullscreenBar();
+  // v33.3: the exercises of this session, under the live content (not during a quiz)
+  if (window.stuV333) stuV333.live(deviceToken, String(state.version), state.activity === "quiz" && !!state.quiz && state.quiz.phase !== "finished");
 }
 
 // v28: after an automatic return to the quiz the browser does not allow full screen without a tap: offer it.
@@ -388,6 +393,11 @@ function render() {
   }
 
   if (state.activity === "quiz" && state.quiz) { renderQuiz(live, who); return; }
+  if (state.activity === "quiz" && state.otherPass) {   // v33.3
+    live.innerHTML = who + bigStatus("👥", esc(state.otherPass.message || "This quiz is for the group checking in now"),
+      "You checked in during another pass of this session. Your own quiz results are in Progress.") + sharedLinksHtml();
+    return;
+  }
   if (state.activity === "quiz" && !state.present && !state.attendance_open) {
     live.innerHTML = who + bigStatus("⛔", "Quiz in progress", "Only students checked in during this session can take part.");
     return;
