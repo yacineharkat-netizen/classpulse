@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4"; // file version, checked by common.js
 // v33.1 (« 33 bis »): the teacher console as in the mockups. This file draws the new parts and leans on teacher.js
 // for everything else (same ids, same server calls): header (search, « To do », bell, account), the cards of Live,
 // the list of the session, the side panel of a student, the student list, the announcements, the folders of the
@@ -215,7 +215,8 @@ function shLive() {
   $("lvAttToggle").className = "btn sm " + (open ? "sec" : "gr");
   $("lvAttCode").classList.toggle("hidden", !open);
   $("lvAttCodeTxt").textContent = $("attCodeBig").textContent;
-  $("lvAttNote").textContent = Number(s.att_window_s) >= 999999 ? "· fixed until you close" : Number(s.att_window_s) >= 86400 ? "· fixed for the day" : "· changes every " + s.att_window_s + " s";
+  $("lvAttNote").textContent = s.attendance_until ? "· fixed, open until " + new Date(s.attendance_until).toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short" }) + " (check-in from home)"   // v33.4
+    : Number(s.att_window_s) >= 999999 ? "· fixed until you close" : Number(s.att_window_s) >= 86400 ? "· fixed for the day" : "· changes every " + s.att_window_s + " s";
   // requests: in the window (To do, bell, orange band)
   $("reqNone").classList.toggle("hidden", shReqCount() > 0 || !$("silentBox").classList.contains("hidden"));
   // quiz
@@ -283,6 +284,7 @@ window.renderLiveList = function (list) {
     const s = r.status || "", note = [];
     if (!r.official) note.push("not in the official list");
     if (!r.member) note.push(r.status ? "guest" : "other group");
+    if (r.remote && r.at) { const d = new Date(r.at); note.push("from home · " + String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0")); }   // v33.4
     if (r.method === "manual") note.push("changed by hand");
     if (checkLocation && r.located && r.distance != null && enough && r.distance > (CONFIG.farFromRoomM || 300)) note.push("📍 " + (r.distance >= 1000 ? (r.distance / 1000).toFixed(1) + " km" : r.distance + " m") + " away");
     return `<tr><td><button class="lnk" data-profile="${r.student_id}">${esc(r.name)}</button></td><td>${esc(r.td_group || "")}</td><td>${esc(r.tp_group || "")}</td>

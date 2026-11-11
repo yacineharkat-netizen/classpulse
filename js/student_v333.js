@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["student_v333.js"] = "33.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student_v333.js"] = "33.4"; // file version, checked by common.js
 // v33.3 (students): the exercises to answer (in « To do » and on the session page), the bonuses the teacher shows,
 // « Claim a bonus » for a session where the student checked in (during the session and up to 48 h after).
 // The student never sees the ranking of an exercise nor whether his answer was right: only « Sent ✓ hh:mm:ss ».

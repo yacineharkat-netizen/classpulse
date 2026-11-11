@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.3">
+<html lang="en" data-version="33.4">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B2545">
-<link rel="stylesheet" href="css/style.css?v=33.3">
+<link rel="stylesheet" href="css/style.css?v=33.4">
 </head>
 <body class="v33b">
 
@@ -78,6 +78,7 @@
 
     <section id="tab-live">
       <div id="ttNowBar" class="tt-now-bar hidden"></div>
+      <div id="longOpenBar" class="long-open hidden"></div>
       <button id="reqBanner" class="req-banner hidden" type="button"><strong id="reqBannerText">1 request waiting</strong><span class="grow"></span><span class="go">Open ›</span></button>
       <div class="live-grid">
         <div class="card live-card" id="cardSession">
@@ -90,6 +91,10 @@
             <strong id="lvTitle" class="lv-title"></strong>
             <div class="lv-count"><strong id="lvPresent">0</strong><span id="lvExpected"></span></div>
             <div id="lvPassLine" class="pass-line hidden"></div>
+            <div id="lvUntilBox" class="until-box hidden"><label class="small-t">Open <select id="attUntil" aria-label="How long the attendance stays open">
+              <option value="">for the session</option><option value="7">1 week (check-in from home)</option><option value="14">2 weeks (check-in from home)</option>
+              <option value="21">3 weeks (check-in from home)</option><option value="date">until a date…</option></select></label>
+              <input id="attUntilDate" type="date" class="hidden" aria-label="Open until this day"></div>
             <div id="lvAttCode" class="lv-att hidden"><span class="muted">Attendance code</span> <strong id="lvAttCodeTxt"></strong> <span class="muted" id="lvAttNote"></span></div>
           </div>
           <div class="card-actions" id="lvActions">
@@ -888,6 +893,12 @@
         <h2>Join a class as assistant</h2>
         <div class="row"><input id="joinCode" placeholder="invitation code (8 characters)" style="max-width:260px;text-transform:uppercase"><button id="joinBtn">Join</button></div>
       </div>
+      <div class="card teacher-only" id="backupCard">
+        <h2>Backup</h2>
+        <p class="muted">One file with everything of your classes (students, sessions, attendance, quizzes and answers, marks, bonuses, exercises, messages),
+          to keep on your computer. Do it at the end of a semester and before deleting a class. The automatic backup every week is set up once on GitHub (see the LISEZMOI).</p>
+        <div class="row" style="gap:8px"><button id="backupBtn" class="btn gr">Download a backup</button><span class="muted small-t" id="backupNote"></span></div>
+      </div>
       <div class="card hidden" id="newClassCard">
         <h2>New class</h2>
         <div class="row">
@@ -1250,19 +1261,20 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.3"></script>
-<script src="js/excel.js?v=33.3"></script>
-<script src="js/teacher.js?v=33.3"></script>
-<script src="js/grading.js?v=33.3"></script>
-<script src="js/grades_teacher.js?v=33.3"></script>
-<script src="js/shell.js?v=33.3"></script>
-<script src="js/nav.js?v=33.3"></script>
-<script src="js/supervision.js?v=33.3"></script>
-<script src="js/ttview.js?v=33.3"></script>
-<script src="js/timetable.js?v=33.3"></script>
-<script src="js/tt_teacher.js?v=33.3"></script>
-<script src="js/floatqr.js?v=33.3"></script>
-<script src="js/v333.js?v=33.3"></script>
+<script src="js/common.js?v=33.4"></script>
+<script src="js/excel.js?v=33.4"></script>
+<script src="js/teacher.js?v=33.4"></script>
+<script src="js/grading.js?v=33.4"></script>
+<script src="js/grades_teacher.js?v=33.4"></script>
+<script src="js/shell.js?v=33.4"></script>
+<script src="js/nav.js?v=33.4"></script>
+<script src="js/supervision.js?v=33.4"></script>
+<script src="js/ttview.js?v=33.4"></script>
+<script src="js/timetable.js?v=33.4"></script>
+<script src="js/tt_teacher.js?v=33.4"></script>
+<script src="js/floatqr.js?v=33.4"></script>
+<script src="js/v333.js?v=33.4"></script>
+<script src="js/v334.js?v=33.4"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

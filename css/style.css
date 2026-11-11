@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "33.3";
+:root { --cp-version: "33.4";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -1207,3 +1207,11 @@ body.v33s { background: #F5F8FB; }
 /* v33.3: the quiz card grows with the proposed quiz and the exercises of the session (nothing hidden under a scroll) */
 @media (min-width: 761px) { .v33b #cardQuiz, .v33b #cardSession { height: auto; min-height: 300px; overflow: visible; } }
 @media (max-width: 760px) { .v33b .ea-table th:nth-child(4), .v33b .ea-table td:nth-child(4) { display: none; } .v33b .ea-table td, .v33b .ea-table th { padding: 6px 4px; } }
+/* v33.4: attendance open for days */
+.v33b .until-box { margin: 4px 0; }
+.v33b .until-box select { width: auto; min-height: 30px; padding: 2px 6px; margin: 0 0 0 4px; font-size: 13px; }
+.v33b .until-box input[type=date] { width: auto; margin: 4px 0 0; padding: 2px 6px; font-size: 13px; }
+.v33b .long-open { display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; background: #EEF6EE; border: 1px solid #B9DCC2; border-radius: 12px; padding: 8px 12px; margin-bottom: 12px; font-size: 14px; }
+.v33b .long-open .lo-item { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.v33b .long-open .btn.sm { padding: 3px 9px; min-height: 0; }
+.home-session .hs-until { font-size: 13px; color: #2E6B3F; margin-top: 2px; }

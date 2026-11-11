@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.3">
+<html lang="en" data-version="33.4">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=33.3">
+<link rel="stylesheet" href="css/style.css?v=33.4">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -131,10 +131,10 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.3"></script>
-<script src="js/ttview.js?v=33.3"></script>
-<script src="js/timetable.js?v=33.3"></script>
-<script src="js/student_v333.js?v=33.3"></script>
+<script src="js/common.js?v=33.4"></script>
+<script src="js/ttview.js?v=33.4"></script>
+<script src="js/timetable.js?v=33.4"></script>
+<script src="js/student_v333.js?v=33.4"></script>
 <script>
   // automated tests of the earlier versions: the « Courses » page stays shown under « Today » (see css)
   try { if (navigator.webdriver && localStorage.getItem("cp_test_real") !== "1") document.body.classList.add("dlg-inline"); } catch (e) { /* private window */ }
@@ -232,12 +232,16 @@
           if (s) live.push(`<a href="student.html?s=${encodeURIComponent(s.code)}" style="text-decoration:none"><button class="orange" style="width:100%;margin-bottom:10px">▶ Session in progress: ${esc(sp.class_name)} · ${esc(s.title)}</button></a>`);
         }
         // v32.2: the teacher put the session and its code on this page
+        // v33.4: EVERY open session that concerns him (course: everybody; TD: his group; TP: his sub-group), also those left open for days
         try {
-          const hs = await rpc("s_home_session", { p_device: t.token });
-          if (hs) live.unshift(`<div class="home-session"><strong>✅ ${esc(sp.class_name)} · ${esc(hs.title)}</strong>
+          let list;
+          try { list = await rpc("s_home_sessions", { p_device: t.token }); }
+          catch (x) { const one = await rpc("s_home_session", { p_device: t.token }); list = one ? [one] : []; }   // older database
+          list.slice().reverse().forEach((hs) => live.unshift(`<div class="home-session"><strong>${hs.checked_in ? "✅" : "🟢"} ${esc(sp.class_name)} · ${esc(hs.title)}</strong>
+            ${hs.until ? `<div class="hs-until">Check-in open until ${esc(new Date(hs.until).toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short" }))} · you can do it from home with the code</div>` : ""}
             ${hs.remark ? `<div class="hs-remark">📝 ${esc(hs.remark)}</div>` : ""}
-            ${hs.checked_in ? `<div style="margin-top:4px">You are checked in.</div>` : (hs.att_code ? `<div class="muted" style="margin-top:4px">Attendance code (type it on the next page)</div><div class="hs-code">${esc(hs.att_code)}</div>` : `<div class="muted" style="margin-top:4px">Attendance is open: tap, then scan the QR code or type the code given in class.</div>`)}
-            ${hs.checked_in ? "" : `<a href="student.html?s=${encodeURIComponent(hs.session_code)}" style="text-decoration:none"><button class="green">Check in</button></a>`}</div>`);
+            ${hs.checked_in ? `<div style="margin-top:4px">You are checked in.</div>` : (hs.att_code ? `<div class="muted" style="margin-top:4px">Attendance code (type it on the next page)</div><div class="hs-code">${esc(hs.att_code)}</div>` : `<div class="muted" style="margin-top:4px">Attendance is open: tap, then scan the QR code or type the code given by the teacher.</div>`)}
+            ${hs.checked_in ? "" : `<a href="student.html?s=${encodeURIComponent(hs.session_code)}" style="text-decoration:none"><button class="green">Check in</button></a>`}</div>`));
         } catch (e) { /* older database */ }
         // v28.2: a make-up given by the teacher (late, network cut, excused absence)
         try {

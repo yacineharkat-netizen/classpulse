@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["nav.js"] = "33.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["nav.js"] = "33.4"; // file version, checked by common.js
 // v33.2: navigation of the teacher console.
 // - one panel open at a time (menu, To do, bell, requests, student, dialog); Escape closes it;
 // - on a phone what opens takes the whole screen, with « ‹ Back » on top; the Back button of the phone goes back one step;
@@ -177,7 +177,7 @@ function navBuildSubtabs() {
   // v33.3: these pages are the tabs of the « Course » space (Visible documents, Who reads what, My library, Resources and links)
   navSubtabs("space", [["Visible documents", [cardWith("space", "Student space"), cardWith("space", "Course content"), cardWith("space", "What the lab assistants")]], ["Who reads what", [cardWith("space", "Who reads what")]],
     ["My library", [cardWith("space", "My documents")]], ["Resources and links", [cardWith("space", "My resources"), ($("resourceSearch") || {}).closest ? $("resourceSearch").closest(".card") : null]]]);
-  navSubtabs("classes", [["My classes", ["#joinCard", "#newClassCard", cardWith("classes", "My classes") || "#tab-classes > .card:nth-of-type(3)"]], ["Assistants", [cardWith("classes", "Assistants of this class")]]]);
+  navSubtabs("classes", [["My classes", ["#joinCard", "#newClassCard", "#backupCard", cardWith("classes", "My classes") || "#tab-classes > .card:nth-of-type(3)"]], ["Assistants", [cardWith("classes", "Assistants of this class")]]]);
   navSubtabs("myspace", [["Office hours", [cardWith("myspace", "Office hours")]], ["Proposals", [cardWith("myspace", "Proposals")]]]);
 }
 

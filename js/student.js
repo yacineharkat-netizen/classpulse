@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.4"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -380,8 +380,10 @@ function render() {
   const who = `<p class="muted">${esc(state.student.first_name)} ${esc(state.student.last_name)} · ${esc(state.student.matricule)}</p>`;
   const live = $("viewLive");
 
-  if (state.ended) {
-    live.innerHTML = who + bigStatus("⏹", "The session is over", "Thank you. Attendance and quizzes are closed.");
+  // v33.4: a past session whose attendance the teacher left open (check-in from home): the check-in is still possible
+  if (state.ended && !(state.attendance_open && !state.present)) {
+    live.innerHTML = who + (state.present && state.attendance_open ? bigStatus("✅", "You are checked in", "This session is over; your check-in is recorded.")
+      : bigStatus("⏹", "The session is over", "Thank you. Attendance and quizzes are closed."));
     return;
   }
 

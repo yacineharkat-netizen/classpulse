@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -341,6 +341,7 @@ async function closeForgottenAttendance() {
   const closed = [];
   for (const s of allSessions) {
     if (!s.attendance_open || s.ended_at || autoClosed.has(s.id)) continue;
+    if (s.attendance_until) continue;   // v33.4: left open on purpose until a date (check-in from home)
     // opened more than 6 hours ago, or opened before the planned end of today's session and that end has passed.
     // An attendance opened again on purpose after the end (or on an old session) is left alone.
     const opened = s.attendance_opened_at ? new Date(s.attendance_opened_at) : null;
@@ -851,8 +852,9 @@ function sendLiveToMini(att) {
 let attCodeDue = 0;
 async function renderAttendanceCode() {
   const s = live.session;
-  $("attCodeBox").classList.toggle("hidden", !s.attendance_open || !!s.ended_at);
-  if (!s.attendance_open || s.ended_at) { attCodeShown = ""; attCodeDue = 0; return; }
+  const endedShut = !!s.ended_at && !s.attendance_until;   // v33.4: a past session left open for days shows its code
+  $("attCodeBox").classList.toggle("hidden", !s.attendance_open || endedShut);
+  if (!s.attendance_open || endedShut) { attCodeShown = ""; attCodeDue = 0; return; }
   if (attCodeShown && Date.now() < attCodeDue) return;
   attCodeDue = Date.now() + 60000;
   let a;
