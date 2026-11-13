@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["student_v333.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student_v333.js"] = "33.4.1"; // file version, checked by common.js
 // v33.3 (students): the exercises to answer (in « To do » and on the session page), the bonuses the teacher shows,
 // « Claim a bonus » for a session where the student checked in (during the session and up to 48 h after).
 // The student never sees the ranking of an exercise nor whether his answer was right: only « Sent ✓ hh:mm:ss ».
@@ -75,11 +75,14 @@ async function sv3Today(courses, go) {
 
 // the session page (student.html): the exercises of this session, under what the teacher shows
 let sv3LiveKey = "", sv3LiveAt = 0;
-async function sv3Live(token, version, inQuiz) {
+async function sv3Live(token, version, inQuiz, exOpen) {
   let box = document.getElementById("exLive");
   if (!box) { box = document.createElement("div"); box.id = "exLive"; box.className = "ex-live"; const v = document.getElementById("viewLive"); if (!v) return; v.after(box); }
   box.classList.toggle("hidden", !!inQuiz);
   if (inQuiz || !token) return;
+  // v33.4.1: no exercise open for him → no request at all (on 11/11 every change of the session made 80 phones ask)
+  const answered = box.querySelector(".ex-sent");
+  if (exOpen === false && !answered) { if (box.innerHTML) { box.innerHTML = ""; box.dataset.html = ""; } return; }
   const typing = document.activeElement && document.activeElement.classList.contains("ex-in");
   if (typing || (version === sv3LiveKey && Date.now() - sv3LiveAt < 15000)) return;
   sv3LiveKey = version; sv3LiveAt = Date.now();
@@ -87,7 +90,7 @@ async function sv3Live(token, version, inQuiz) {
   const html = list.map((e) => sv3ExerciseHtml(e, token)).join("");
   if (box.dataset.html === html) return;
   box.dataset.html = html; box.innerHTML = html;
-  box.querySelectorAll("[data-exsend]").forEach((b) => b.onclick = () => sv3Send(b, () => { sv3LiveKey = ""; sv3Live(token, version, false); }));
+  box.querySelectorAll("[data-exsend]").forEach((b) => b.onclick = () => sv3Send(b, () => { sv3LiveKey = ""; sv3Live(token, version, false, true); }));
 }
 
 // ------------------------------------------------------------------ bonuses (Progress)

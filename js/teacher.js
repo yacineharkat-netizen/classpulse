@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.1"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -742,12 +742,26 @@ async function pushLink(link) {
 // v28.1: the live view is refreshed by ONE poller (never two calls at the same time, slower when the network is slow).
 // refreshLive() asks for a fresh view now and resolves when it is there.
 const livePoll = poller(refreshLiveNow, CONFIG.teacherPollMs || 1500, () => !!sessionId);
-function refreshLive() { return sessionId ? livePoll.run() : Promise.resolve(); }
+function refreshLive() { liveForce = true; return sessionId ? livePoll.run() : Promise.resolve(); }
+// v33.4.1: Live is loaded in full only when something changed (one number asked first), during a running quiz, or every
+// 15 s; on 11/11 four consoles reloaded everything every 1.5 s.
+let liveFullAt = 0, liveForce = false;
+function liveNeedsFull() {
+  if (liveForce || !live || !live.session || live.session.id !== sessionId || Date.now() - liveFullAt > 15000) return true;
+  const q = live.quiz;
+  return !!(q && ["lobby", "question", "reveal", "self"].includes(q.phase));
+}
 async function refreshLiveNow() {
   if (!sessionId) return;
   const sid = sessionId;
   let fresh;
+  if (!liveNeedsFull()) {
+    let v; try { v = await rpc("t_live_version", { p_session: sid }); } catch (e) { v = null; }
+    if (v != null && String(v) === String(live.session.version)) return;
+  }
+  liveForce = false;
   try { fresh = await rpc("t_live", { p_session: sid }); } catch (e) { return; }
+  liveFullAt = Date.now();
   if (sid !== sessionId) return;           // the teacher chose another session meanwhile
   live = fresh;
   sendLiveToMini();
@@ -1268,7 +1282,8 @@ function renderLiveRequests() {
 // something changed, and never while the teacher is pressing a button in it (a click is never lost).
 let attLastHtml = "", attPointerDown = false, attLastAt = 0, attHash = "", attForce = false;
 const attendancePoll = poller(refreshAttendanceNow, 5000, () => !!sessionId && activeTab === "live");
-function refreshAttendance() { return sessionId ? attendancePoll.run() : Promise.resolve(); }
+let attVersion = "";
+function refreshAttendance() { attForce = true; return sessionId ? attendancePoll.run() : Promise.resolve(); }
 $("attendanceTable").addEventListener("pointerdown", () => { attPointerDown = true; });
 document.addEventListener("pointerup", () => { if (attPointerDown) { attPointerDown = false; } });
 async function refreshAttendanceNow() {
@@ -1276,6 +1291,10 @@ async function refreshAttendanceNow() {
   const sid = sessionId;
   let r;
   // v29: the server sends the list only when it changed (it compares with the hash of the list we have)
+  // v33.4.1: the list is asked again only when the session changed (or after 30 s, or when asked)
+  const ver = live && live.session && live.session.id === sid ? String(live.session.version) : "";
+  if (!attForce && ver && ver === attVersion && Date.now() - attLastAt < 30000) return;
+  attVersion = ver;
   try { r = await rpc("t_attendance_list_if", { p_session: sid, p_hash: attHash }); } catch (e) { return; }
   if (sid !== sessionId) return;
   attLastAt = Date.now();

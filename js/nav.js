@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["nav.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["nav.js"] = "33.4.1"; // file version, checked by common.js
 // v33.2: navigation of the teacher console.
 // - one panel open at a time (menu, To do, bell, requests, student, dialog); Escape closes it;
 // - on a phone what opens takes the whole screen, with « ‹ Back » on top; the Back button of the phone goes back one step;

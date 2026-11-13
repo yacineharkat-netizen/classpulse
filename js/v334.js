@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["v334.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["v334.js"] = "33.4.1"; // file version, checked by common.js
 // v33.4 (teacher console):
 // - « Open the attendance » chooses how long: for the session (as before) or until a date (1 to 3 weeks, check-in from home:
 //   fixed code, never closed by itself before that date);

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.4">
+<html lang="en" data-version="33.4.1">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - document</title>
-<link rel="stylesheet" href="css/style.css?v=33.4">
+<link rel="stylesheet" href="css/style.css?v=33.4.1">
 </head>
 <body class="docview">
 <div class="docbar no-print">
@@ -22,7 +22,7 @@
 
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.4"></script>
+<script src="js/common.js?v=33.4.1"></script>
 <script>
   // Protected document viewer. The page, the PDF and the attached file come from the database:
   // only a registered phone of a class where the document is visible receives them (or the teacher, in preview).
@@ -113,7 +113,7 @@
         body: JSON.stringify({ p_device: token, p_read: readId, p_active_s: active, p_scroll: maxScroll }),
       }).catch(() => {});
     };
-    setInterval(() => send(false), 15000);
+    setInterval(() => send(false), 60000);   // v33.4.1: once a minute (was 15 s), the reading time is kept the same
     setTimeout(() => send(false), 4000);
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") send(true); });
     window.addEventListener("pagehide", () => send(true));

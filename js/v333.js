@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["v333.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["v333.js"] = "33.4.1"; // file version, checked by common.js
 // v33.3 (teacher console):
 // - lab sessions by sub-group: how the sub-groups pass (session dialog), the pass of each quiz, « Next sub-group »,
 //   the prepared quiz of the sub-group before proposed again;

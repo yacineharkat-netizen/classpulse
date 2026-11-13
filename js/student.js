@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.4.1"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -249,8 +249,11 @@ function pollLoop() {
   const inQuiz = q && ["lobby", "question", "reveal", "self"].includes(q.phase);
   // Only when the live channel is connected: it brings every change at once, polling is just a safety net.
   const live = channel && channel.connected;
-  const delay = inQuiz || !live ? 3000 : (document.visibilityState === "hidden" ? 20000 : 10000);
-  setTimeout(async () => { await fetchState(); pollLoop(); }, delay);
+  let delay = inQuiz || !live ? 3000 : (document.visibilityState === "hidden" ? 20000 : 10000);
+  // v33.4.1: when the server does not answer, wait longer each time (never more than 30 s), with a random part so that
+  // 80 phones do not all come back at the same second: an overloaded server gets the time to recover.
+  if (pollFails) delay = Math.min(30000, Math.max(delay, 2000 * 2 ** pollFails)) * (0.75 + Math.random() / 2);
+  setTimeout(async () => { await fetchState(true); pollLoop(); }, delay);
 }
 
 // ------------------------------------------------------------------ check-in from the home page (no session known yet)
@@ -313,12 +316,26 @@ function retryOnNetwork(e, again) {
   setTimeout(again, 1500);
   return true;
 }
-async function fetchState() {
+let pollFails = 0;   // v33.4.1: failed polls in a row (the next poll waits longer: 2, 4, 8 … 30 s)
+let stateFullAt = 0;
+async function fetchState(fromPoll) {
   if (!deviceToken) return;
+  // v33.4.1: a regular poll outside a running quiz first asks one number (the version of the session); the whole
+  // screen is loaded only when it changed, or every 30 s. On 11/11, 80 phones loaded everything every few seconds.
+  const q0 = state && state.quiz, running = q0 && ["lobby", "question", "reveal", "self"].includes(q0.phase);
+  if (fromPoll && state && !running && Date.now() - stateFullAt < 30000) {
+    try {
+      const v = await rpc("s_state_version", { p_code: sessionCode });
+      pollFails = 0;
+      if (v != null && String(v) === String(state.version)) return;
+    } catch (e) { pollFails++; return; }
+  }
   try {
     state = await rpc("s_state", { p_device: deviceToken, p_code: sessionCode });
+    pollFails = 0; stateFullAt = Date.now();
   } catch (e) {
     if (e.code === "UNKNOWN_DEVICE") { forgetDevice(); return; }
+    pollFails++;
     return; // network hiccup: keep the last screen, retry at next poll
   }
   // v33.3: the quiz of another pass (another sub-group): a line, never the questions
@@ -345,7 +362,7 @@ async function fetchState() {
   render();
   updateFullscreenBar();
   // v33.3: the exercises of this session, under the live content (not during a quiz)
-  if (window.stuV333) stuV333.live(deviceToken, String(state.version), state.activity === "quiz" && !!state.quiz && state.quiz.phase !== "finished");
+  if (window.stuV333) stuV333.live(deviceToken, String(state.version), state.activity === "quiz" && !!state.quiz && state.quiz.phase !== "finished", !!state.ex_open);
 }
 
 // v28: after an automatic return to the quiz the browser does not allow full screen without a tap: offer it.
@@ -817,7 +834,13 @@ function renderSelfPaced(live, who, head, q) {
       lastRendered = "";
       await fetchState();
     } catch (e) {
-      if (e.network) { if (st) st.textContent = "⏳ not sent yet (network) — trying again…"; setTimeout(() => saveItem(it), 2000); return; }
+      if (e.network) {   // v33.4.1: tried again later and later (2, 4, 8 … 30 s), the answer stays ticked on the phone
+        it.retries = (it.retries || 0) + 1;
+        if (st) st.textContent = "⏳ not sent yet (network) — trying again…";
+        setTimeout(() => saveItem(it), Math.min(30000, 2000 * 2 ** (it.retries - 1)) * (0.75 + Math.random() / 2)); return;
+      }
+      it.retries = 0;
+      if (e.code === "LOCKED") { if (st) st.textContent = "🔒 not saved: you are locked — ask the teacher to unlock you"; toast("Locked: ask the teacher to unlock you. Your answers stay on this phone.", "error"); return; }
       if (st) st.textContent = "not saved: " + e.message; toast(e.message, "error");
     }
   };
@@ -1008,9 +1031,29 @@ function reportLeave(kind) {
   updateFullscreenBar();
 }
 
+// v33.4.1: tolerance of the lock. Leaving the page shorter than the tolerance of the quiz (15 s by default: a screen that
+// goes to sleep, a notification) only warns; longer, or the 3rd short leave, locks. Tolerance 0 = locked at once.
+// (A web page cannot tell a screen going to sleep from another app: the browser says « hidden » in both cases.)
+let hiddenAt = 0, shortLeaves = 0;
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && guardActive()) reportLeave("left_screen");
-  if (document.visibilityState === "visible") { if (armedQuiz) keepScreenOn(); fetchState(); }
+  if (document.visibilityState === "hidden" && guardActive()) {
+    const grace = Number(state.quiz.lock_grace_s == null ? 15 : state.quiz.lock_grace_s);
+    if (grace <= 0) reportLeave("left_screen"); else hiddenAt = Date.now();
+  }
+  if (document.visibilityState === "visible") {
+    if (hiddenAt && guardActive()) {
+      const away = (Date.now() - hiddenAt) / 1000, grace = Number(state.quiz.lock_grace_s == null ? 15 : state.quiz.lock_grace_s);
+      if (away >= grace) reportLeave("left_screen");
+      else if (away >= 1) {
+        shortLeaves++;
+        if (shortLeaves >= 3) reportLeave("left_screen");
+        else toast(`You left the test for ${Math.round(away)} s (${shortLeaves}/2). Over ${grace} s, or a 3rd time, the test locks.`, "error");
+      }
+    }
+    hiddenAt = 0;
+    if (armedQuiz) keepScreenOn();
+    fetchState();
+  }
 });
 // Computer keyboards: the PrintScreen key counts as leaving the quiz (a phone screenshot cannot be detected by a web page).
 function onPrintScreen(e) { if (e.key === "PrintScreen" && guardActive()) reportLeave("printscreen"); }

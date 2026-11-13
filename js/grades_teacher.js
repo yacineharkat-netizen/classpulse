@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.4.1"; // file version, checked by common.js
 // v33: Results space of the teacher: « Each quiz » (as before), « Marks » (every column, typed in the app or imported),
 // « Final mark » (the formula of the class) and « What students see » (opened and closed at any time, for a time).
 const GT = { raw: null, b: null, cid: null, entry: null, edit: null, saveTimer: null, busy: false };

@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4.1"; // file version, checked by common.js
 // v33.1 (« 33 bis »): the teacher console as in the mockups. This file draws the new parts and leans on teacher.js
 // for everything else (same ids, same server calls): header (search, « To do », bell, account), the cards of Live,
 // the list of the session, the side panel of a student, the student list, the announcements, the folders of the

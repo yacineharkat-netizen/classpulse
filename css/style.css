@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "33.4";
+:root { --cp-version: "33.4.1";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -1215,3 +1215,6 @@ body.v33s { background: #F5F8FB; }
 .v33b .long-open .lo-item { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .v33b .long-open .btn.sm { padding: 3px 9px; min-height: 0; }
 .home-session .hs-until { font-size: 13px; color: #2E6B3F; margin-top: 2px; }
+/* v33.4.1: lock tolerance of the running quiz */
+.v33b .lq-lock { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.v33b .lq-lock select { width: auto; min-height: 30px; padding: 2px 6px; margin: 0 0 0 4px; font-size: 13px; }
