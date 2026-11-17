@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["v333.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["v333.js"] = "33.4.3"; // file version, checked by common.js
 // v33.3 (teacher console):
 // - lab sessions by sub-group: how the sub-groups pass (session dialog), the pass of each quiz, « Next sub-group »,
 //   the prepared quiz of the sub-group before proposed again;
@@ -196,6 +196,7 @@ async function v3LoadBonus() {
   V3.bonus = { value: r.value, detail: r.detail, pending: r.pending, claims: r.claims || [] };
   if (document.activeElement !== $("bonusValue")) $("bonusValue").value = v3fmt(r.value);
   if (document.activeElement !== $("bonusDetail")) $("bonusDetail").value = r.detail;
+  if (document.activeElement !== $("bonusWindow")) $("bonusWindow").value = r.window || "7d";   // v33.4.3
   $("bonusPending").textContent = r.pending;
   const list = V3.bonus.claims.filter((k) => !V3.filter || k.status === V3.filter);
   $("bonusList").innerHTML = list.length ? `<div class="req-list">${list.map((k) => v3ClaimHtml(k, false)).join("")}</div>`
@@ -215,6 +216,7 @@ $("bonusSaveBtn").onclick = async () => {
   try {
     const v = Number(String($("bonusValue").value).replace(",", "."));
     await rpc("t_bonus_settings", { p_class: classId, p_value: v > 0 ? v : null, p_detail: $("bonusDetail").value });
+    await rpc("t_bonus_window", { p_class: classId, p_window: $("bonusWindow").value });   // v33.4.3
     toast("Saved.", "ok"); v3LoadBonus();
   } catch (e) { toast(e.code === "BAD_POINTS" ? "The value of one bonus is between 0.05 and 5 points." : e.message, "error"); }
 };

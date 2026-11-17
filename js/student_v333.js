@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["student_v333.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student_v333.js"] = "33.4.3"; // file version, checked by common.js
 // v33.3 (students): the exercises to answer (in « To do » and on the session page), the bonuses the teacher shows,
 // « Claim a bonus » for a session where the student checked in (during the session and up to 48 h after).
 // The student never sees the ranking of an exercise nor whether his answer was right: only « Sent ✓ hh:mm:ss ».
@@ -107,11 +107,12 @@ function sv3BonusHtml(b, token) {
   const can = b.claimable || [];
   const key = token.slice(0, 8), n = SV3.claimN[key] || 1;
   const form = can.length ? `<div class="claim-form" data-claimtok="${esc(token)}"><strong>Claim a bonus</strong>
-      <select class="cl-ses" aria-label="Session">${can.map((x) => `<option value="${x.session_id}">${esc(x.unit || sv3kind(x.kind))} · ${esc(x.title)} · ${sv3day(x.date)}</option>`).join("")}</select>
+      <select class="cl-ses" aria-label="Session">${can.map((x) => `<option value="${x.session_id}">${esc(x.unit || sv3kind(x.kind))} · ${esc(x.title)} · ${sv3day(x.date)}${x.until ? " (until " + sv3day(x.until) + ")" : ""}</option>`).join("")}</select>
+      <div class="muted" style="font-size:12px">Only the sessions you attended, still inside the claim period of the course.</div>
       <div class="seg" role="group" aria-label="How many">${[1, 2, 3].map((i) => `<button type="button" data-cln="${i}" class="${i === n ? "on" : ""}">${i} bonus${i > 1 ? "es" : ""}</button>`).join("")}</div>
-      <input class="cl-note" maxlength="140" placeholder="A short word: why? (e.g. answered at the board)">
+      <input class="cl-note" maxlength="140" minlength="5" required placeholder="Why? Required, 5 letters at least (e.g. answered at the board)" aria-label="Reason (required)">
       <button class="cl-send">Send the claim</button>
-      <span class="muted" style="font-size:12px">One claim per session, during the session and up to 48 h after. One bonus = ${sv3num(b.value)} point.</span></div>` : "";
+      <span class="muted" style="font-size:12px">One claim per session, while the claim period of the course is open. The reason is required. One bonus = ${sv3num(b.value)} point.</span></div>` : "";
   return `<section class="card s-card bonus-box"><h2>My bonus</h2>${shown}${claims}${form}</section>`;
 }
 async function sv3Progress(courses) {
@@ -123,12 +124,13 @@ async function sv3Progress(courses) {
     const key = c.token.slice(0, 8);
     f.querySelectorAll("[data-cln]").forEach((x) => x.onclick = () => { SV3.claimN[key] = Number(x.dataset.cln); f.querySelectorAll("[data-cln]").forEach((y) => y.classList.toggle("on", y === x)); });
     f.querySelector(".cl-send").onclick = async (ev) => {
+      if (f.querySelector(".cl-note").value.trim().length < 5) { toast("Say why you claim it (5 letters at least).", "error"); f.querySelector(".cl-note").focus(); return; }
       ev.target.disabled = true;
       try {
         await rpc("s_bonus_claim", { p_device: c.token, p_session: f.querySelector(".cl-ses").value, p_n: SV3.claimN[key] || 1, p_note: f.querySelector(".cl-note").value });
         toast("Claim sent: the teacher answers it.", "ok"); SV3.claimN[key] = 1;
         sv3Progress([c]);
-      } catch (e) { toast(e.code === "CLAIM_TOO_LATE" ? "Too late: 48 h after the session." : e.code === "ALREADY_CLAIMED" ? "Already claimed for this session." : e.message, "error"); ev.target.disabled = false; }
+      } catch (e) { toast(e.code === "CLAIM_TOO_LATE" ? "Too late: the claim period of this session is over." : e.code === "REASON_REQUIRED" ? "Say why you claim it (5 letters at least)." : e.code === "ALREADY_CLAIMED" ? "Already claimed for this session." : e.message, "error"); ev.target.disabled = false; }
     };
   }
 }

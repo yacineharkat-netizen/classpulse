@@ -1,5 +1,5 @@
 // ClassPulse - reading and writing Excel files (SheetJS library).
-(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["excel.js"] = "33.4.3"; // file version, checked by common.js
 
 // Read the first sheet of a file as an array of objects, with normalised column names.
 async function readSheet(file) {
@@ -91,8 +91,8 @@ function studentsFromGrid(grid, headerRow, colMat, colLast, colFirst, colTd, col
       last_name: colLast >= 0 ? row[colLast] || "" : "",
       first_name: colFirst >= 0 ? row[colFirst] || "" : "",
     };
-    if (colTd >= 0) st.td_group = row[colTd] || "";
-    if (colTp >= 0) st.tp_group = row[colTp] || "";
+    if (colTd >= 0) st.td_group = cpStdGroup("td", row[colTd]);
+    if (colTp >= 0) st.tp_group = cpStdGroup("tp", row[colTp]);
     if (colMail >= 0) st.email = String(row[colMail] || "").trim().toLowerCase();
     out.push(st);
   }

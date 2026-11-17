@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.3"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -278,7 +278,7 @@ function groupOptions(kind, current) {
   const pairs = kind === "td" ? classGroups.td.map((g) => ["td", g]) : kind === "tp" ? classGroups.tp.map((g) => ["tp", g])
     : classGroups.td.map((g) => ["td", g]).concat(classGroups.tp.filter((g) => !classGroups.td.includes(g)).map((g) => ["tp", g]));
   if (current && !pairs.some((p) => p[1] === current)) pairs.push([kind === "tp" ? "tp" : "td", current]);
-  return `<option value="">Whole class</option>` + pairs.map(([k, g]) => `<option value="${esc(g)}" ${g === current ? "selected" : ""}>${k === "td" ? "TD" : "TP"} ${esc(g)}</option>`).join("");
+  return `<option value="">Whole class</option>` + pairs.map(([k, g]) => `<option value="${esc(g)}" ${g === current ? "selected" : ""}>${kind === "td" || kind === "tp" ? "" : (k === "td" ? "TD " : "TP ")}${esc(g)}</option>`).join("");   // v33.4.3: G1 / SG1 alone for a TD / TP session
 }
 function fillGroupSelect(select, kind, current) { select.innerHTML = groupOptions(kind, current); }
 $("newSessionKind").addEventListener("change", () => { fillGroupSelect($("newSessionGroup"), $("newSessionKind").value, ""); fillUnitSelect($("newSessionKind").value, ""); });
@@ -481,6 +481,12 @@ async function act(fn, args, okMessage) {
 
 // v25: each opening of the attendance is a "run" for one group, with a new code. The sub-groups of a lab pass one
 // after the other in the SAME session: open for sub-group 1, close, open for sub-group 2...
+// v33.4.3: one way to compare group names (same rule as norm_group in the database): « SG2 » = « 2 » = « sg 2 » = « TP2 » = « 02 »
+function normGroup(g) {
+  let x = String(g == null ? "" : g).toLowerCase().replace(/\s+/g, "");
+  if (/^(sous-?groupe|groupe|group|sg|tp|td|g)[._:-]*([0-9].*|.{1,2})$/.test(x)) x = x.replace(/^(sous-?groupe|groupe|group|sg|tp|td|g)[._:-]*/, "");
+  return /^[0-9]+$/.test(x) ? (x.replace(/^0+/, "") || "0") : x;
+}
 function groupLabel(kind, g) { return g ? `${kind === "tp" ? "Sub-group" : "Group"} ${g}` : "Whole class"; }
 function sessionGroupNames() {
   const s = live && live.session;
@@ -887,7 +893,11 @@ async function renderAttendanceCode() {
 function renderSessionLinks() {
   const links = (live.session.links || []);
   $("sessionLinks").innerHTML = links.length === 0 ? "" : `<div class="muted" style="margin-top:10px">Kept on the phones for this session:</div>` +
-    links.map((l) => `<div class="sl"><span title="${esc(l.url)}">${esc(l.label || l.url)}</span><button class="small secondary" data-slink="${l.id}" title="Remove from the phones">✕</button></div>`).join("");
+    links.map((l) => `<div class="sl"><span title="${esc(l.url)}">${esc(l.label || l.url)}</span>
+      <label class="tick" style="margin:0 8px;font-size:12px"><input type="checkbox" data-skeep="${l.id}" ${l.keep_open ? "checked" : ""}> Keep open after the session</label>
+      <button class="small secondary" data-slink="${l.id}" title="Remove from the phones">✕</button></div>`).join("");
+  $("sessionLinks").querySelectorAll("[data-skeep]").forEach((b) => b.onchange = () =>
+    act("t_link_keep", { p_session: sessionId, p_id: Number(b.dataset.skeep), p_keep: b.checked }, b.checked ? "Kept open after the session." : "Closed with the session."));
   $("sessionLinks").querySelectorAll("[data-slink]").forEach((b) => b.onclick = () => {
     if (!confirm("Remove this document from the phones for this session?")) return;
     act("t_remove_session_link", { p_session: sessionId, p_id: Number(b.dataset.slink) }, "Removed from the phones.");
@@ -895,7 +905,10 @@ function renderSessionLinks() {
 }
 
 $("endSessionBtn").onclick = () => {
-  if (!confirm("End the session?\nAttendance is closed, a running quiz is finished, and the phones show 'Session ended'.\nYou can reopen it later.")) return;
+  // v33.4.3: « End the session » closes everything of the session, except what is marked « keep open »
+  const keeps = (live.session.links || []).filter((l) => l.keep_open).length + (quizList || []).filter((q) => q.keep_open && q.pace === "self" && q.status !== "finished").length;
+  if (!confirm("End the session?\nClosed now: the attendance, the quiz running or self-paced, the demo and the documents shown to the students." +
+    (keeps ? `\nKept open: ${keeps} item(s) marked « Keep open after the session ».` : "\nNothing is marked « Keep open after the session ».") + "\nYou can reopen it later.")) return;
   act("t_end_session", { p_session: sessionId }, "Session ended.").then(loadSessionsQuiet);
 };
 $("reopenBtn").onclick = () => {
@@ -1128,6 +1141,8 @@ function syncQuizOptions() {
   if (selfPaced && $("quizReveal").value === "each") $("quizReveal").value = "end";   // no "after each question" without a timer
   if (selfPaced) $("quizProjector").checked = false;
   $("quizGraded").disabled = survey; if (survey) $("quizGraded").checked = false;
+  $("quizKeepOpenRow").classList.toggle("hidden", !selfPaced); if (!selfPaced) $("quizKeepOpen").checked = false;   // v33.4.3
+  $("quizMarkVis").disabled = survey;
   $("quizProjector").disabled = perStudent || selfPaced;
   if (perStudent) $("quizProjector").checked = false;
   if (survey && !perStudent) $("quizProjector").checked = true;
@@ -1235,12 +1250,14 @@ function renderRuns() {
   sel.classList.toggle("hidden", groups.length === 0);
   if (groups.length && document.activeElement !== sel) {
     const done = new Set(runs.filter((r) => r.closed_at).map((r) => r.group));
-    const key = sessionId + "|" + groups.join(",") + "|" + [...done].join(",") + "|" + s.attendance_open;
+    const key = sessionId + "|" + (s.group || "") + "|" + groups.join(",") + "|" + [...done].join(",") + "|" + s.attendance_open;
     if (sel.dataset.key !== key) {
-      sel.innerHTML = `<option value="">${s.group ? esc(groupLabel(s.kind, s.group)) + " (group of the session)" : "Whole class"}</option>` +
+      sel.innerHTML = `<option value="">${s.group ? esc(groupLabel(s.kind, groups.find((g) => normGroup(g) === normGroup(s.group)) || s.group)) + " (group of the session)" : "Whole class"}</option>` +
         groups.map((g) => `<option value="${esc(g)}">${esc(groupLabel(s.kind, g))}${done.has(g) ? " ✓ done" : ""}</option>`).join("");
       // proposed: the group checking in now, else the first group not done yet (the teacher can choose another one)
-      const next = s.attendance_open && live.run ? live.run.group : (groups.find((g) => !done.has(g)) ?? "");
+      // v33.4.3: the group of the session first (compared with normalized names), only names of the student list are offered
+      const own = s.group ? groups.find((g) => normGroup(g) === normGroup(s.group)) : null;
+      const next = s.attendance_open && live.run ? live.run.group : (own && !done.has(own) ? own : (groups.find((g) => !done.has(g)) ?? ""));
       sel.value = groups.includes(next) ? next : "";
       sel.dataset.session = sessionId; sel.dataset.key = key;
     }
@@ -2321,8 +2338,8 @@ async function openProfile(studentId) {
     showTab("results");
   };
   $("pfGroups").onclick = async () => {
-    const td = prompt(`TD group of ${st.last_name} ${st.first_name}:`, st.td_group || ""); if (td === null) return;
-    const tp = prompt(`TP sub-group of ${st.last_name} ${st.first_name}:`, st.tp_group || ""); if (tp === null) return;
+    const td = prompt(`TD group of ${st.last_name} ${st.first_name} (written G1, G2…):`, st.td_group || ""); if (td === null) return;
+    const tp = prompt(`TP sub-group of ${st.last_name} ${st.first_name} (written SG1, SG2…):`, st.tp_group || ""); if (tp === null) return;
     try { await rpc("t_set_student_groups", { p_student: st.id, p_td: td.trim(), p_tp: tp.trim() }); toast("Groups saved.", "ok"); openProfile(st.id); }
     catch (e) { toast(e.message, "error"); }
   };
@@ -2654,13 +2671,21 @@ function renderResultsList() {
   const ruleSelect = (q) => `<select class="res-rule" data-id="${q.id}" style="width:auto;font-size:13px">
       <option value="" ${!q.own_rule ? "selected" : ""}>as the class (${RES_LEVEL[r.class_rule] || "read only"})</option>
       ${["none", "view", "export"].map((l) => `<option value="${l}" ${q.own_rule === l ? "selected" : ""}>${RES_LEVEL[l]}</option>`).join("")}</select>`;
-  $("resultsList").innerHTML = `<table><tr><th>Date</th><th>Quiz</th><th>Type</th><th>Session</th><th>Answered</th><th>Mean</th>
+  // v33.4.3: when it ran, how long, how many questions and answers; a run that looks like a trial is flagged
+  const hm = (x) => x ? new Date(x).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-";
+  const durMin = (q) => q.started_at && q.finished_at ? Math.max(0, (new Date(q.finished_at) - new Date(q.started_at)) / 60000) : null;
+  const durText = (q) => { const m = durMin(q); return m == null ? "-" : m < 1 ? "< 1 min" : Math.round(m) + " min"; };
+  const looksTrial = (q) => !q.not_counted && q.kind !== "survey" && ((durMin(q) != null && durMin(q) < 2) || q.answered < 3);
+  $("resultsList").innerHTML = `<table><tr><th>Date</th><th>Quiz</th><th>Type</th><th>Session</th><th>Start</th><th>Duration</th><th>Quest.</th><th>Answers</th><th>Answered</th><th>Mean</th>
       ${r.is_teacher ? "<th>Assistants</th>" : ""}<th></th></tr>` + list.map((q) => `<tr>
       <td style="white-space:nowrap">${esc(q.date)}${q.time ? " " + esc(q.time) : ""}</td>
       <td><strong>${esc(resName(q))}</strong>${q.graded ? "" : ' <span class="muted">(not graded)</span>'}${q.empty ? ' <span class="badge no">empty: nobody answered</span>' : ""}
-        ${q.corrected ? ` <span class="badge info">${q.corrected} corrected</span>` : ""}</td>
+        ${q.corrected ? ` <span class="badge info">${q.corrected} corrected</span>` : ""}
+        ${q.not_counted ? ' <span class="badge no" title="Out of the marks, the averages and the absences">Not counted</span>' : ""}
+        ${looksTrial(q) ? ' <span class="badge orange" title="Under 2 minutes or under 3 students: probably a trial. Open it to set « Not counted ».">looks like a trial</span>' : ""}</td>
       <td>${KIND_LABEL[q.kind] || esc(q.kind)}${q.pace === "self" ? " · own pace" : ""}</td>
       <td>${esc(q.session)}${q.unit ? ` <span class="muted">(${esc(q.unit)})</span>` : ""}</td>
+      <td>${hm(q.started_at)}</td><td>${durText(q)}</td><td>${q.questions == null ? "-" : q.questions}</td><td>${q.answers == null ? "-" : q.answers}</td>
       <td>${q.answered} / ${q.expected}</td>
       <td>${q.mean == null || q.kind === "survey" ? "-" : `${Number(q.mean)} / ${Number(q.total_points)}`}</td>
       ${r.is_teacher ? `<td>${q.session_kind === "tp" ? ruleSelect(q) : '<span class="muted">teacher only</span>'}</td>` : ""}
@@ -2719,7 +2744,15 @@ function renderResult() {
   const answeredSt = d.students.filter((s) => s.status === "answered");
   const marks = answeredSt.map((s) => Number(s.mark)).filter((x) => !isNaN(x));
   const mean = marks.length ? Math.round((marks.reduce((x, y) => x + y, 0) / marks.length) * 100) / 100 : null;
-  const head = `<p class="muted">${esc(q.date)}${q.time ? " " + esc(q.time) : ""} · ${esc(q.session)}${q.unit ? " (" + esc(q.unit) + ")" : ""} ·
+  const opt = edit ? `<div class="card flat res-options" id="resOptions"><strong>Options of this run</strong>
+      <label class="tick"><input type="checkbox" id="resNotCounted" ${q.not_counted ? "checked" : ""}> Not counted (trial run): out of the marks, the averages and the absences, everywhere. Reversible.</label>
+      <label class="tick"><input type="checkbox" id="resGraded" ${q.graded ? "checked" : ""} ${q.kind === "survey" ? "disabled" : ""}> Graded (the marks are computed again from the answers already given; nothing is lost)</label>
+      <label>Mark shown to the student <select id="resMarkVis" style="width:auto"><option value="end" ${q.mark_visibility === "end" ? "selected" : ""}>at the end of the quiz</option>
+        <option value="later" ${q.mark_visibility === "later" ? "selected" : ""}>later, when I publish the marks</option><option value="never" ${q.mark_visibility === "never" ? "selected" : ""}>never</option></select></label>
+      ${q.mark_visibility === "later" ? `<button class="small ${q.marks_published_at ? "secondary" : "green"}" id="resPublish">${q.marks_published_at ? "Hide the marks again" : "Publish marks"}</button>
+        <span class="muted">${q.marks_published_at ? "Published " + fmtWhen(q.marks_published_at) : "Not published yet: the students do not see their mark."}</span>` : ""}
+    </div>` : "";
+  const head = opt + `<p class="muted">${esc(q.date)}${q.time ? " " + esc(q.time) : ""} · ${esc(q.session)}${q.unit ? " (" + esc(q.unit) + ")" : ""} ·
       ${KIND_LABEL[q.kind] || esc(q.kind)} · ${q.graded ? "marked out of " + Number(q.total_points) : "not graded"}${q.pace === "self" ? " · at own pace" : ""}
       ${q.per_student ? " · different questions for each student" : ""}</p>
     <div class="row" style="gap:30px;margin:8px 0 14px">
@@ -2782,6 +2815,17 @@ function renderResult() {
       <th title="The mark used everywhere (corrected or computed). Hover a mark: its calculation">Mark on ${Number(q.total_points)}</th><th>Left</th><th>Handed in</th><th></th></tr>${sRows}</table></div>`;
   const stOf = (id) => d.students.find((x) => x.id === id);
   const reload = () => openResult(q.id);
+  // v33.4.3: options of the run (not counted, graded, mark shown)
+  const setOpt = async (data, msg) => { try { await rpc("t_quiz_set", { p_quiz: q.id, p_data: data }); toast(msg, "ok"); reload(); } catch (e) { toast(e.message, "error"); } };
+  if ($("resNotCounted")) {
+    $("resNotCounted").onchange = (ev) => setOpt({ not_counted: ev.target.checked }, ev.target.checked ? "Not counted: out of the marks and the averages." : "Counted again.");
+    $("resGraded").onchange = (ev) => setOpt({ graded: ev.target.checked }, ev.target.checked ? "Graded: the marks are computed from the answers." : "Not graded any more.");
+    $("resMarkVis").onchange = (ev) => setOpt({ mark_visibility: ev.target.value }, "Saved.");
+    if ($("resPublish")) $("resPublish").onclick = async () => {
+      try { await rpc("t_quiz_publish_marks", { p_quiz: q.id, p_on: !q.marks_published_at }); toast(q.marks_published_at ? "Marks hidden again." : "Marks published: the students see them.", "ok"); reload(); }
+      catch (e) { toast(e.message, "error"); }
+    };
+  }
   $("resultsDetail").querySelectorAll("[data-rmark]").forEach((b) => b.onclick = () => {
     const s = stOf(b.dataset.rmark);
     editMark({ quizId: q.id, title: q.title, total: q.total_points, studentId: s.id, name: `${s.last_name} ${s.first_name}`,
@@ -3005,7 +3049,8 @@ function mailOpenHtml(m, sent) {
     ${student && can("messages") ? `<textarea id="mailQuick" rows="4" placeholder="Answer ${esc(m.from || "")}" aria-label="Answer" style="margin-top:auto"></textarea>
       <div class="row" style="gap:8px"><button class="btn" data-mact="quick">Answer</button>` : `<div class="row" style="gap:8px;margin-top:auto">${sent ? "" : `<button class="btn" data-mact="reply">Answer</button>`}`}
       ${mailBox === "archived" ? `<button class="btn sec" data-mact="unarchive">Back to Received</button>` : sent ? "" : `<button class="btn sec" data-mact="archive">Archive</button>`}
-      <span class="grow"></span>${sent ? "" : `<button class="lnk" data-mact="unread">Mark as unread</button>`} <button class="lnk" data-mact="delete">Delete</button></div>`;
+      <button class="btn sec" data-mact="delete" title="Delete this message for you only">Delete</button>
+      <span class="grow"></span>${sent ? "" : `<button class="lnk" data-mact="unread">Mark as unread</button>`}</div>`;
 }
 function bindMailOpen(sent) {
   const box = $("mailRead");
@@ -3024,7 +3069,7 @@ function bindMailOpen(sent) {
       catch (e) { toast(e.message, "error"); }
       b.disabled = false; return;
     }
-    if (act === "delete" && !confirm("Delete this message? (Only for you: the others keep it.)")) return;
+    if (act === "delete" && !confirm("Delete this message?\nIt disappears for you only: the other persons keep it. When everybody deleted it, it is erased.")) return;
     await flagMail(m, act);
   });
 }
@@ -3393,7 +3438,8 @@ async function openTplEditor(t) {
                    total_points: 20, scoring: "partial", reveal_mode: "each", time_override: null, shuffle: false, per_student_count: null, show_on_projector: false, show_answer_count: false, question_ids: [] };
   $("quizTitle").value = d.title; $("quizFolder").value = d.folder || "";
   $("quizKind").value = d.kind; $("quizPace").value = d.pace; $("quizLock").checked = d.lock_screen; $("quizVariant").checked = d.ask_variant;
-  $("quizGraded").checked = d.graded; $("quizTotal").value = Number(d.total_points); $("quizScoring").value = d.scoring; $("quizReveal").value = d.reveal_mode;
+  $("quizGraded").checked = d.graded; $("quizMarkVis").value = d.mark_visibility || "end"; $("quizKeepOpen").checked = !!d.keep_open;
+  $("quizKeepOpenRow").classList.toggle("hidden", d.pace !== "self"); $("quizTotal").value = Number(d.total_points); $("quizScoring").value = d.scoring; $("quizReveal").value = d.reveal_mode;
   $("quizTime").value = d.time_override ? String(d.time_override) : ""; $("quizShuffle").checked = d.shuffle;
   $("quizPerStudent").checked = !!d.per_student_count; $("quizPerStudentN").value = d.per_student_count || 5;
   $("quizProjector").checked = d.show_on_projector; $("quizShowCount").checked = d.show_answer_count;
@@ -3435,7 +3481,8 @@ $("tplSaveBtn").onclick = async () => {
   if (perStudent && (perStudent < 1 || perStudent > tplPicked.length)) { toast(`Each student can get 1 to ${tplPicked.length} questions.`, "error"); return; }
   const data = { title: $("quizTitle").value.trim() || defaultQuizTitle(tplPicked), folder: $("quizFolder").value.trim(), question_ids: tplPicked,
     shuffle: $("quizShuffle").checked, kind: $("quizKind").value, pace: $("quizPace").value, lock_screen: $("quizLock").checked, ask_variant: $("quizVariant").checked,
-    graded: $("quizGraded").checked, total_points: Number($("quizTotal").value) || 20, scoring: $("quizScoring").value, reveal_mode: $("quizReveal").value,
+    graded: $("quizGraded").checked, mark_visibility: $("quizMarkVis").value, keep_open: $("quizPace").value === "self" && $("quizKeepOpen").checked,
+    total_points: Number($("quizTotal").value) || 20, scoring: $("quizScoring").value, reveal_mode: $("quizReveal").value,
     time_override: $("quizTime").value ? Number($("quizTime").value) : null, per_student_count: perStudent,
     show_on_projector: $("quizProjector").checked, show_answer_count: $("quizShowCount").checked };
   try {
@@ -3451,8 +3498,16 @@ $("launchBtn").onclick = async () => {
   const id = $("tplSelect").value;
   if (!sessionId) { toast("Choose or create a session first.", "error"); return; }
   if (!id) { toast("Prepare a quiz in the 📝 Quizzes tab first.", "error"); return; }
-  try { const qid = await rpc("t_launch_template", { p_template: id, p_session: sessionId }); await afterQuizChange("Quiz added to the session and selected. Click 1. Show the rules to run it.", qid); }
-  catch (e) { toast(e.message, "error"); }
+  try {
+    const qid = await rpc("t_launch_template", { p_template: id, p_session: sessionId });
+    // v33.4.3: who sees this run (TD/TP) and trial run
+    const opts = {};
+    if (!$("launchAudience").classList.contains("hidden") && $("launchAudience").value === "session") opts.audience = "session";
+    if ($("launchTrial").checked) opts.not_counted = true;
+    if (Object.keys(opts).length) await rpc("t_quiz_set", { p_quiz: qid, p_data: opts });
+    $("launchTrial").checked = false;
+    await afterQuizChange("Quiz added to the session and selected. Click 1. Show the rules to run it.", qid);
+  } catch (e) { toast(e.message, "error"); }
 };
 $("goQuizzesBtn").onclick = () => showTab("quizzes");
 
@@ -3612,7 +3667,7 @@ async function loadMySpace() {
   // proposals
   $("propList").innerHTML = d.proposals.length ? d.proposals.map((p) => `<div class="prop-row ${p.status !== "open" ? "closed" : ""}">
       <div class="row" style="justify-content:space-between"><strong>${esc(p.title)}</strong>
-        <span><span class="badge ${p.status === "open" ? "open" : "closed"}">${p.status}</span> ${p.public ? "" : '<span class="badge info">not public</span>'}</span></div>
+        <span><span class="badge ${p.status === "open" ? "open" : "closed"}">${p.status}</span> ${p.highlighted ? `<span class="badge info">highlighted until ${esc(String(p.highlight_until).slice(0, 10))}</span>` : ""} ${(p.files || []).length ? `<span class="badge info">📎 ${p.files.length}</span>` : ""} ${p.public ? "" : '<span class="badge info">not public</span>'}</span></div>
       <div class="muted">${PROP_KIND[p.kind] || esc(p.kind)}${p.level ? " · " + esc(p.level) : ""} · ${p.places} place(s)${p.keywords ? " · " + esc(p.keywords) : ""}${p.assigned_note ? " · " + esc(p.assigned_note) : ""}</div>
       ${p.description ? `<p style="margin:6px 0;white-space:pre-line">${esc(p.description)}</p>` : ""}
       <div class="row" style="gap:6px"><button class="small" data-pint="${p.id}">👥 Interested: ${p.interested}</button>
@@ -3622,6 +3677,7 @@ async function loadMySpace() {
         <button class="small red" data-pdel="${p.id}">Delete</button></div>
       <div class="pint-box" id="pint-${p.id}"></div></div>`).join("") : `<p class="muted">No proposal yet.</p>`;
   const prop = (id) => d.proposals.find((x) => x.id === id);
+  resignPropFiles(d.proposals);
   const saveStatus = async (p, status, note) => {
     try { await rpc("t_proposal_save", { p_id: p.id, p_data: Object.assign({}, p, { status, assigned_note: note == null ? p.assigned_note : note }) }); loadMySpace(); }
     catch (e) { toast(e.message, "error"); }
@@ -3652,15 +3708,58 @@ function openPropForm(p) {
   $("propForm").classList.remove("hidden");
   $("propTitle").value = p ? p.title : ""; $("propKind").value = p ? p.kind : "pfe"; $("propLevel").value = p ? p.level : "";
   $("propPlaces").value = p ? p.places : 2; $("propStatus").value = p ? p.status : "open"; $("propPublic").checked = p ? p.public : true;
+  $("propHighlight").value = p && p.highlight_until ? String(p.highlight_until).slice(0, 10) : ""; $("propFiles").value = "";
+  renderPropFiles();
   $("propDesc").value = p ? p.description : ""; $("propKeywords").value = p ? p.keywords : ""; $("propNote").value = p ? (p.assigned_note || "") : "";
   $("propTitle").focus();
+}
+// the links of the files are valid one year: signed again when less than 30 days are left
+async function resignPropFiles(list) {
+  for (const p of list || []) for (const f of p.files || []) {
+    if (!f.storage_path || !f.url_until || new Date(f.url_until) - Date.now() > 30 * 86400000) continue;
+    try {
+      const sg = await db.storage.from(BUCKET).createSignedUrl(f.storage_path, 365 * 86400);
+      if (!sg.error) await rpc("t_proposal_file_resign", { p_id: f.id, p_url: sg.data.signedUrl, p_until: new Date(Date.now() + 365 * 86400000).toISOString() });
+    } catch (e) { /* next time */ }
+  }
+}
+// v33.4.3: the files of a proposal (stored in the private bucket, one signed link of one year given to the students)
+function renderPropFiles() {
+  const files = propEditing && propEditing.files ? propEditing.files : [];
+  $("propFileList").innerHTML = files.map((f) => `<span class="pfile">📎 <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>
+    <button class="small secondary" data-pfdel="${f.id}" title="Remove this file">✕</button></span>`).join(" ");
+  $("propFileList").querySelectorAll("[data-pfdel]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Remove this file from the proposal?")) return;
+    try {
+      const path = await rpc("t_proposal_file_delete", { p_id: Number(b.dataset.pfdel) });
+      if (path) await db.storage.from(BUCKET).remove([path]);
+      propEditing.files = propEditing.files.filter((x) => String(x.id) !== b.dataset.pfdel); renderPropFiles(); loadMySpace();
+    } catch (e) { toast(e.message, "error"); }
+  });
+}
+async function uploadPropFiles(propId) {
+  const { data: u } = await db.auth.getUser();
+  for (const file of [...$("propFiles").files]) {
+    if (file.size > CONFIG.maxFileMb * 1048576) { toast(`${file.name}: too big (maximum ${CONFIG.maxFileMb} MB).`, "error"); continue; }
+    const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_");
+    const path = `${u.user.id}/proposals/${Date.now()}_${safeName}`;
+    const up = await db.storage.from(BUCKET).upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (up.error) throw up.error;
+    const yearS = 365 * 86400;
+    const sg = await db.storage.from(BUCKET).createSignedUrl(path, yearS);
+    if (sg.error) throw sg.error;
+    await rpc("t_proposal_file_add", { p_proposal: propId, p_name: file.name, p_mime: file.type || "", p_size: file.size, p_path: path, p_url: sg.data.signedUrl,
+      p_until: new Date(Date.now() + yearS * 1000).toISOString() });
+  }
+  $("propFiles").value = "";
 }
 $("propNewBtn").onclick = () => openPropForm(null);
 $("propCancelBtn").onclick = () => { $("propForm").classList.add("hidden"); propEditing = null; };
 $("propSaveBtn").onclick = async () => {
   const data = { title: $("propTitle").value, kind: $("propKind").value, level: $("propLevel").value, places: Number($("propPlaces").value) || 1,
-    status: $("propStatus").value, public: $("propPublic").checked, description: $("propDesc").value, keywords: $("propKeywords").value, assigned_note: $("propNote").value };
-  try { await rpc("t_proposal_save", { p_id: propEditing ? propEditing.id : null, p_data: data }); toast("Proposal saved.", "ok"); $("propForm").classList.add("hidden"); propEditing = null; loadMySpace(); }
+    status: $("propStatus").value, public: $("propPublic").checked, description: $("propDesc").value, keywords: $("propKeywords").value, assigned_note: $("propNote").value,
+    highlight_until: $("propHighlight").value || "" };
+  try { const pid = await rpc("t_proposal_save", { p_id: propEditing ? propEditing.id : null, p_data: data }); await uploadPropFiles(pid); toast("Proposal saved.", "ok"); $("propForm").classList.add("hidden"); propEditing = null; loadMySpace(); }
   catch (e) { toast(e.message, "error"); }
 };
 $("annSaveBtn").onclick = async () => {

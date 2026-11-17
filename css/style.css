@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "33.4.1";
+:root { --cp-version: "33.4.3";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -1218,3 +1218,19 @@ body.v33s { background: #F5F8FB; }
 /* v33.4.1: lock tolerance of the running quiz */
 .v33b .lq-lock { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .v33b .lq-lock select { width: auto; min-height: 30px; padding: 2px 6px; margin: 0 0 0 4px; font-size: 13px; }
+
+/* ---- v33.4.3: requests window by type, options of a quiz run, files of a proposal, browser banner ---- */
+.v33b .req-title { display: flex; align-items: center; gap: 6px; }
+.v33b .req-title .dot { width: 10px; height: 10px; border-radius: 50%; background: #8A97A6; display: inline-block; }
+.v33b .req-title .req-n { background: #EEF2F6; border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.v33b .req-title.t-bonus .dot { background: #2E8B57; } .v33b .req-title.t-device .dot { background: #1F6FD1; }
+.v33b .req-title.t-guest .dot { background: #E8741E; } .v33b .req-title.t-doc .dot { background: #6B4BB5; } .v33b .req-title.t-other .dot { background: #8A97A6; }
+.v33b .req.t-bonus { border-left: 5px solid #2E8B57; background: #F3FAF5; } .v33b .req.t-device { border-left: 5px solid #1F6FD1; background: #F2F7FD; }
+.v33b .req.t-guest { border-left: 5px solid #E8741E; background: #FFF7EF; } .v33b .req.t-doc { border-left: 5px solid #6B4BB5; background: #F6F2FC; }
+.v33b .req.t-other { border-left: 5px solid #8A97A6; background: #F6F8FA; }
+.v33b .req .req-at { font-size: 12px; color: #6B7B8C; white-space: nowrap; }
+.v33b .req-banner .req-chip { display: inline-block; background: rgba(255,255,255,.92); color: #0B2545; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; margin-left: 4px; border-left: 4px solid #8A97A6; }
+.v33b .req-banner .req-chip.t-bonus { border-left-color: #2E8B57; } .v33b .req-banner .req-chip.t-device { border-left-color: #1F6FD1; }
+.v33b .req-banner .req-chip.t-guest { border-left-color: #E8741E; } .v33b .req-banner .req-chip.t-doc { border-left-color: #6B4BB5; }
+.res-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.pfile { display: inline-flex; gap: 4px; align-items: center; margin-right: 8px; }
