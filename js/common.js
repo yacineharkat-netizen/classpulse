@@ -1,5 +1,5 @@
 // Shared helpers for all ClassPulse pages.
-(window.CP_FILES = window.CP_FILES || {})["common.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["common.js"] = "33.4.3"; // file version, checked by common.js
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -385,4 +385,46 @@ function projectPostsHtml(posts, fileAttr) {
   return posts.map((p) => `<div class="post ${p.staff ? "staff" : ""}"><div class="msg-head"><strong>${esc(p.who || "")}</strong><span class="muted">${esc(whenText(p.at))}</span></div>
     <div class="msg-body">${esc(p.body).replace(/\n/g, "<br>")}</div>
     ${p.file_id && p.file_name ? `<div style="margin-top:4px"><a href="#" ${fileAttr}="${p.file_id}">📎 ${esc(p.file_name)}</a></div>` : ""}</div>`).join("");
+}
+
+// ------------------------------------------------------------------ v33.4.3: a phone that scanned the QR code inside another app
+// The camera of some phones, or a messaging app, opens the page in its own small browser: the token that recognises the
+// phone is then kept there and lost. The banner asks to open the page in Chrome or Safari (the real browser).
+function cpInAppBrowser() {
+  const ua = navigator.userAgent || "";
+  if (/FBAN|FBAV|FB_IAB|Instagram|Snapchat|TikTok|MicroMessenger|Line\/|Telegram|Messenger|; wv\)|GSA\//i.test(ua)) return true;
+  // iPhone: the real Safari and Chrome say « Safari » or « CriOS »; a small browser of an app says neither
+  return /iPhone|iPad|iPod/.test(ua) && /AppleWebKit/.test(ua) && !/Safari|CriOS|FxiOS|EdgiOS/.test(ua);
+}
+function cpOpenInBrowserBanner(reason) {
+  if ($("cpBrowserBanner")) return;
+  const bar = document.createElement("div");
+  bar.id = "cpBrowserBanner";
+  bar.setAttribute("role", "alert");
+  bar.style.cssText = "background:#FFF4D6;color:#5C4300;border-bottom:2px solid #E8A317;padding:10px 12px;font-size:14px;line-height:1.4";
+  bar.innerHTML = `<strong>Open this page in Chrome or Safari.</strong> ${esc(reason || "Here your phone may not be recognised the next time.")}
+    <button id="cpCopyLink" type="button" style="margin-left:6px;min-height:0;padding:4px 10px;font-size:13px">Copy the link</button>
+    <span id="cpCopyDone" style="margin-left:6px;font-size:13px"></span>`;
+  document.body.insertAdjacentElement("afterbegin", bar);
+  $("cpCopyLink").onclick = async () => {
+    const url = location.href;
+    try { await navigator.clipboard.writeText(url); $("cpCopyDone").textContent = "Copied: paste it in Chrome or Safari."; }
+    catch (e) {
+      const t = document.createElement("textarea"); t.value = url; document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); $("cpCopyDone").textContent = "Copied: paste it in Chrome or Safari."; } catch (x) { window.prompt("Copy this link:", url); }
+      t.remove();
+    }
+  };
+}
+
+// v33.4.3: group names. TD groups are written G1, G2… and TP sub-groups SG1, SG2… (never TD1 / TP1, which are the units of the sessions).
+// Mirror of the SQL function std_group(): a name that is a number once the prefix is dropped becomes G<n> (TD) or SG<n> (TP); other names stay as typed.
+function cpStdGroup(kind, g) {
+  const raw = String(g == null ? "" : g).trim();
+  if (!raw) return "";
+  let b = raw.toLowerCase().replace(/\s+/g, "");
+  if (/^(sous-?groupe|groupe|group|sg|tp|td|g)[._:-]*([0-9].*|.{1,2})$/.test(b)) b = b.replace(/^(sous-?groupe|groupe|group|sg|tp|td|g)[._:-]*/, "");
+  if (!/^[0-9]+$/.test(b)) return raw;
+  const n = String(Number(b));
+  return kind === "td" ? "G" + n : kind === "tp" ? "SG" + n : raw;
 }

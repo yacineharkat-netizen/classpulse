@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.4.1">
+<html lang="en" data-version="33.4.3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=33.4.1">
+<link rel="stylesheet" href="css/style.css?v=33.4.3">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -20,7 +20,7 @@
   <div class="s-shell">
     <nav class="s-nav" aria-label="Pages">
       <button data-stab="today" class="active">Today</button><button data-stab="courses">My courses</button><button data-stab="progress">Progress (attendance, marks)</button>
-      <button data-stab="tt" id="ttNav" class="hidden">Timetable</button><button data-stab="messages">Messages <span id="stuMsgBadge" class="badge no hidden"></span></button><button data-stab="profile">Profile</button>
+      <button data-stab="tt" id="ttNav" class="hidden">Timetable</button><button data-stab="messages">Messages <span id="stuMsgBadge" class="badge no hidden"></span></button><button data-stab="profile">Profile <span id="stuProfBadge" class="badge no hidden">new</span></button>
     </nav>
     <main class="s-main">
       <div id="homeIn" class="hidden">
@@ -28,6 +28,14 @@
           <!-- v32.2: notifications on this device -->
     <div id="notifBox" class="card notif-card hidden" style="margin-bottom:10px"></div>
           <div id="annBox"></div>
+          <div id="propBox" class="card s-card hidden" style="border-left:4px solid #5B3F9A;margin-bottom:10px">
+            <strong>🎓 New proposals</strong> <span class="muted" id="propBoxText"></span>
+            <div><button id="propBoxBtn" class="small" style="margin-top:6px">See the proposals</button></div></div>
+          <details class="home-tip" id="homeTipIn" style="margin-bottom:10px">
+            <summary>📲 Add ClassPulse to your home screen: your phone stays recognised</summary>
+            <p><strong>Android (Chrome):</strong> menu <strong>⋮</strong> › <strong>Add to Home screen</strong>.</p>
+            <p><strong>iPhone (Safari):</strong> <strong>Share</strong> › <strong>Add to Home Screen</strong>.</p>
+          </details>
           <a id="checkinLink" href="student.html?checkin=1" style="text-decoration:none"><button id="checkinBtn" class="s-big">Check in (scan or type the code)</button></a>
           <!-- v31: a course or a project added to this student number after the registration: the PIN opens it -->
     <div id="pendingBox" class="card hidden" style="background:#EEF6EE;margin-bottom:10px">
@@ -80,7 +88,7 @@
   </div>
   <nav class="s-tabs" aria-label="Pages">
     <button data-stab="today" class="active">Today</button><button data-stab="courses">Courses</button><button data-stab="progress">Progress</button>
-    <button data-stab="messages">Messages<span id="stuMsgDot" class="s-dot hidden"></span></button><button data-stab="profile">Profile</button>
+    <button data-stab="messages">Messages<span id="stuMsgDot" class="s-dot hidden"></span></button><button data-stab="profile">Profile<span id="stuProfDot" class="s-dot hidden">•</span></button>
   </nav>
 </div>
 <div id="sAuth" class="student" style="margin-top:6vh">
@@ -131,10 +139,10 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.4.1"></script>
-<script src="js/ttview.js?v=33.4.1"></script>
-<script src="js/timetable.js?v=33.4.1"></script>
-<script src="js/student_v333.js?v=33.4.1"></script>
+<script src="js/common.js?v=33.4.3"></script>
+<script src="js/ttview.js?v=33.4.3"></script>
+<script src="js/timetable.js?v=33.4.3"></script>
+<script src="js/student_v333.js?v=33.4.3"></script>
 <script>
   // automated tests of the earlier versions: the « Courses » page stays shown under « Today » (see css)
   try { if (navigator.webdriver && localStorage.getItem("cp_test_real") !== "1") document.body.classList.add("dlg-inline"); } catch (e) { /* private window */ }
@@ -176,6 +184,7 @@
 
   // What a signed-in device sees: its courses, the session in progress (phone only), the check-in, its documents.
   async function showHome() {
+    if (cpInAppBrowser()) cpOpenInBrowserBanner();   // v33.4.3: the small browser of an app loses the token of the phone
     if (nextCode && !nextInfo) {
       try {
         nextInfo = await rpc("s_session_info", { p_code: nextCode });
@@ -185,7 +194,10 @@
     }
     if (nextInfo && deviceTokenOf(nextInfo.class_id)) { goNext(); return; }
     const tokens = accountTokens();
-    if (!tokens.length) { view("viewSignIn"); return; }
+    if (!tokens.length) {
+      if (nextCode) cpOpenInBrowserBanner("This browser does not know your phone yet. If you already registered, open this page in the browser you used before (Chrome or Safari).");
+      view("viewSignIn"); return;
+    }
     view("homeIn");
     const rows = [], live = [], courses = [], anns = new Map(), todo = [], profile = [];
     let helloGroups = "";
@@ -292,6 +304,14 @@
     // v33.1: announcements on top, the session now and the next one on the left, what is to do on the right, the news below
     $("annBox").innerHTML = [...anns.values()].map((a) => `<div class="ann-banner"><strong>Announcement${a.who ? " · " + esc(a.who) : ""}</strong><br>${esc(a.body)}</div>`).join("");
     $("liveBox").innerHTML = live.join("") + ttHtml;
+    // v33.4.3: « New proposals » (highlighted by the teacher): a banner on the home and a dot on the Profile tab
+    let newProps = 0;
+    for (const c of courses) { try { newProps += Number((await rpc("s_teacher_space", { p_device: c.token })).new_proposals) || 0; } catch (e) { /* older database */ } }
+    $("propBox").classList.toggle("hidden", !newProps);
+    $("propBoxText").textContent = newProps === 1 ? "· 1 proposal from your teacher" : "· " + newProps + " proposals from your teachers";
+    $("propBoxBtn").onclick = () => { showTeachers(); setTimeout(() => { const o = document.querySelector("#teacherList .offer"); if (o) o.scrollIntoView({ behavior: "smooth", block: "center" }); }, 400); };
+    $("stuProfDot").classList.toggle("hidden", !newProps); $("stuProfBadge").classList.toggle("hidden", !newProps);
+    $("homeTipIn").classList.toggle("hidden", window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true);
     $("todoList").innerHTML = todo.join("") || '<span class="muted">Nothing to do now.</span>';
     $("todoList").classList.toggle("muted", !todo.length);
     if (window.stuV333) stuV333.today(courses, { progress: showProgress });   // v33.3: exercises, bonus to claim
@@ -350,6 +370,8 @@
     if (!CONFIG.vapidPublicKey || !courses.length) { box.classList.add("hidden"); return; }
     if (!ok) {
       if (ios && !standalone) { box.innerHTML = `🔔 <strong>Notifications on iPhone:</strong> first add ClassPulse to your home screen (Share › Add to Home Screen), then open it from that icon.`; box.classList.remove("hidden"); }
+      else if (typeof cpInAppBrowser === "function" && cpInAppBrowser()) { box.innerHTML = `🔔 <strong>Notifications:</strong> this page is open inside another app (Messenger, Facebook, a scanner…), which cannot give notifications. Open ClassPulse in Chrome or Safari to turn them on.`; box.classList.remove("hidden"); }
+      else if (!window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window)) { box.innerHTML = `🔔 <strong>Notifications:</strong> this browser cannot give them (a private window, or a browser without push). Use Chrome or Safari in a normal window.`; box.classList.remove("hidden"); }
       else box.classList.add("hidden");
       return;
     }
@@ -426,7 +448,7 @@
     // v29: archive / delete a message (for this student only)
     $("stuMsgList").querySelectorAll("[data-sflag]").forEach((b) => b.onclick = async () => {
       const m = all.find((x) => x.id === Number(b.dataset.id));
-      if (b.dataset.sflag === "delete" && !confirm("Delete this message?")) return;
+      if (b.dataset.sflag === "delete" && !confirm("Delete this message?\nIt disappears for you only: the teacher keeps his copy.")) return;
       try { await rpc("s_msg_flag", { p_device: m.course.token, p_id: m.id, p_action: b.dataset.sflag }); b.closest(".msg-item").remove(); }
       catch (e) { toast(e.message, "error"); }
     });
@@ -486,8 +508,9 @@
       const mine = new Set(ts.interested || []);
       const props = (ts.proposals || []).map((x) => {
         offers.push({ class_id: courses[0].course.class_id, title: x.title, proposal: x.id, token: courses[0].course.token });
-        return `<div class="offer"><h4>${esc(x.title)}</h4><div class="muted">${esc(KIND[x.kind] || x.kind)}${x.level ? " · " + esc(x.level) : ""} · ${x.places} place(s)</div>
+        return `<div class="offer"><h4>${esc(x.title)}${x.highlighted ? ' <span class="badge ok">new</span>' : ""}</h4><div class="muted">${esc(KIND[x.kind] || x.kind)}${x.level ? " · " + esc(x.level) : ""} · ${x.places} place(s)</div>
           ${x.description ? `<p style="margin:6px 0;white-space:pre-line">${esc(x.description)}</p>` : ""}${x.keywords ? `<div class="muted">${esc(x.keywords)}</div>` : ""}
+          ${(x.files || []).length ? `<div style="margin:4px 0">${x.files.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`).join(" · ")}</div>` : ""}
           ${mine.has(x.id) ? `<span class="badge ok">you said you are interested</span> ` : ""}<button class="small" data-interest="${offers.length - 1}">I'm interested</button></div>`;
       }).join("");
       const blocks = (anns ? `<div style="margin-top:10px">${anns}</div>` : "") +

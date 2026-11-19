@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["v334.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["v334.js"] = "33.4.3"; // file version, checked by common.js
 // v33.4 (teacher console):
 // - « Open the attendance » chooses how long: for the session (as before) or until a date (1 to 3 weeks, check-in from home:
 //   fixed code, never closed by itself before that date);
@@ -26,9 +26,15 @@ function v4UntilChosen() {
 $("lvAttToggle").onclick = async () => {
   const L = live; if (!L) return;
   if (L.session.attendance_open) { $("attOffBtn").click(); return; }
-  const until = v4UntilChosen();
-  if ($("attUntil").value && !until) { toast("Choose the last day.", "error"); return; }
+  const forever = $("attUntil").value === "forever";   // v33.4.3: « until I close it »
+  const until = forever ? null : v4UntilChosen();
+  if ($("attUntil").value && !until && !forever) { toast("Choose the last day.", "error"); return; }
   await $("attOnBtn").onclick();
+  if (forever) {
+    try { await rpc("t_set_attendance_forever", { p_session: sessionId, p_on: true }); toast("Attendance open until you close it: fixed code, the students check in from home.", "ok"); $("attUntil").value = ""; }
+    catch (e) { toast(e.message, "error"); }
+    await refreshLive(); loadSessions(); return;
+  }
   if (!until) return;
   try {
     await rpc("t_set_attendance_until", { p_session: sessionId, p_until: until.toISOString() });
@@ -47,11 +53,11 @@ function v4Live() {
   v4LongOpen();
 }
 function v4LongOpen() {
-  const list = (typeof allSessions !== "undefined" ? allSessions : []).filter((x) => x.attendance_open && x.attendance_until);
+  const list = (typeof allSessions !== "undefined" ? allSessions : []).filter((x) => x.attendance_open && (x.attendance_until || x.attendance_forever));
   const bar = $("longOpenBar");
   bar.classList.toggle("hidden", !list.length);
   const html = list.length ? `<strong>${list.length} attendance${list.length > 1 ? "s" : ""} open for days</strong> ` + list.map((x) =>
-    `<span class="lo-item">${esc(x.title)} <span class="muted">${esc(x.date)}</span> · until ${v4day(x.attendance_until)} · ${x.present} present
+    `<span class="lo-item">${esc(x.title)} <span class="muted">${esc(x.date)}</span> · ${x.attendance_until ? "until " + v4day(x.attendance_until) : "until closed"} · ${x.present} present
       <button class="btn sec sm" data-loopen="${x.id}">Open</button><button class="btn sec sm" data-loclose="${x.id}">Close</button></span>`).join("") : "";
   if (bar.dataset.html !== html) { bar.dataset.html = html; bar.innerHTML = html; }
 }
@@ -83,6 +89,6 @@ $("backupBtn").onclick = async () => {
 };
 // the counts of the bar follow the check-ins from home (every minute while Live is shown)
 setInterval(async () => {
-  if (!classId || typeof activeTab === "undefined" || activeTab !== "live" || document.visibilityState !== "visible" || !allSessions.some((x) => x.attendance_until)) return;
+  if (!classId || typeof activeTab === "undefined" || activeTab !== "live" || document.visibilityState !== "visible" || !allSessions.some((x) => x.attendance_until || x.attendance_forever)) return;
   try { allSessions = await rpc("t_list_sessions", { p_class: classId }); v4LongOpen(); } catch (e) { /* next minute */ }
 }, 60000);

@@ -1,5 +1,5 @@
 // ClassPulse - student page.
-(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["student.js"] = "33.4.3"; // file version, checked by common.js
 // Flow: session code -> (first time: registration) -> check-in with the rotating QR code
 //       -> whatever the teacher pushes: waiting screen, link, quiz.
 
@@ -81,6 +81,7 @@ async function start() {
   $("brand").textContent = sessionInfo.class_name;
   $("sessionLine").textContent = sessionInfo.title;
   try { deviceToken = localStorage.getItem(tokenKey()) || localStorage.getItem("cp_reader_" + sessionInfo.class_id); } catch (e) { deviceToken = null; }
+  if (cpInAppBrowser()) cpOpenInBrowserBanner();   // v33.4.3
   // v22: there is one place to sign in or register, the home page. It sends the phone back here afterwards.
   if (!deviceToken) { goSignIn(); return; }
   if (params.get("checked")) { showCheckinResult(params.get("checked")); params.delete("checked"); dropAttendanceCodeFromUrl(); }
@@ -234,6 +235,7 @@ function showCheckinResult(result) {
     ALREADY_PRESENT: ["You were already checked in.", "ok"],
     ATTENDANCE_CLOSED: ["Attendance is closed.", "error"],
     CODE_EXPIRED: ["This QR code has expired. Scan the one on the screen again.", "error"],
+    DEVICE_ALREADY_USED: ["This phone already checked in another student in this session. The teacher has been told: ask him.", "error"],
     OTHER_GROUP: ["This session is for another group. The teacher has been told: wait, he can let you in.", "error"],
   };
   const m = messages[result] || [result, ""];
@@ -520,7 +522,7 @@ function rulesFor(q) {
     return `<li>This is a <strong>survey</strong>: there is no right or wrong answer and it is <strong>not graded</strong>.</li>
       <li>Answer honestly: the teacher only sees the totals for the class, to improve the course.</li>`;
   }
-  const what = !q.graded ? "This quiz is for practice: it is <strong>not counted</strong> in your marks."
+  const what = !q.graded || q.not_counted ? "This quiz is for practice: it is <strong>not counted</strong> in your marks."
     : q.kind === "test" ? "This is a graded test." : q.kind === "tp" ? "This is the test of the lab session (TP)." : "This quiz counts in your course mark.";
   const scoring = q.scoring === "all"
     ? `<li><strong>All or nothing:</strong> a question gives its points only if you tick exactly all the correct answers.</li>`
@@ -558,7 +560,9 @@ function renderQuiz(live, who) {
 
   if (q.phase === "finished") {
     const markText = q.kind === "survey" ? "Thank you for your answers."
-      : `${q.graded ? "Your mark" : "Your score (practice, not counted)"}: <strong style="font-size:26px">${q.total == null ? "-" : q.total} / ${Number(q.total_points)}</strong>`;
+      : q.mark_hidden === "later" ? `Your mark will be shown later, when the teacher publishes the marks.`
+      : q.mark_hidden === "never" ? `The teacher keeps the marks of this quiz: no mark is shown here.`
+      : `${q.graded && !q.not_counted ? "Your mark" : "Your score (practice, not counted)"}: <strong style="font-size:26px">${q.total == null ? "-" : q.total} / ${Number(q.total_points)}</strong>`;
     let html = who + head + bigStatus("🏁", q.kind === "survey" ? "Survey finished" : "Quiz finished", markText) + sharedLinksHtml();
     if (q.review) {
       html += `<div class="protected">` + q.review.map((r, i) => `<div class="card"><div class="muted">Question ${i + 1} · ${r.score == null ? "no answer" : Number(r.score) + " / " + Number(r.points)}</div>

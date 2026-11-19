@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4.1"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4.3"; // file version, checked by common.js
 // v33.1 (« 33 bis »): the teacher console as in the mockups. This file draws the new parts and leans on teacher.js
 // for everything else (same ids, same server calls): header (search, « To do », bell, account), the cards of Live,
 // the list of the session, the side panel of a student, the student list, the announcements, the folders of the
@@ -153,11 +153,23 @@ $("bellBtn").onclick = async (e) => {
 };
 
 // ------------------------------------------------------------------ notifications of the teacher (Web Push)
-function pushKey() { return (window.CONFIG && CONFIG.vapidPublicKey) || ""; }
+// v33.4.3: config.js declares « const CONFIG » (not a property of window): window.CONFIG was always undefined, so the teacher's
+// notifications could never be turned on (« This browser cannot receive notifications »).
+function pushKey() { return (typeof CONFIG !== "undefined" && CONFIG && CONFIG.vapidPublicKey) || ""; }
+// the precise reason why this browser cannot get notifications (empty when it can)
+function pushWhyNot() {
+  if (!pushKey()) return "The site has no notification key yet (vapidPublicKey in config.js).";
+  if (!window.isSecureContext) return "The page is not opened in https: the browser refuses notifications.";
+  if (!("serviceWorker" in navigator)) return "This browser has no service worker (a private window of Firefox, or a small browser inside an app): open ClassPulse in a normal window of Chrome, Edge or Firefox.";
+  if (!("Notification" in window)) return "This browser has no notifications (on an iPhone: first « Add to Home Screen »).";
+  if (!("PushManager" in window)) return /iPhone|iPad|iPod/.test(navigator.userAgent) ? "On an iPhone: first « Add to Home Screen », then open ClassPulse from its icon."
+    : "This browser has no push service (Brave: Settings › Privacy › « Use Google Services for Push Messaging »; otherwise use Chrome or Edge).";
+  return "";
+}
 function b64ToBytes(b) { const p = "=".repeat((4 - (b.length % 4)) % 4), raw = atob((b + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...raw].map((c) => c.charCodeAt(0))); }
-const pushPossible = () => !!pushKey() && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const pushPossible = () => pushWhyNot() === "";
 async function tPushOn() {
-  if (!pushPossible()) { toast("This browser cannot receive notifications (on an iPhone: first « Add to Home Screen »).", "error"); return false; }
+  if (!pushPossible()) { toast(pushWhyNot(), "error"); return false; }
   try {
     const perm = await Notification.requestPermission();
     if (perm !== "granted") { toast("Notifications refused by the browser: allow them in the settings of the site.", "error"); return false; }
@@ -179,7 +191,7 @@ async function tPushOff() {
   shNotifState();
 }
 async function shNotifState() {
-  let state = !pushKey() ? "The site has no notification key yet (config.js)." : !pushPossible() ? "This browser cannot receive notifications here (iPhone: add ClassPulse to the home screen first)."
+  let state = !pushPossible() ? pushWhyNot()
     : Notification.permission === "denied" ? "Blocked by the browser: allow the notifications in the settings of this site." : "Off on this device.";
   try {
     const reg = pushPossible() && await navigator.serviceWorker.getRegistration("sw-push.js"), sub = reg && await reg.pushManager.getSubscription();
@@ -285,6 +297,7 @@ window.renderLiveList = function (list) {
     if (!r.official) note.push("not in the official list");
     if (!r.member) note.push(r.status ? "guest" : "other group");
     if (r.remote && r.at) { const d = new Date(r.at); note.push("from home · " + String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0")); }   // v33.4
+    if (r.second_device) note.push("2nd device");   // v33.4.3: checked in with a remembered device, not the class device
     if (r.method === "manual") note.push("changed by hand");
     if (checkLocation && r.located && r.distance != null && enough && r.distance > (CONFIG.farFromRoomM || 300)) note.push("📍 " + (r.distance >= 1000 ? (r.distance / 1000).toFixed(1) + " km" : r.distance + " m") + " away");
     return `<tr><td><button class="lnk" data-profile="${r.student_id}">${esc(r.name)}</button></td><td>${esc(r.td_group || "")}</td><td>${esc(r.tp_group || "")}</td>
@@ -420,7 +433,7 @@ window.openDrawer = async function (id) {
   const hist = (key) => ((g && g.mark_log) || []).filter((l) => l.student_id === id && l.key === key).slice(0, 2).map((l) => `${fmtWhen(l.at)}: ${esc(l.old || "—")} → ${esc(l.new || "—")}`).join(" · ");
   const chipOf = (s) => ({ present: "ok", late: "late", absent: "abs", excused: "exc" }[s] || "none");
   const qName = (q) => (q.unit ? q.unit + (q.run_group ? " · " + q.run_group : "") + " · " : "") + q.title;
-  const qState = (q) => q.status === "answered" ? `<strong>${q.mark == null ? "—" : fmt2(Number(q.mark))}</strong><span class="muted">/${fmt2(Number(q.total_points))}</span>${q.corrected ? '<span style="color:#E8741E"> •</span>' : ""}`
+  const qState = (q) => q.status === "answered" ? `<strong>${q.mark == null ? "—" : fmt2(Number(q.mark))}</strong><span class="muted">/${fmt2(Number(q.total_points))}</span>${q.corrected ? '<span style="color:#E8741E"> •</span>' : ""}${q.not_counted ? ' <span class="chip exc" title="Trial run: out of the marks and the averages">not counted</span>' : ""}`
     : `<span class="muted">${{ "no answer": "no answer (0)", absent: "absent (0)", excused: "excused", "other group": "another pass" }[q.status] || esc(q.status)}</span>`;
   const quizzes = p.quizzes.filter((q) => q.status !== "other group" || q.mark != null);
   d.innerHTML = `<div class="card-head"><span class="ini">${esc(initials(st.last_name + " " + st.first_name))}</span>
@@ -436,16 +449,23 @@ window.openDrawer = async function (id) {
     <div class="kpis"><div><span>Presence</span><strong>${counted.length ? Math.round(100 * here.length / counted.length) + " %" : "—"}</strong></div>
       <div><span>Late</span><strong>${late}</strong></div><div><span>${finalLabel}</span><strong>${finalTxt}</strong></div>
       <div><span>Device</span><strong style="font-size:14px">${st.registered ? esc(st.device_kind || "linked") : "none"}</strong></div></div>
-    <div class="dr-section"><strong style="font-size:14px">Presence — his sessions only</strong>
+    <div class="dr-section"><strong style="font-size:14px">Presence</strong>
+      <span class="small-t">One chip per session of his own group. The TP sessions of the other sub-groups are not shown.</span>
       <div class="chips">${mine.map((x) => `<span class="chip ${chipOf(x.status)}" title="${esc(x.date)} ${esc(x.title)}">${esc(x.unit || x.title)}${x.status === "late" ? " · late" : x.status === "absent" ? " · absent" : x.status === "excused" ? " · excused" : " ✓"}</span>`).join("") || '<span class="muted">No session yet.</span>'}</div>
-      <span class="small-t">The TP sessions of the other sub-groups are not shown.</span></div>
-    <div class="dr-section"><strong style="font-size:14px">Quizzes and tests</strong>
+      </div>
+    <div class="dr-section"><strong style="font-size:14px">Every quiz run (detail)</strong>
+      <span class="small-t">All the runs of his passes, one line each, with his mark and his answers. A trial run is marked « not counted » and is out of the final mark.</span>
       ${quizzes.map((q) => `<div class="dr-quiz"><span>${esc(qName(q))} <span class="muted small-t">${esc(q.date)}</span>${q.makeup_until ? ` <span class="chip late">make-up until ${esc(fmtWhen(q.makeup_until))}</span>` : ""}</span>
         <span style="white-space:nowrap">${qState(q)} <button class="lnk" data-drans="${q.quiz_id}">Answers</button> <button class="lnk" data-drmk="${q.quiz_id}" data-perm-req="makeup">Make-up</button></span></div>
         <div id="drAns_${q.quiz_id}" class="hidden"></div>`).join("") || '<span class="muted">No quiz yet.</span>'}</div>
-    <div class="dr-section"><strong style="font-size:14px">Marks of the final calculation (click to correct)</strong>
+    <div class="dr-section"><strong style="font-size:14px">What counts in the final mark</strong>
+      <span class="small-t">Only the marks used by the final calculation (click a mark to correct it). Trial runs and runs set to « never show » are not in it.</span>
       <table><tbody>${cells.map(({ c, j, x }) => `<tr><td>${esc(c.title)}</td><td><button class="lnk" data-drmark="${j}">${x.st === "abs" ? (x.noans ? "no answer (0)" : "abs (0)") : x.st === "exc" ? "exc" : fmt2(x.v)}</button>${x.corrected || x.forced ? '<span style="color:#E8741E"> •</span>' : ""} <span class="muted">/${fmt2(c.scale)}</span></td>
         <td class="small-t">${hist(c.key)}</td></tr>`).join("") || '<tr><td class="muted">No mark yet.</td></tr>'}</tbody></table></div>
+    <div class="dr-section"><strong style="font-size:14px">Devices accepted for him</strong>
+      <span class="small-t">A device accepted once (even « this session only ») is accepted by itself the next times. « Forget » asks for a new acceptance.</span>
+      ${(p.devices || []).map((x) => `<div class="dr-quiz"><span>${esc(x.device_kind || "device")} <span class="muted small-t">accepted ${esc(fmtWhen(x.accepted_at))}${x.last_used ? ", last used " + esc(fmtWhen(x.last_used)) : ""}</span></span>
+        <button class="lnk" data-drforget="${x.id}" data-perm-req="unlock">Forget</button></div>`).join("") || '<span class="muted small-t">No other device remembered.</span>'}</div>
     <div class="dr-danger teacher-only"><strong style="font-size:14px">Remove this student</strong>
       ${st.removed ? `<span class="small-t">Taken out of the class on ${esc(fmtWhen(st.removed_at))}: he is in no list, his results are kept.</span>
         <div class="row" style="gap:8px"><button class="btn sec sm" id="drBack">Bring him back to the class</button><button class="btn sm red" id="drErase">Erase for good…</button></div>`
@@ -465,6 +485,10 @@ window.openDrawer = async function (id) {
   $("drDevice").onclick = async () => { if (confirm(`Allow ${name} to link a new device (his next device becomes his class device)?`)) await act("t_allow_new_device", { p_student: id }, "Done: his next device becomes his class device."); };
   $("drPin").onclick = async () => { await act("t_unlock_pin", { p_student: id }, "PIN unlocked."); reopen(); };
   $("drFull").onclick = () => openProfile(id);
+  d.querySelectorAll("[data-drforget]").forEach((b) => b.onclick = async () => {
+    if (!confirm(`Forget this device of ${name}? It has to be accepted again.`)) return;
+    await act("t_forget_device", { p_id: Number(b.dataset.drforget) }, "Device forgotten."); reopen();
+  });
   // his answers to one quiz (the text of each answer, the expected value of his station)
   d.querySelectorAll("[data-drans]").forEach((b) => b.onclick = async () => {
     const box = $("drAns_" + b.dataset.drans);
