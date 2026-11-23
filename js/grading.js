@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.4.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.4.4"; // file version, checked by common.js
 // v33: final mark of a class. One evaluation column = a quiz / test / TP, or a column typed in the app (exam, project, oral…).
 // v33.2: in a unit (TP1) the quizzes are grouped by UNIT, whatever their title (the same quiz reused, or one quiz per
 // sub-group): the n-th graded quiz of each pass (attendance run) goes to column n (« TP1 · test 2 »). A quiz concerns only
@@ -43,6 +43,7 @@ const GRADE = (() => {
     const overrideOf = {}; (d.overrides || []).forEach((o) => { overrideOf[o.quiz_id + "|" + o.student_id] = Number(o.mark); });
     const statusOf = {}; (g.status || []).forEach((x) => { statusOf[x.key + "|" + x.student_id] = x; });
     const markOf = {}; (g.marks || []).forEach((m) => { markOf[m.item_id + "|" + m.student_id] = m; });
+    const choiceOf = {}; (d.dup_choice || []).forEach((x) => { choiceOf[x.key + "|" + x.student_id] = x.quiz_id; });   // v33.4.4: the run chosen by hand
     const groupsOf = (ses) => ses.groups ? ses.groups : (ses.group ? [ses.group] : []);
     const inGroup = (ses, st) => {
       const gs = groupsOf(ses);
@@ -81,6 +82,14 @@ const GRADE = (() => {
         counts: e.counts == null ? true : !!e.counts, part: e.component || it.component || "exam" };
       cols.push(c); colOf[key] = c;
     });
+    // v33.4.4: a student who took the same column twice: the chosen run counts, else the LAST one (never the first by chance)
+    const taken = (q, st) => overrideOf[q.id + "|" + st.id] !== undefined || pts[q.id + "|" + st.id] !== undefined;
+    const pickRun = (col, st) => {
+      const all = col.quizzes.filter((q) => taken(q, st));
+      if (!all.length) return { run: undefined, all };
+      const ch = choiceOf[col.key + "|" + st.id];
+      return { run: all.find((q) => q.id === ch) || all[all.length - 1], all };
+    };
     // cell: { v (on the scale of the column) | null, st: mark | abs | exc | none (not his / not typed yet), quiz (the run to correct) }
     const cell = (col, st) => {
       if (col.type === "item") {
@@ -95,12 +104,13 @@ const GRADE = (() => {
       const own = col.quizzes.filter((q) => inGroup(sessionOf[q.session_id] || {}, st));
       const target = col.quizzes.find((q) => overrideOf[q.id + "|" + st.id] !== undefined || pts[q.id + "|" + st.id] !== undefined) || own[0] || col.quizzes[0];
       if (forced) return { v: forced.status === "abs" ? 0 : null, st: forced.status, forced: true, quiz: target, reason: forced.reason };
-      const corrected = col.quizzes.find((q) => overrideOf[q.id + "|" + st.id] !== undefined);
-      if (corrected) return { v: overrideOf[corrected.id + "|" + st.id] * col.scale / Number(corrected.total_points || 20), st: "mark", corrected: true, quiz: corrected };
-      const done = col.quizzes.find((q) => pts[q.id + "|" + st.id] !== undefined);
+      const pk = pickRun(col, st), dups = pk.all.length > 1 ? pk.all : null;
+      const corrected = pk.run && overrideOf[pk.run.id + "|" + st.id] !== undefined ? pk.run : null;
+      if (corrected) return { v: overrideOf[corrected.id + "|" + st.id] * col.scale / Number(corrected.total_points || 20), st: "mark", corrected: true, quiz: corrected, dups };
+      const done = pk.run && pts[pk.run.id + "|" + st.id] !== undefined ? pk.run : null;
       if (done) {
         const k = done.id + "|" + st.id, scale = Number(done.total_points || 20), max = maxOf[k] || Number(done.max_points) || 1;
-        return { v: Math.max(0, (pts[k] / max) * scale - (penaltyOf[k] || 0)) * col.scale / scale, st: "mark", quiz: done };
+        return { v: Math.max(0, (pts[k] / max) * scale - (penaltyOf[k] || 0)) * col.scale / scale, st: "mark", quiz: done, dups };
       }
       if (!own.length) return { v: null, st: "none", quiz: target };
       if (own.some((q) => att[q.session_id + "|" + st.id] === "excused")) return { v: null, st: "exc", quiz: target };
@@ -108,15 +118,16 @@ const GRADE = (() => {
     };
     // a column of a unit: the passes of the sub-groups put together
     const unitCell = (col, st, forced) => {
-      const corrected = col.quizzes.find((q) => overrideOf[q.id + "|" + st.id] !== undefined);
-      const done = col.quizzes.find((q) => pts[q.id + "|" + st.id] !== undefined);
+      const pk = pickRun(col, st), dups = pk.all.length > 1 ? pk.all : null;
+      const corrected = pk.run && overrideOf[pk.run.id + "|" + st.id] !== undefined ? pk.run : null;
+      const done = pk.run && !corrected && pts[pk.run.id + "|" + st.id] !== undefined ? pk.run : null;
       const mine = col.quizzes.filter((q) => inPass(q, st));
       const target = corrected || done || mine[0] || col.quizzes[0];
       if (forced) return { v: forced.status === "abs" ? 0 : null, st: forced.status, forced: true, quiz: target, reason: forced.reason };
-      if (corrected) return { v: overrideOf[corrected.id + "|" + st.id] * col.scale / Number(corrected.total_points || 20), st: "mark", corrected: true, quiz: corrected };
+      if (corrected) return { v: overrideOf[corrected.id + "|" + st.id] * col.scale / Number(corrected.total_points || 20), st: "mark", corrected: true, quiz: corrected, dups };
       if (done) {
         const k = done.id + "|" + st.id, scale = Number(done.total_points || 20), max = maxOf[k] || Number(done.max_points) || 1;
-        return { v: Math.max(0, (pts[k] / max) * scale - (penaltyOf[k] || 0)) * col.scale / scale, st: "mark", quiz: done };
+        return { v: Math.max(0, (pts[k] / max) * scale - (penaltyOf[k] || 0)) * col.scale / scale, st: "mark", quiz: done, dups };
       }
       if (mine.length) return { v: 0, st: "abs", noans: true, quiz: target };                     // checked in during the pass, no answer
       const ses = unitSessions[col.unit] || [];

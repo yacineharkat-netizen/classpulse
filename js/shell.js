@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["shell.js"] = "33.4.4"; // file version, checked by common.js
 // v33.1 (« 33 bis »): the teacher console as in the mockups. This file draws the new parts and leans on teacher.js
 // for everything else (same ids, same server calls): header (search, « To do », bell, account), the cards of Live,
 // the list of the session, the side panel of a student, the student list, the announcements, the folders of the
@@ -78,8 +78,9 @@ function shTodo() {
   const req = shReqCount();
   const unread = Number($("msgBadge").textContent) || 0;
   const sessions = $("sessionsBadge").classList.contains("hidden") ? 0 : 1;
-  const items = [["Requests (device, other group, station, unlock, not in the list)", req, () => shReqOpen()], ["Unread messages", unread, () => showTab("messages")],
-    ["Sessions still open", sessions, () => showTab("sessions")]];
+  const off = SH.reqAtt.length;   // v33.4.4: the students who tried to register without being in the list are listed apart
+  const items = [["Requests (device, other group, station, unlock)", Math.max(0, req - off), () => shReqOpen()], ["Students not in the official list", off, () => shReqOpen()],
+    ["Unread messages", unread, () => showTab("messages")], ["Sessions still open", sessions, () => showTab("sessions")]];
   const n = items.reduce((a, x) => a + x[1], 0);
   $("todoCount").textContent = n;
   $("todoPanel").innerHTML = `<strong>To do · ${esc(classNames[classId] || "")}</strong>` + items.map(([l, k], i) =>
@@ -153,11 +154,23 @@ $("bellBtn").onclick = async (e) => {
 };
 
 // ------------------------------------------------------------------ notifications of the teacher (Web Push)
-function pushKey() { return (window.CONFIG && CONFIG.vapidPublicKey) || ""; }
+// v33.4.3: config.js declares « const CONFIG » (not a property of window): window.CONFIG was always undefined, so the teacher's
+// notifications could never be turned on (« This browser cannot receive notifications »).
+function pushKey() { return (typeof CONFIG !== "undefined" && CONFIG && CONFIG.vapidPublicKey) || ""; }
+// the precise reason why this browser cannot get notifications (empty when it can)
+function pushWhyNot() {
+  if (!pushKey()) return "The site has no notification key yet (vapidPublicKey in config.js).";
+  if (!window.isSecureContext) return "The page is not opened in https: the browser refuses notifications.";
+  if (!("serviceWorker" in navigator)) return "This browser has no service worker (a private window of Firefox, or a small browser inside an app): open ClassPulse in a normal window of Chrome, Edge or Firefox.";
+  if (!("Notification" in window)) return "This browser has no notifications (on an iPhone: first « Add to Home Screen »).";
+  if (!("PushManager" in window)) return /iPhone|iPad|iPod/.test(navigator.userAgent) ? "On an iPhone: first « Add to Home Screen », then open ClassPulse from its icon."
+    : "This browser has no push service (Brave: Settings › Privacy › « Use Google Services for Push Messaging »; otherwise use Chrome or Edge).";
+  return "";
+}
 function b64ToBytes(b) { const p = "=".repeat((4 - (b.length % 4)) % 4), raw = atob((b + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...raw].map((c) => c.charCodeAt(0))); }
-const pushPossible = () => !!pushKey() && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const pushPossible = () => pushWhyNot() === "";
 async function tPushOn() {
-  if (!pushPossible()) { toast("This browser cannot receive notifications (on an iPhone: first « Add to Home Screen »).", "error"); return false; }
+  if (!pushPossible()) { toast(pushWhyNot(), "error"); return false; }
   try {
     const perm = await Notification.requestPermission();
     if (perm !== "granted") { toast("Notifications refused by the browser: allow them in the settings of the site.", "error"); return false; }
@@ -179,7 +192,7 @@ async function tPushOff() {
   shNotifState();
 }
 async function shNotifState() {
-  let state = !pushKey() ? "The site has no notification key yet (config.js)." : !pushPossible() ? "This browser cannot receive notifications here (iPhone: add ClassPulse to the home screen first)."
+  let state = !pushPossible() ? pushWhyNot()
     : Notification.permission === "denied" ? "Blocked by the browser: allow the notifications in the settings of this site." : "Off on this device.";
   try {
     const reg = pushPossible() && await navigator.serviceWorker.getRegistration("sw-push.js"), sub = reg && await reg.pushManager.getSubscription();
@@ -268,7 +281,7 @@ window.renderLiveList = function (list) {
   else if (SH.liveScope === "all") rows = list.slice();
   else rows = list.filter((r) => grpHas(r, SH.liveScope));
   const ended = !!(live && live.session && (live.session.ended_at || !live.session.attendance_open));
-  const st = (r) => r.status || (ended ? "absent" : "");
+  const st = (r) => r.status || (r.elsewhere ? "present" : ended ? "absent" : "");   // v33.4.4: present in another pass = present
   const ORDER = { present: 0, late: 1, "": 2, absent: 3, excused: 4 };
   rows.sort((a, b) => (ORDER[st(a)] - ORDER[st(b)]) || String(a.name).localeCompare(String(b.name)));
   const cnt = (k) => rows.filter((r) => st(r) === k).length;
@@ -282,6 +295,7 @@ window.renderLiveList = function (list) {
   const opts = ["", "present", "late", "absent", "excused"];
   const html = `<table class="v-table"><thead><tr><th>Student</th><th>TD</th><th>TP</th><th>Arrival</th><th>Presence</th><th>Note</th></tr></thead><tbody>` + shown.map((r) => {
     const s = r.status || "", note = [];
+    if (r.status && !r.this_run && r.run_group && r.member) note.push("Present with " + r.run_group);   // v33.4.4
     if (!r.official) note.push("not in the official list");
     if (!r.member) note.push(r.status ? "guest" : "other group");
     if (r.remote && r.at) { const d = new Date(r.at); note.push("from home · " + String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0")); }   // v33.4
@@ -290,7 +304,7 @@ window.renderLiveList = function (list) {
     if (checkLocation && r.located && r.distance != null && enough && r.distance > (CONFIG.farFromRoomM || 300)) note.push("📍 " + (r.distance >= 1000 ? (r.distance / 1000).toFixed(1) + " km" : r.distance + " m") + " away");
     return `<tr><td><button class="lnk" data-profile="${r.student_id}">${esc(r.name)}</button></td><td>${esc(r.td_group || "")}</td><td>${esc(r.tp_group || "")}</td>
       <td>${r.at && r.method !== "manual" ? new Date(r.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</td>
-      <td><select class="st-sel ${s || "none"}" data-student="${r.student_id}" aria-label="Presence of ${esc(r.name)}">${opts.map((o) => `<option value="${o || "none"}" ${s === o ? "selected" : ""}>${o ? STATUS_LABEL[o] : (ended ? "Absent" : "Not yet")}</option>`).join("")}</select></td>
+      <td><select class="st-sel ${s || (r.elsewhere ? "present" : "none")}" data-student="${r.student_id}" aria-label="Presence of ${esc(r.name)}">${opts.map((o) => `<option value="${o || "none"}" ${s === o ? "selected" : ""}>${o ? STATUS_LABEL[o] : (r.elsewhere ? "Present with " + esc(r.elsewhere) : ended ? "Absent" : "Not yet")}</option>`).join("")}</select></td>
       <td class="note">${esc(note.join(" · "))} <span class="bonus-cell"><button class="btn sec sm" data-bonus="${r.student_id}" data-pts="-0.25" title="Bonus ${esc(SESSION_KIND[kind] || "")} −0.25">−</button>
         <strong>${Number(r.bonus) ? "+" + Number(r.bonus) : "0"}</strong><button class="btn gr sm" data-bonus="${r.student_id}" data-pts="0.25" title="Bonus ${esc(SESSION_KIND[kind] || "")}">+0.25</button></span></td></tr>`;
   }).join("") + `</tbody></table>` + (pages > 1 ? `<div class="pager">Page ${SH.livePage + 1} / ${pages} <button class="btn sec sm" data-lpage="-1">◀</button><button class="btn sec sm" data-lpage="1">▶</button></div>` : "");
@@ -439,12 +453,18 @@ window.openDrawer = async function (id) {
       <div><span>Device</span><strong style="font-size:14px">${st.registered ? esc(st.device_kind || "linked") : "none"}</strong></div></div>
     <div class="dr-section"><strong style="font-size:14px">Presence</strong>
       <span class="small-t">One chip per session of his own group. The TP sessions of the other sub-groups are not shown.</span>
-      <div class="chips">${mine.map((x) => `<span class="chip ${chipOf(x.status)}" title="${esc(x.date)} ${esc(x.title)}">${esc(x.unit || x.title)}${x.status === "late" ? " · late" : x.status === "absent" ? " · absent" : x.status === "excused" ? " · excused" : " ✓"}</span>`).join("") || '<span class="muted">No session yet.</span>'}</div>
+      <div class="chips">${mine.map((x) => `<span class="chip ${chipOf(x.status)}" title="${esc(x.date)} ${esc(x.title)}">${esc(x.unit || x.title)}${x.status === "late" ? " · late" : x.status === "absent" ? " · absent" : x.status === "excused" ? " · excused" : x.elsewhere ? " ✓ with " + esc(x.elsewhere) : " ✓"}</span>`).join("") || '<span class="muted">No session yet.</span>'}</div>
       </div>
     <div class="dr-section"><strong style="font-size:14px">Every quiz run (detail)</strong>
       <span class="small-t">All the runs of his passes, one line each, with his mark and his answers. A trial run is marked « not counted » and is out of the final mark.</span>
       ${quizzes.map((q) => `<div class="dr-quiz"><span>${esc(qName(q))} <span class="muted small-t">${esc(q.date)}</span>${q.makeup_until ? ` <span class="chip late">make-up until ${esc(fmtWhen(q.makeup_until))}</span>` : ""}</span>
-        <span style="white-space:nowrap">${qState(q)} <button class="lnk" data-drans="${q.quiz_id}">Answers</button> <button class="lnk" data-drmk="${q.quiz_id}" data-perm-req="makeup">Make-up</button></span></div>
+        <span style="white-space:nowrap">${q.dup ? `<span class="chip late" title="He took this column twice">${q.counted ? "counts" : "does not count"} · twice</span> ` : ""}${q.excluded ? '<span class="chip red">not counted for him</span> ' : ""}${qState(q)} <button class="lnk" data-drans="${q.quiz_id}">Answers</button> <button class="lnk" data-drmk="${q.quiz_id}" data-perm-req="makeup">Make-up</button> <button class="lnk" data-drq="${q.quiz_id}">Options</button></span></div>
+        <div id="drQ_${q.quiz_id}" class="hidden small-t" style="margin:4px 0 8px;padding:6px 8px;background:var(--soft,#f6f8fb);border-radius:8px">
+          ${q.dup && !q.counted ? `<button class="btn sm" data-drcount="${q.quiz_id}" data-key="${esc(q.key)}" data-perm-req="marks_edit">Count this run for him</button> ` : ""}
+          ${q.dup && q.counted ? `<button class="btn sec sm" data-drcount="" data-key="${esc(q.key)}" data-perm-req="marks_edit">Back to the default (last run)</button> ` : ""}
+          ${q.excluded ? `<button class="btn sm" data-drexcl="" data-key="${esc(q.key)}" data-perm-req="marks_edit">Count this quiz again</button> ` : `<button class="btn sec sm" data-drexcl="exc" data-key="${esc(q.key)}" data-perm-req="marks_edit">Do not count this quiz for him</button> `}
+          <button class="btn sec sm" data-dropen="${q.quiz_id}">All the results of this quiz</button>
+          <div class="muted">Nothing is deleted: « not counted » can be undone here, and the other students are not touched.</div></div>
         <div id="drAns_${q.quiz_id}" class="hidden"></div>`).join("") || '<span class="muted">No quiz yet.</span>'}</div>
     <div class="dr-section"><strong style="font-size:14px">What counts in the final mark</strong>
       <span class="small-t">Only the marks used by the final calculation (click a mark to correct it). Trial runs and runs set to « never show » are not in it.</span>
@@ -454,11 +474,11 @@ window.openDrawer = async function (id) {
       <span class="small-t">A device accepted once (even « this session only ») is accepted by itself the next times. « Forget » asks for a new acceptance.</span>
       ${(p.devices || []).map((x) => `<div class="dr-quiz"><span>${esc(x.device_kind || "device")} <span class="muted small-t">accepted ${esc(fmtWhen(x.accepted_at))}${x.last_used ? ", last used " + esc(fmtWhen(x.last_used)) : ""}</span></span>
         <button class="lnk" data-drforget="${x.id}" data-perm-req="unlock">Forget</button></div>`).join("") || '<span class="muted small-t">No other device remembered.</span>'}</div>
-    <div class="dr-danger teacher-only"><strong style="font-size:14px">Remove this student</strong>
+    <div class="dr-danger"><strong style="font-size:14px">Remove this student</strong>
       ${st.removed ? `<span class="small-t">Taken out of the class on ${esc(fmtWhen(st.removed_at))}: he is in no list, his results are kept.</span>
-        <div class="row" style="gap:8px"><button class="btn sec sm" id="drBack">Bring him back to the class</button><button class="btn sm red" id="drErase">Erase for good…</button></div>`
+        <div class="row" style="gap:8px"><button class="btn sec sm" id="drBack" data-perm-req="students_remove">Bring him back to the class</button><button class="btn sm red teacher-only" id="drErase">Erase for good…</button></div>`
       : `<span class="small-t">« Take out of the class »: he leaves the lists and the marks; his attendance, answers and marks are kept (you can bring him back).</span>
-        <div class="row" style="gap:8px"><button class="btn sec sm" id="drRemove">Take out of the class</button><button class="btn sm red" id="drErase">Erase for good…</button></div>`}</div>`;
+        <div class="row" style="gap:8px"><button class="btn sec sm" id="drRemove" data-perm-req="students_remove">Take out of the class</button><button class="btn sm red teacher-only" id="drErase">Erase for good…</button></div>`}</div>`;
   const reopen = () => window.openDrawer(id);
   $("drClose").onclick = () => { d.classList.add("hidden"); SH.drawer = null; };
   d.querySelectorAll("[data-drst]").forEach((b) => b.onclick = async () => {
@@ -477,6 +497,15 @@ window.openDrawer = async function (id) {
     if (!confirm(`Forget this device of ${name}? It has to be accepted again.`)) return;
     await act("t_forget_device", { p_id: Number(b.dataset.drforget) }, "Device forgotten."); reopen();
   });
+  // v33.4.4: options of one quiz line (which run counts, not counted for him, the results of the quiz)
+  d.querySelectorAll("[data-drq]").forEach((b) => b.onclick = () => $("drQ_" + b.dataset.drq).classList.toggle("hidden"));
+  d.querySelectorAll("[data-drcount]").forEach((b) => b.onclick = async () => {
+    await act("t_quiz_dup_choose", { p_class: classId, p_key: b.dataset.key, p_student: id, p_quiz: b.dataset.drcount || null }, "Saved."); reopen(); });
+  d.querySelectorAll("[data-drexcl]").forEach((b) => b.onclick = async () => {
+    const why = b.dataset.drexcl ? prompt("Why is this quiz not counted for him? (optional, kept in the history)", "") : "";
+    if (why === null) return;
+    await act("t_grade_status_set", { p_class: classId, p_key: b.dataset.key, p_student: id, p_status: b.dataset.drexcl || null, p_reason: why || null }, b.dataset.drexcl ? "Not counted for him." : "Counted again."); reopen(); });
+  d.querySelectorAll("[data-dropen]").forEach((b) => b.onclick = () => { d.classList.add("hidden"); SH.drawer = null; showTab("results"); openResult(b.dataset.dropen); });
   // his answers to one quiz (the text of each answer, the expected value of his station)
   d.querySelectorAll("[data-drans]").forEach((b) => b.onclick = async () => {
     const box = $("drAns_" + b.dataset.drans);
@@ -516,6 +545,7 @@ window.openDrawer = async function (id) {
     try { await rpc("t_erase_student", { p_student: id, p_confirm: st.last_name }); toast(`${name} is erased.`, "ok"); d.classList.add("hidden"); SH.drawer = null; await after(); }
     catch (e) { toast(e.message, "error"); }
   };
+  try { d.querySelectorAll("[data-perm-req]").forEach((el) => { if (typeof can === "function" && !can(el.dataset.permReq)) el.classList.add("hidden"); }); } catch (e) { /* role unknown */ }   // v33.4.4: only the buttons his rights allow
   if (typeof applyRole === "function") try { d.querySelectorAll(".teacher-only").forEach((el) => el.classList.toggle("hidden", isAssistant())); } catch (e) { /* role unknown */ }
 };
 

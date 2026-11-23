@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.4.3">
+<html lang="en" data-version="33.4.4">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse</title>
-<link rel="stylesheet" href="css/style.css?v=33.4.3">
+<link rel="stylesheet" href="css/style.css?v=33.4.4">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0B2545">
@@ -139,10 +139,10 @@
 </div>
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.4.3"></script>
-<script src="js/ttview.js?v=33.4.3"></script>
-<script src="js/timetable.js?v=33.4.3"></script>
-<script src="js/student_v333.js?v=33.4.3"></script>
+<script src="js/common.js?v=33.4.4"></script>
+<script src="js/ttview.js?v=33.4.4"></script>
+<script src="js/timetable.js?v=33.4.4"></script>
+<script src="js/student_v333.js?v=33.4.4"></script>
 <script>
   // automated tests of the earlier versions: the « Courses » page stays shown under « Today » (see css)
   try { if (navigator.webdriver && localStorage.getItem("cp_test_real") !== "1") document.body.classList.add("dlg-inline"); } catch (e) { /* private window */ }
@@ -370,11 +370,19 @@
     if (!CONFIG.vapidPublicKey || !courses.length) { box.classList.add("hidden"); return; }
     if (!ok) {
       if (ios && !standalone) { box.innerHTML = `🔔 <strong>Notifications on iPhone:</strong> first add ClassPulse to your home screen (Share › Add to Home Screen), then open it from that icon.`; box.classList.remove("hidden"); }
+      else if (typeof cpInAppBrowser === "function" && cpInAppBrowser()) { box.innerHTML = `🔔 <strong>Notifications:</strong> this page is open inside another app (Messenger, Facebook, a scanner…), which cannot give notifications. Open ClassPulse in Chrome or Safari to turn them on.`; box.classList.remove("hidden"); }
+      else if (!window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window)) { box.innerHTML = `🔔 <strong>Notifications:</strong> this browser cannot give them (a private window, or a browser without push). Use Chrome or Safari in a normal window.`; box.classList.remove("hidden"); }
       else box.classList.add("hidden");
       return;
     }
     if (Notification.permission === "granted") {
-      box.classList.add("hidden");
+      // v33.4.4: a small line to test it (the box stays quiet otherwise)
+      box.innerHTML = `🔔 Notifications are on for this device. <button id="notifTest" class="lnk">Send me a test</button>`;
+      box.classList.remove("hidden"); box.style.padding = "8px 12px";
+      $("notifTest").onclick = async () => {
+        try { await pushSubscribe(courses); await rpc("s_push_test", { p_device: courses[0].token }); toast("Test sent: it arrives in a few seconds. If nothing comes, close and reopen ClassPulse from its home screen icon.", "ok"); }
+        catch (e) { toast(e.message === "TOO_OFTEN" ? "Wait a few seconds before another test." : "Test not sent: " + e.message, "error"); }
+      };
       let done = false; try { done = sessionStorage.getItem("cp_push_ok") === "1"; } catch (e) { /* private window */ }
       if (!done) pushSubscribe(courses).then(() => { try { sessionStorage.setItem("cp_push_ok", "1"); } catch (e) { /* ignore */ } }).catch(() => {});
       return;

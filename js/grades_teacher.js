@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.4.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.4.4"; // file version, checked by common.js
 // v33: Results space of the teacher: « Each quiz » (as before), « Marks » (every column, typed in the app or imported),
 // « Final mark » (the formula of the class) and « What students see » (opened and closed at any time, for a time).
 const GT = { raw: null, b: null, cid: null, entry: null, edit: null, saveTimer: null, busy: false };
@@ -109,7 +109,7 @@ function renderMarks() {
         <div class="muted" style="font-size:11px">${esc(r.st.matricule)}${r.st.td_group ? " · " + esc(r.st.td_group) : ""}${r.st.tp_group ? " · " + esc(r.st.tp_group) : ""}</div></td>` +
       r.cells.map((x, j) => GT.entry === j
         ? `<td class="g-entrycol"><input class="g-in" data-gstu="${r.st.id}" value="${x.st === "abs" ? "abs" : x.st === "exc" ? "exc" : x.v == null ? "" : GRADE.fmt(x.v)}" inputmode="decimal" aria-label="Mark"></td>`
-        : `<td class="${b.cols[j].counts ? "" : "g-off"} g-c-${x.st}"><button class="linklike g-cell" data-gcell="${j}" data-gstu="${r.st.id}">${cellText(x)}</button>${x.corrected || x.forced ? '<span class="g-mod" title="corrected">•</span>' : ""}</td>`).join("") +
+        : `<td class="${b.cols[j].counts ? "" : "g-off"} g-c-${x.st}"><button class="linklike g-cell" data-gcell="${j}" data-gstu="${r.st.id}">${cellText(x)}</button>${x.corrected || x.forced ? '<span class="g-mod" title="corrected">•</span>' : ""}${x.dups ? '<span class="g-mod" title="Taken twice: open the cell to choose the run that counts" style="color:#c0392b">⚠</span>' : ""}</td>`).join("") +
       `<td class="g-final"><strong>${GRADE.fmt(r.final)}</strong></td></tr>`).join("") + `</tbody></table>`;
   $("gTableInfo").textContent = `${rows.length} / ${b.rows.length} student(s) · ${b.cols.length} column(s)` + (b.stats ? ` · mean ${b.stats.mean} · ${b.stats.pass}/${b.stats.count} at 10 or more` : "");
   renderEntryBar(); renderEditBar();
@@ -229,7 +229,14 @@ function renderEditBar() {
     <button class="small orange" id="gEditSave">Save</button><button class="small secondary" id="gEditAbs">Absent (0)</button>
     <button class="small secondary" id="gEditExc">Excused</button><button class="small secondary" id="gEditClear">${c.type === "item" ? "Clear" : "Back to the computed mark"}</button>
     <button class="small secondary" id="gEditCancel">Cancel</button>
-    ${hist ? `<div class="muted" style="font-size:12px;width:100%">History: ${hist}</div>` : ""}`;
+    ${hist ? `<div class="muted" style="font-size:12px;width:100%">History: ${hist}</div>` : ""}
+    ${x.dups ? `<div style="width:100%"><strong>⚠ Taken ${x.dups.length} times.</strong> The run that counts (the last one unless you choose):
+      ${x.dups.map((q) => { const sn = (GT.raw.data.sessions || []).find((z) => z.id === q.session_id) || {};
+        return `<button class="small ${x.quiz && x.quiz.id === q.id ? "" : "secondary"}" data-gdup="${q.id}">${esc(String(q.date || sn.date || ""))} · ${esc(sn.title || q.title)}${x.quiz && x.quiz.id === q.id ? " ✓ counts" : ""}</button>`; }).join(" ")}
+      <button class="small secondary" data-gdup="">Back to the default (last)</button></div>` : ""}`;
+  bar.querySelectorAll("[data-gdup]").forEach((b) => b.onclick = async () => {   // v33.4.4: which run counts for this student
+    try { await rpc("t_quiz_dup_choose", { p_class: classId, p_key: c.key, p_student: r.st.id, p_quiz: b.dataset.gdup || null }); toast("Saved.", "ok"); GT.edit = null; loadGrades(); }
+    catch (err) { toast(err.message, "error"); } });
   const go = async (p) => {
     try { const ok = await saveCell(c, r.st, x, p, $("gEditReason").value.trim()); toast(ok ? "Saved (kept in the history)." : "Nothing changed.", "ok"); GT.edit = null; loadGrades(); }
     catch (err) { toast(err.message, "error"); }

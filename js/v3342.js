@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["v3342.js"] = "33.4.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["v3342.js"] = "33.4.4"; // file version, checked by common.js
 // v33.4.3 (teacher console):
 // - the requests window: one list, grouped by type (bonus, device, another group, class document, others), one color
 //   per type, the date and time of each request, the newest first, and a counter per type on the orange band;

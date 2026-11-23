@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.4.3">
+<html lang="en" data-version="33.4.4">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B2545">
-<link rel="stylesheet" href="css/style.css?v=33.4.3">
+<link rel="stylesheet" href="css/style.css?v=33.4.4">
 </head>
 <body class="v33b">
 
@@ -162,7 +162,8 @@
           <div style="flex-basis:100%" class="row home-opts">
             <label style="margin:0"><input type="checkbox" id="homeShown" style="width:auto"> 📣 Show on the students' page while the attendance is open</label>
             <label style="margin:0"><input type="checkbox" id="homeCode" style="width:auto"> …with the code written on it (attendance taken on paper)</label>
-            <span id="onHomeNote" class="muted" style="font-size:13px"></span> <span id="pushStats" class="muted" style="font-size:13px"></span></div>
+            <span id="onHomeNote" class="muted" style="font-size:13px"></span> <span id="pushStats" class="muted" style="font-size:13px"></span>
+            <button id="pushHelpBtn" class="btn sec sm" title="A big screen to show to the class: how to get the notifications">Notifications: show the steps</button><button id="pushTestBtn" class="btn sec sm">Send me a test</button></div>
         </div>
         <div class="monitor-grid">
           <div><h4>📱 Students' phones</h4>
@@ -252,12 +253,17 @@
         </div>
 
     <section id="tab-students" class="hidden">
+      <div class="card hidden" id="stuDupCard"><div class="card-head"><strong>Possible duplicates</strong><span class="grow"></span><button id="stuDupClose" class="btn sec sm">Close</button></div>
+        <p class="muted small-t">Two records that look like the same person (same name, same e-mail or the same device). « Keep » moves everything of the other record to the one you keep (attendance, answers, bonuses, marks, device). The other record is taken out of the class and kept; nothing is deleted.</p>
+        <div id="stuDupList"></div></div>
       <div class="card list-card tall" id="stuCard">
         <div class="card-head wrap">
           <input id="stuSearch" placeholder="Name or student number" class="search-sm" aria-label="Search">
           <label class="small-t">Group <select id="stuGroup"><option value="">All</option></select></label>
           <label class="small-t"><input type="checkbox" id="stuRemoved"> Taken out (<span id="stuRemovedN">0</span>)</label>
           <label class="small-t">Lines <select id="stuRows"><option>10</option><option selected>25</option><option>50</option><option value="0">All</option></select></label>
+          <button id="stuExportBtn" class="btn sec sm" title="Download the list of the class (Excel), with empty columns to fill if you want">⬇ Export the list</button>
+          <button id="stuDupBtn" class="btn sec sm" title="The same student twice: same name, same e-mail, same device">Duplicates <span id="stuDupN" class="badge no hidden"></span></button>
           <button id="stuManageBtn" class="btn sec sm">Registration, import, PIN… <span id="attemptBadge" class="badge no hidden"></span></button>
           <span id="stuSelBar" class="selbar hidden"><strong><span id="stuSelCount">0</span> selected</strong>
             <button id="stuSelWrite" class="btn or sm">Write</button><button id="stuSelGroup" class="btn sec sm">Change group</button><button id="stuSelReopen" class="btn sec sm">Reopen a quiz</button></span>
@@ -713,6 +719,12 @@
             <button id="addRuleBtn" class="small secondary">+ Add a rule</button>
             <button id="drawBtn" class="small">Draw and add</button>
           </div>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="drawAgain" style="width:auto"> <span><strong>Draw again at each launch</strong>: new questions each time, none of those already asked by the earlier runs of this quiz</span></label>
+          <div class="row hidden" id="drawAgainBox" style="gap:8px;margin-top:6px;align-items:center">
+            <label class="small-t">Passes planned (sub-groups, re-runs) <input type="number" id="drawPasses" min="1" value="1" style="width:70px"></label>
+            <button id="drawCheckBtn" class="small secondary">Check the bank</button><span id="drawCheckOut" class="small-t"></span>
+          </div>
+          <p class="muted small-t" style="margin:6px 0 0">The rules are kept with the quiz; the list above is only the first draw. With « each chapter » the same number of questions is taken from every chapter of the module.</p>
         </div>
         <div class="card" style="margin-top:10px">
           <h3 style="margin-top:0">Add questions from the bank</h3>
@@ -1237,6 +1249,17 @@
     <div class="row" style="gap:8px;margin-top:12px"><button id="reloginBtn" class="btn gr">Log in</button><button id="reloginOut" class="btn sec">Log out</button></div>
   </div></div>
   <div id="navBackBar" class="nav-back-bar hidden"><button id="navBack" type="button">‹ Back</button><strong id="navBackTitle"></strong></div>
+  <div id="pushHelpBox" class="modal hidden">
+    <div class="modal-content card" style="max-width:980px;width:96vw;font-size:clamp(18px,2.2vw,28px);line-height:1.35">
+      <div class="card-head"><strong style="font-size:1.3em">Get ClassPulse notifications</strong><span class="grow"></span><button id="pushHelpClose" class="btn sec sm">Close</button></div>
+      <p style="margin:6px 0"><strong id="pushHelpUrl"></strong></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+        <div><strong>iPhone (Safari)</strong><ol style="margin:6px 0 0 1.2em"><li>Tap <strong>Share</strong> (the square with an arrow)</li><li><strong>Add to Home Screen</strong></li><li>Open ClassPulse <strong>from its new icon</strong></li><li>Tap <strong>Turn on</strong>, then <strong>Allow</strong></li></ol></div>
+        <div><strong>Android (Chrome)</strong><ol style="margin:6px 0 0 1.2em"><li>Tap the <strong>⋮ menu</strong></li><li><strong>Add to Home screen</strong> (or Install app)</li><li>Open ClassPulse <strong>from its new icon</strong></li><li>Tap <strong>Turn on</strong>, then <strong>Allow</strong></li></ol></div>
+      </div>
+      <p style="margin:12px 0 0"><strong>Not working?</strong> Open the page in Safari or Chrome, not inside Messenger, Facebook or a scanner app. Then tap « Send me a test ».</p>
+    </div>
+  </div>
   <div id="boardBox" class="modal hidden">
     <div class="modal-content card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -1281,22 +1304,22 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.4.3"></script>
-<script src="js/excel.js?v=33.4.3"></script>
-<script src="js/teacher.js?v=33.4.3"></script>
-<script src="js/grading.js?v=33.4.3"></script>
-<script src="js/grades_teacher.js?v=33.4.3"></script>
-<script src="js/shell.js?v=33.4.3"></script>
-<script src="js/nav.js?v=33.4.3"></script>
-<script src="js/supervision.js?v=33.4.3"></script>
-<script src="js/ttview.js?v=33.4.3"></script>
-<script src="js/timetable.js?v=33.4.3"></script>
-<script src="js/tt_teacher.js?v=33.4.3"></script>
-<script src="js/floatqr.js?v=33.4.3"></script>
-<script src="js/v333.js?v=33.4.3"></script>
-<script src="js/v334.js?v=33.4.3"></script>
-<script src="js/v3341.js?v=33.4.3"></script>
-<script src="js/v3342.js?v=33.4.3"></script>
+<script src="js/common.js?v=33.4.4"></script>
+<script src="js/excel.js?v=33.4.4"></script>
+<script src="js/teacher.js?v=33.4.4"></script>
+<script src="js/grading.js?v=33.4.4"></script>
+<script src="js/grades_teacher.js?v=33.4.4"></script>
+<script src="js/shell.js?v=33.4.4"></script>
+<script src="js/nav.js?v=33.4.4"></script>
+<script src="js/supervision.js?v=33.4.4"></script>
+<script src="js/ttview.js?v=33.4.4"></script>
+<script src="js/timetable.js?v=33.4.4"></script>
+<script src="js/tt_teacher.js?v=33.4.4"></script>
+<script src="js/floatqr.js?v=33.4.4"></script>
+<script src="js/v333.js?v=33.4.4"></script>
+<script src="js/v334.js?v=33.4.4"></script>
+<script src="js/v3341.js?v=33.4.4"></script>
+<script src="js/v3342.js?v=33.4.4"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

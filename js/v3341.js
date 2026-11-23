@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["v3341.js"] = "33.4.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["v3341.js"] = "33.4.4"; // file version, checked by common.js
 // v33.4.1 (teacher console): the tolerance of the screen lock of the running quiz (at once / 15 / 30 / 60 s away),
 // « Unlock all » for the students locked in it.
 

@@ -1,5 +1,5 @@
 /* ClassPulse - shared styles */
-:root { --cp-version: "33.4.3";
+:root { --cp-version: "33.4.4";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --white: #FFFFFF;
 }
@@ -935,7 +935,8 @@ body.v33b { background: #F5F8FB; }
 @media (max-width: 760px) {
   .v33b .teacher { height: 100dvh; }
   .v33b .topbar { gap: 8px; padding: 10px 12px; flex-wrap: nowrap; }
-  .v33b .topbar .brand, .v33b .top-class span, .v33b .top-search, .v33b #todoBtn, .v33b .now-pill { display: none; }
+  .v33b .topbar .brand, .v33b .top-class span, .v33b .top-search, .v33b .now-pill { display: none; }
+  .v33b #todoBtn { flex: 0 0 auto; padding: 8px 10px; min-height: 40px; font-weight: 700; white-space: nowrap; }   /* v33.4.4: « To do » with its counter, next to the bell */
   .v33b .top-class { flex: 1 1 auto; }
   .v33b .top-class select { background: #13315C; color: #fff; border: none; font-weight: 700; max-width: 100%; width: 100%; }
   .v33b nav#spaces { display: none; }

@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.3"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.4"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -1090,7 +1090,7 @@ function addDrawRule() {
   row.innerHTML = `<input type="number" class="rCount" min="1" value="2" style="width:70px"> <span class="muted">question(s) from</span>
     <select class="rModule" style="width:auto"><option value="">any module</option>${modulesOf().map((x) => `<option>${esc(x)}</option>`).join("")}</select>
     <select class="rChapter" style="width:auto"></select> <button class="small secondary rDel">✕</button>`;
-  const fillCh = () => { row.querySelector(".rChapter").innerHTML = `<option value="">any chapter</option>` +
+  const fillCh = () => { row.querySelector(".rChapter").innerHTML = `<option value="">any chapter</option><option value="*">each chapter (same number from every chapter)</option>` +
     chaptersOf(row.querySelector(".rModule").value).map((x) => `<option>${esc(x)}</option>`).join(""); };
   row.querySelector(".rModule").onchange = fillCh;
   row.querySelector(".rDel").onclick = () => row.remove();
@@ -1111,16 +1111,45 @@ $("drawBtn").onclick = () => {
   document.querySelectorAll("#drawRules .draw-rule").forEach((row) => {
     const n = Number(row.querySelector(".rCount").value) || 0;
     const m = row.querySelector(".rModule").value, c = row.querySelector(".rChapter").value;
-    const pool = allQuestions.filter((q) => (!m || q.module === m) && (!c || q.chapter === c) && !chosen.includes(q.id) && !tplPicked.includes(q.id));
-    const take = shuffled(pool).slice(0, n).map((q) => q.id);
-    if (take.length < n) messages.push(`only ${take.length} available for ${m || "any module"} / ${c || "any chapter"}`);
-    chosen.push(...take);
+    // v33.4.4: « each chapter » = n questions from every chapter of the module
+    const chs = c === "*" ? chaptersOf(m).filter(Boolean) : [c];
+    chs.forEach((ch) => {
+      const pool = allQuestions.filter((q) => (!m || q.module === m) && (!ch || q.chapter === ch) && !chosen.includes(q.id) && !tplPicked.includes(q.id));
+      const take = shuffled(pool).slice(0, n).map((q) => q.id);
+      if (take.length < n) messages.push(`only ${take.length} available for ${m || "any module"} / ${ch || "any chapter"}`);
+      chosen.push(...take);
+    });
   });
   tplPicked = tplPicked.concat(chosen);
   renderTplPicked();
   if (pickBrowser) pickBrowser.render();
   toast(`${chosen.length} question(s) drawn and added.` + (messages.length ? " Note: " + messages.join("; ") : ""), messages.length ? "error" : "ok");
 };
+
+// v33.4.4: the rules of the rows (kept with the quiz when « Draw again at each launch » is ticked)
+function drawRulesOfForm() {
+  return [...document.querySelectorAll("#drawRules .draw-rule")].map((row) => ({ n: Number(row.querySelector(".rCount").value) || 1,
+    module: row.querySelector(".rModule").value, chapter: row.querySelector(".rChapter").value }));
+}
+$("drawAgain").onchange = () => $("drawAgainBox").classList.toggle("hidden", !$("drawAgain").checked);
+$("drawCheckBtn").onclick = async () => {
+  try {
+    const r = await rpc("t_draw_bank_check", { p_class: classId, p_rules: drawRulesOfForm(), p_passes: Number($("drawPasses").value) || 1 });
+    $("drawCheckOut").innerHTML = r.ok ? `<span style="color:#1a7f4b">✓ The bank is big enough for ${r.passes} pass(es).</span>`
+      : `<span style="color:#c0392b">⚠ Too short for ${r.passes} pass(es): ` + r.rows.filter((x) => !x.ok).map((x) => `${esc(x.module || "any module")} / ${esc(x.chapter || "any chapter")}: ${x.have} question(s), ${x.need} needed`).join("; ") + `. Add questions to these chapters, or accept some repeats.</span>`;
+  } catch (e) { toast(e.message, "error"); }
+};
+// a run of a prepared quiz: if it has draw rules and the bank cannot give fresh questions, say which chapters and ask
+async function launchTemplate(tplId) {
+  let chk = null;
+  try { chk = await rpc("t_draw_check", { p_template: tplId, p_session: sessionId }); } catch (e) { chk = null; }
+  if (chk && chk.rules && chk.short.length) {
+    const what = chk.short.map((x) => `${x.module || "any module"} / ${x.chapter || "any chapter"}: ${x.have} fresh question(s), ${x.need} needed`).join("\n");
+    if (!confirm(`The bank has not enough NEW questions for this run (${chk.runs} earlier run(s) of this quiz):\n\n${what}\n\nOK = run it anyway (the missing ones are repeated from the earlier runs).\nCancel = stop, then add questions to these chapters.`)) throw new Error("Run cancelled: add questions to the chapters listed.");
+    return rpc("t_launch_template_draw", { p_template: tplId, p_session: sessionId, p_allow_repeat: true });
+  }
+  return rpc("t_launch_template", { p_template: tplId, p_session: sessionId });
+}
 
 // Automatic title: module · chapters · type · date, e.g. "IoT S1 · Course quiz · 29/09"
 function defaultQuizTitle(ids) {
@@ -1202,7 +1231,7 @@ $("quizAgainBtn").onclick = async () => {
   let tpl = q.template_id;
   try {
     if (!tpl) tpl = await rpc("t_quiz_attach_template", { p_quiz: q.id, p_folder: "" });
-    const id = await rpc("t_launch_template", { p_template: tpl, p_session: sessionId });
+    const id = await launchTemplate(tpl);
     await afterQuizChange("New run added and selected (the answers of the other run are kept). Click 1. Show the rules to run it.", id);
   } catch (e) { toast(e.message, "error"); }
 };
@@ -1514,6 +1543,7 @@ let stuGroupFilter = "", stuPicked = new Set();
 async function loadStudents() {
   renderRegistration();
   loadAttempts();
+  loadDuplicates(false);   // v33.4.4: the count on the « Duplicates » button
   if (!classId) { $("studentsTable").innerHTML = ""; return; }
   const all = await rpc("t_list_students", { p_class: classId });
   if (window.onStudents) window.onStudents(all);   // v33.1: the list of the mockup (shell.js)
@@ -1696,14 +1726,62 @@ $("importStudentsBtn").onclick = async () => {
   const rows = mappedStudents();
   if (rows.length === 0) { toast("No student found: check the sheet, the header line and the columns.", "error"); return; }
   const replace = $("stReplace").checked;
-  if (!confirm(`Import ${rows.length} students from sheet "${$("stSheet").value}" into the class "${classNames[classId]}"?` +
-    (replace ? "\n\nThis list REPLACES the previous one: students not in it lose the 'official' mark (they are not deleted)." : ""))) return;
+  // v33.4.4: what the import will do, before it is done (nothing is written by the preview)
+  let pv = null;
+  try { pv = await rpc("t_import_preview", { p_class: classId, p_rows: rows, p_replace: replace }); } catch (e) { toast(e.message, "error"); return; }
+  const lines = (arr, f, n) => arr.slice(0, n || 6).map(f).join("\n") + (arr.length > (n || 6) ? `\n… and ${arr.length - (n || 6)} more` : "");
+  const msg = [`Import ${rows.length} lines from "${$("stSheet").value}" into "${classNames[classId]}"?`,
+    `\n• ${pv.added.length} new student(s)` + (pv.added.length ? ":\n" + lines(pv.added, (x) => `   ${x.matricule} ${x.name}`) : ""),
+    `\n• ${pv.changed.length} existing student(s) changed (name or groups are replaced by the file)` + (pv.changed.length ? ":\n" + lines(pv.changed, (x) => `   ${x.matricule} ${x.name}: TD ${x.td}, TP ${x.tp}`) : ""),
+    pv.similar.length ? `\n⚠ ${pv.similar.length} new line(s) look like a student already there (maybe another matricule of the same person). Import, then open « Duplicates »:\n` + lines(pv.similar, (x) => `   ${x.new_matricule} ≈ ${x.existing} (${x.existing_matricule})`) : "",
+    replace ? `\n• REPLACE: ${pv.leaving.length} student(s) not in the file lose the « official » mark (not deleted)` + (pv.leaving.length ? ":\n" + lines(pv.leaving, (x) => `   ${x.matricule} ${x.name}`) : "") : "\n(The students who are not in the file are not touched.)"].filter(Boolean).join("\n");
+  if (!confirm(msg)) return;
   try {
     const r = await rpc("t_import_students", { p_class: classId, p_rows: rows, p_replace: replace });
     toast(`${r.added} added, ${r.updated} updated` + (replace ? `, ${r.removed} no longer official.` : "."), "ok");
     loadStudents();
   } catch (e) { toast(e.message, "error"); }
 };
+
+// v33.4.4: export of the list (with empty columns to fill), duplicates of students and their merge
+$("stuExportBtn").onclick = async () => {
+  if (!classId) { toast("Choose a class first.", "error"); return; }
+  const extra = prompt("Empty columns to add for you to fill (separated by commas), for example: Exam, Appreciation.\nLeave empty for the list only.", "");
+  if (extra === null) return;
+  try {
+    const all = (await rpc("t_list_students", { p_class: classId })).filter((s) => !s.removed);
+    const cols = extra.split(",").map((x) => x.trim()).filter(Boolean);
+    const rows = [["Matricule", "Last name", "First name", "TD group", "TP sub-group", "E-mail", "In the official list", "Registered", ...cols],
+      ...all.map((s) => [s.matricule, s.last_name, s.first_name, s.td_group || "", s.tp_group || "", s.email || "", s.official ? "yes" : "no", s.registered ? "yes" : "no", ...cols.map(() => "")])];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Students");
+    XLSX.writeFile(wb, `ClassPulse_students_${(classNames[classId] || "class").replace(/[^\w.-]+/g, "_")}.xlsx`);
+    toast(`${all.length} students exported.`, "ok");
+  } catch (e) { toast(e.message, "error"); }
+};
+async function loadDuplicates(show) {
+  if (!classId || !can("students_edit")) { $("stuDupN").classList.add("hidden"); return; }
+  let list = [];
+  try { list = await rpc("t_student_duplicates", { p_class: classId }); } catch (e) { return; }
+  $("stuDupN").textContent = list.length; $("stuDupN").classList.toggle("hidden", !list.length);
+  if (!show) return;
+  const card = (x) => `<div><strong>${esc(x.last_name)} ${esc(x.first_name)}</strong> <span class="muted">${esc(x.matricule)}</span><br>
+      <span class="muted small-t">${x.official ? "in the list" : "not in the list"} · ${x.registered ? "registered" : "not registered"} · ${x.attendance} presence(s) · ${x.answers} quiz(zes) · ${esc(x.td_group || "-")} / ${esc(x.tp_group || "-")}${x.email ? " · " + esc(x.email) : ""}</span></div>`;
+  $("stuDupList").innerHTML = list.length ? list.map((d, i) => `<div class="req" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin:8px 0;padding:8px;border:1px solid #DCE6EF;border-radius:10px">
+      <div>${card(d.a)}<button class="btn sm" data-dkeep="${d.a.id}" data-ddrop="${d.b.id}" style="margin-top:6px">Keep this one</button></div>
+      <div>${card(d.b)}<button class="btn sm" data-dkeep="${d.b.id}" data-ddrop="${d.a.id}" style="margin-top:6px">Keep this one</button></div>
+      <div class="muted small-t" style="grid-column:1/-1">Why: ${esc(d.reasons.join(", "))}</div></div>`).join("") : '<p class="muted">No duplicate found.</p>';
+  $("stuDupList").querySelectorAll("[data-dkeep]").forEach((b) => b.onclick = async () => {
+    const d = list.find((x) => (x.a.id === b.dataset.dkeep && x.b.id === b.dataset.ddrop) || (x.b.id === b.dataset.dkeep && x.a.id === b.dataset.ddrop));
+    const keep = d.a.id === b.dataset.dkeep ? d.a : d.b, drop = d.a.id === b.dataset.dkeep ? d.b : d.a;
+    if (!confirm(`Keep ${keep.last_name} ${keep.first_name} (${keep.matricule}) and merge ${drop.last_name} ${drop.first_name} (${drop.matricule}) into it?\n\nAttendance, answers, bonuses, marks and device of the second record go to the first. The second record is taken out of the class and kept. This cannot be undone with one click: export the results first if you are not sure.`)) return;
+    try { const r = await rpc("t_merge_students", { p_class: classId, p_keep: keep.id, p_drop: drop.id });
+      toast(`Merged: ${r.moved} row(s) moved` + (r.left_on_old_record ? `, ${r.left_on_old_record} already on both (kept on the old record).` : "."), "ok"); loadStudents(); loadDuplicates(true); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+$("stuDupBtn").onclick = () => { $("stuDupCard").classList.remove("hidden"); loadDuplicates(true); };
+$("stuDupClose").onclick = () => $("stuDupCard").classList.add("hidden");
 
 // ------------------------------------------------------------------ questions
 async function loadQuestions(showModule) {
@@ -2170,15 +2248,22 @@ $("docUrlAddBtn").onclick = async () => {
 // v29: assistants: a role (preset of permissions), then any permission ticked or unticked, and the groups he works with.
 const PERM_GROUPS = [
   ["Sessions", [["kind_course", "Course sessions"], ["kind_td", "TD sessions"], ["kind_tp", "TP (lab) sessions"], ["sessions_create", "Create and edit sessions (of these types)"],
-    ["attendance", "Change a presence by hand"], ["unlock", "Unlock a student, allow a new device"]]],
-  ["Quizzes", [["quiz_prepare", "Prepare and run quizzes (of these types)"], ["quiz_all", "Reset and delete the quiz runs of the class"], ["makeup", "Open make-ups"]]],
-  ["Students", [["students_edit", "Edit students, groups, registration"], ["profiles", "Open the student profiles"]]],
+    ["attendance", "Change a presence by hand"], ["unlock", "Unlock a student, allow a new device"],
+    ["sessions_all", "⚠ Change and delete the sessions created by others"], ["requests_all", "⚠ Answer the device requests of every session"]]],
+  ["Quizzes", [["quiz_prepare", "Prepare and run quizzes (of these types)"], ["quiz_all", "Reset and delete the quiz runs of the class"], ["makeup", "Open make-ups"],
+    ["templates_all", "⚠ Change and delete the prepared quizzes created by others"]]],
+  ["Students", [["students_edit", "Edit students, groups, registration"], ["profiles", "Open the student profiles"],
+    ["students_remove", "⚠ Take students out of the class, delete empty records"]]],
   ["Results", [["results_view", "See the results"], ["results_export", "Download the results of a quiz (when the quiz allows it)"], ["export_all", "Export all the marks of the class (Excel)"],
     ["marks_edit", "Correct and type marks, fix a question, board check"], ["grading", "Final mark: formula, what the students see, publish"]]],
   ["Documents", [["docs_view", "See the course content"], ["docs_publish", "Upload and publish documents (Student space)"], ["docs_unlock", "Open the locked parts of documents"],
     ["push", "Push a document or a link in a session"]]],
   ["Messages", [["messages", "Write to the students"]]],
 ];
+// v33.4.4: a ticked right is a real right. The ⚠ ones lift an old "only the creator / only the teacher" protection.
+const PERM_LIFTS = { sessions_all: "sessions created by other people", requests_all: "device requests made in sessions of other people",
+  templates_all: "prepared quizzes created by other people", students_remove: "removing students from the class",
+  quiz_all: "the quiz runs of the whole class", grading: "the bonus settings" };
 // v33: presets (they tick boxes; each box can then be changed)
 const PERM_PRESETS = {
   course: ["kind_course", "sessions_create", "attendance", "quiz_prepare", "results_view", "profiles", "docs_view", "push"],
@@ -2201,7 +2286,7 @@ async function loadAssistants() {
         <label class="small-t">Groups <input class="a-groups" value="${esc((a.groups || []).join(" "))}" placeholder="all" style="width:120px" title="Groups (empty = all), e.g. SG1 SG2"></label>
         <button class="btn sec sm a-save-groups">Save the groups</button>
         <span class="small-t">Preset:</span><button class="pill" data-preset="course">Course</button><button class="pill" data-preset="td">TD</button>
-        <button class="pill" data-preset="tp">TP</button><button class="pill" data-preset="all">Tick all</button><button class="pill" data-preset="none">Untick all</button>
+        <button class="pill" data-preset="tp">TP</button><button class="pill" data-preset="all" title="Every right, like the teacher of the class">Full rights (like me)</button><button class="pill" data-preset="none">Untick all</button>
         <span class="grow"></span>${roleSelect("a-role", a.role)}<button class="btn sec sm" data-arem="${a.user_id}" data-email="${esc(a.email)}">Remove</button></div>
       <div class="perm-grid">${PERM_GROUPS.map(([title, perms], gi) => { const all = perms.every(([k]) => have.has(k));
         return `<div class="perm-box"><div class="row" style="justify-content:space-between"><strong style="font-size:14px">${title}</strong>
@@ -2216,7 +2301,9 @@ async function loadAssistants() {
   };
   $("assistantsTable").querySelectorAll(".asst-card").forEach((card) => {
     const perms = () => [...card.querySelectorAll(".a-perm:checked")].map((c) => c.value);
-    card.querySelectorAll(".a-perm").forEach((c) => c.onchange = () => save(card, card.querySelector(".a-role").value, perms(), true).then(() => toast("Permission " + (c.checked ? "given" : "removed") + ".", "ok")));
+    card.querySelectorAll(".a-perm").forEach((c) => c.onchange = () => {
+      if (c.checked && PERM_LIFTS[c.value] && !confirm(`This right lets him act on ${PERM_LIFTS[c.value]}, which was protected until now. Give it?`)) { c.checked = false; return; }
+      save(card, card.querySelector(".a-role").value, perms(), true).then(() => toast("Permission " + (c.checked ? "given" : "removed") + ".", "ok")); });
     card.querySelector(".a-role").onchange = async () => {
       if (!confirm(`Role: ${ROLE_LABEL[card.querySelector(".a-role").value]}. Tick the permissions of this role (the ones you changed are replaced)?`)) { loadAssistants(); return; }
       await save(card, card.querySelector(".a-role").value, null); loadAssistants();
@@ -2229,6 +2316,7 @@ async function loadAssistants() {
     });
     card.querySelectorAll("[data-preset]").forEach((b) => b.onclick = async () => {
       const k = b.dataset.preset;
+      if (k === "all" && !confirm("Full rights: he can do everything you can, except what stays yours (delete the class, manage the assistants, erase a student). He can also change and delete what other people created. Continue?")) return;
       const list = k === "all" ? PERM_GROUPS.flatMap((g) => g[1].map((x) => x[0])) : k === "none" ? [] : PERM_PRESETS[k];
       card.querySelectorAll(".a-perm").forEach((c) => { c.checked = list.includes(c.value); });
       await save(card, card.querySelector(".a-role").value, perms(), true);
@@ -2302,9 +2390,10 @@ async function openProfile(studentId) {
     </div>
     <h3>Attendance</h3><table><tr><th>Date</th><th>Time</th><th>Type</th><th>Session</th><th>Status</th></tr>` +
     p.sessions.map((x) => `<tr><td>${x.date}</td><td>${x.time || ""}</td><td><span class="kind ${x.kind}">${SESSION_KIND[x.kind]}</span></td><td>${esc(x.title)}</td>
-      <td>${x.status === "absent" ? '<span class="badge no">absent</span>' : x.status === "other group" ? '<span class="muted">- (not his group)</span>' : esc(x.status) + (x.guest ? ' <span class="badge info">with another group</span>' : "")}</td></tr>`).join("") + `</table>
+      <td>${x.status === "absent" ? '<span class="badge no">absent</span>' : x.status === "other group" ? '<span class="muted">not concerned</span>' : (x.elsewhere ? "Present with " + esc(x.elsewhere) : esc(x.status)) + (x.guest ? ' <span class="badge info">with another group</span>' : "")}</td></tr>`).join("") + `</table>
     <h3 style="margin-top:14px">Quizzes and tests</h3><table><tr><th>Date</th><th>Type</th><th>Title</th><th>Mark</th><th>Station</th><th>Left the screen</th></tr>` +
-    p.quizzes.map((q) => `<tr><td>${q.date}</td><td>${KIND_LABEL[q.kind] || q.kind}${q.graded ? "" : " (not graded)"}</td><td>${esc(q.title)}</td>
+    p.quizzes.map((q) => `<tr><td>${q.date}</td><td>${KIND_LABEL[q.kind] || q.kind}${q.graded ? "" : " (not graded)"}</td><td><button class="linklike" data-pquiz="${q.quiz_id}" title="Open the detail of this quiz for this student">${esc(q.title)}</button>
+        ${q.dup ? ` <span class="badge orange" title="He took this column twice">${q.counted ? "counts" : "does not count"} · taken twice</span>` : ""}${q.excluded ? ` <span class="badge closed">not counted for him</span>` : ""}</td>
       <td>${q.kind === "survey" ? "-" : quizStatusCell(q)}
         ${q.kind !== "survey" && can("marks_edit") && q.status !== "other group" ? `<button class="small secondary" data-pmark="${q.quiz_id}" title="Correct this mark">✏</button>` : ""}</td>
       <td>${q.board ? (q.board.includes("->") ? `<span class="badge info">${esc(q.board)}</span>` : esc(q.board)) : ""}</td><td>${q.left_screen || ""}</td></tr>`).join("") + `</table>
@@ -2356,6 +2445,37 @@ async function openProfile(studentId) {
     catch (e) { toast(e.message, "error"); }
   };
 }
+// v33.4.4: a quiz of the student sheet opens its detail: why the mark, which run counts, « do not count it for him »
+$("profileBody").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-pquiz]");
+  if (!b || !profileData) return;
+  const q = profileData.quizzes.find((x) => x.quiz_id === b.dataset.pquiz), st = profileData.student, row = b.closest("tr");
+  const open = row.nextElementSibling && row.nextElementSibling.classList.contains("pquiz-detail");
+  if (open) { row.nextElementSibling.remove(); return; }
+  document.querySelectorAll("#profileBody .pquiz-detail").forEach((x) => x.remove());
+  const same = profileData.quizzes.filter((x) => x.key && x.key === q.key && x.dup);
+  const edit = can("marks_edit") && q.kind !== "survey";
+  const tr = document.createElement("tr"); tr.className = "pquiz-detail";
+  tr.innerHTML = `<td colspan="6" style="background:var(--soft,#f6f8fb)"><div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+    <strong>${esc(q.title)}</strong> <span>Mark: ${q.mark == null ? "none" : Number(q.mark) + " / " + Number(q.total_points)}</span>
+    <span class="muted">Status: ${esc(q.status === "other group" ? "not concerned" : q.status)}</span>
+    ${q.dup ? `<span class="badge orange">taken ${same.length} times: ${q.counted ? "this run counts" : "this run does NOT count"}</span>` : ""}
+    ${q.excluded ? `<span class="badge closed">not counted for him</span>` : ""}
+    <span class="grow"></span>
+    ${edit && q.dup && !q.counted ? `<button class="small" data-pcount="${q.quiz_id}">Count this run for him</button>` : ""}
+    ${edit && q.dup && q.counted ? `<button class="small secondary" data-pcount="">Back to the default (last run)</button>` : ""}
+    ${edit && q.key && !q.excluded ? `<button class="small secondary" data-pexcl="exc">Do not count this quiz for him</button>` : ""}
+    ${edit && q.excluded ? `<button class="small" data-pexcl="">Count it again</button>` : ""}
+    <button class="small secondary" data-popen="${q.quiz_id}">Open all the results of this quiz</button></div></td>`;
+  row.after(tr);
+  tr.querySelectorAll("[data-pcount]").forEach((x) => x.onclick = async () => {
+    try { await rpc("t_quiz_dup_choose", { p_class: classId, p_key: q.key, p_student: st.id, p_quiz: x.dataset.pcount || null }); toast("Saved.", "ok"); openProfile(st.id); } catch (e) { toast(e.message, "error"); } });
+  tr.querySelectorAll("[data-pexcl]").forEach((x) => x.onclick = async () => {
+    const why = x.dataset.pexcl ? prompt("Why is this quiz not counted for him? (optional, kept in the history)", "") : "";
+    if (why === null) return;
+    try { await rpc("t_grade_status_set", { p_class: classId, p_key: q.key, p_student: st.id, p_status: x.dataset.pexcl || null, p_reason: why || null }); toast(x.dataset.pexcl ? "Not counted for him." : "Counted again.", "ok"); openProfile(st.id); } catch (e) { toast(e.message, "error"); } });
+  tr.querySelector("[data-popen]").onclick = () => { $("profileBox").classList.add("hidden"); if (window.closeDrawer) window.closeDrawer(); showTab("results"); openResult(q.quiz_id); };
+});
 $("profileBody").addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-pmark]");
   if (!b || !profileData) return;
@@ -2578,9 +2698,16 @@ $("homeCode").onchange = () => saveHome(true, $("homeCode").checked);
 async function loadPushStats() {
   if (!classId) return;
   try { const r = await rpc("t_push_stats", { p_class: classId });
-    $("pushStats").textContent = r.configured ? `🔔 ${r.students} / ${r.total} student(s) receive the notifications` : "🔔 Notifications not set up yet (see the notes of version 32.2)"; }
+    $("pushStats").textContent = r.configured ? `🔔 ${r.students} / ${r.total} student(s) receive the notifications (${Math.max(0, r.total - r.students)} without)` : "🔔 Notifications not set up yet (see the notes of version 32.2)"; }
   catch (e) { $("pushStats").textContent = ""; }
 }
+$("pushHelpBtn").onclick = () => { $("pushHelpUrl").textContent = new URL("index.html", location.href).href.replace(/[?#].*$/, ""); $("pushHelpBox").classList.remove("hidden"); };
+$("pushHelpClose").onclick = () => $("pushHelpBox").classList.add("hidden");
+$("pushHelpBox").onclick = (ev) => { if (ev.target === $("pushHelpBox")) $("pushHelpBox").classList.add("hidden"); };
+$("pushTestBtn").onclick = async () => {
+  try { await rpc("t_push_test"); toast("Test sent to this device: it arrives in a few seconds.", "ok"); }
+  catch (e) { toast(e.message === "NO_NOTIFICATION" ? "This device has no notification yet: turn them on first (bell menu)." : e.message === "TOO_OFTEN" ? "Wait a few seconds before another test." : e.message, "error"); }
+};
 $("boardClose").onclick = () => $("boardBox").classList.add("hidden");
 $("boardBox").onclick = (ev) => { if (ev.target === $("boardBox")) $("boardBox").classList.add("hidden"); };
 $("boardOnlySuspect").onchange = renderBoardCheck;
@@ -2627,7 +2754,7 @@ let resultsList = null, resultsData = null;
 function quizStatusCell(q) {
   if (q.mark != null) return `${Number(q.mark)} / ${Number(q.total_points)}` +
     (q.corrected ? ` <span class="badge info" title="Computed from the answers: ${q.computed == null ? "none" : Number(q.computed)}">corrected</span>` : "");
-  if (q.status === "other group") return '<span class="muted">- (not his group)</span>';
+  if (q.status === "other group") return '<span class="muted">not concerned</span>';   // v33.4.4
   if (q.status === "excused") return '<span class="badge closed">excused</span>';
   return `<span class="badge no">${q.status === "absent" ? "absent" : "no answer"}</span> <span class="muted">(0)</span>`;
 }
@@ -3410,7 +3537,7 @@ $("tplList").addEventListener("click", async (ev) => {
     return;
   }
   if (b.dataset.trun) {
-    try { const id = await rpc("t_launch_template", { p_template: t.id, p_session: sessionId }); await loadQuizzes(); $("quizSelect").value = id;
+    try { const id = await launchTemplate(t.id); await loadQuizzes(); $("quizSelect").value = id;
           toast(`"${t.title}" added to the session "${live && live.session ? live.session.title : ""}". Run it from the Live tab.`, "ok"); }
     catch (e) { toast(e.code === "SESSION_NOT_FOUND" ? "Choose a session in the Live tab first (an assistant: a lab session)." : e.message, "error"); }
     return;
@@ -3449,6 +3576,11 @@ async function openTplEditor(t) {
   if (!pickBrowser) pickBrowser = makeQuestionBrowser($("pickBrowser"), { mode: "pick", isPicked: (id) => tplPicked.includes(id),
     onAdd: (ids) => { tplPicked = tplPicked.concat(ids.filter((id) => !tplPicked.includes(id))); renderTplPicked(); pickBrowser.renderList(); } });
   pickBrowser.render();
+  // v33.4.4: the rules kept with the quiz come back in the form
+  $("drawRules").innerHTML = "";
+  $("drawAgain").checked = !!(d.draw_rules && d.draw_rules.length); $("drawAgainBox").classList.toggle("hidden", !$("drawAgain").checked); $("drawPasses").value = d.draw_passes || 1; $("drawCheckOut").textContent = "";
+  (d.draw_rules || []).forEach((x) => { addDrawRule(); const row = $("drawRules").lastElementChild; row.querySelector(".rCount").value = x.n;
+    row.querySelector(".rModule").value = x.module || ""; row.querySelector(".rModule").onchange(); row.querySelector(".rChapter").value = x.chapter || ""; });
   if ($("drawRules").children.length === 0) addDrawRule();
   $("tplListCard").classList.add("hidden");
   $("tplEditorCard").classList.remove("hidden");
@@ -3484,7 +3616,8 @@ $("tplSaveBtn").onclick = async () => {
     graded: $("quizGraded").checked, mark_visibility: $("quizMarkVis").value, keep_open: $("quizPace").value === "self" && $("quizKeepOpen").checked,
     total_points: Number($("quizTotal").value) || 20, scoring: $("quizScoring").value, reveal_mode: $("quizReveal").value,
     time_override: $("quizTime").value ? Number($("quizTime").value) : null, per_student_count: perStudent,
-    show_on_projector: $("quizProjector").checked, show_answer_count: $("quizShowCount").checked };
+    show_on_projector: $("quizProjector").checked, show_answer_count: $("quizShowCount").checked,
+    draw_rules: $("drawAgain").checked ? drawRulesOfForm() : [], draw_passes: $("drawAgain").checked ? Number($("drawPasses").value) || 1 : null };
   try {
     await rpc("t_save_template", { p_class: classId, p_id: tplEditing, p_data: data });
     toast(tplEditing ? "Quiz saved (next runs use the new version)." : `Quiz "${data.title}" prepared. Run it from the Live tab.`, "ok");
@@ -3499,7 +3632,7 @@ $("launchBtn").onclick = async () => {
   if (!sessionId) { toast("Choose or create a session first.", "error"); return; }
   if (!id) { toast("Prepare a quiz in the 📝 Quizzes tab first.", "error"); return; }
   try {
-    const qid = await rpc("t_launch_template", { p_template: id, p_session: sessionId });
+    const qid = await launchTemplate(id);
     // v33.4.3: who sees this run (TD/TP) and trial run
     const opts = {};
     if (!$("launchAudience").classList.contains("hidden") && $("launchAudience").value === "session") opts.audience = "session";
