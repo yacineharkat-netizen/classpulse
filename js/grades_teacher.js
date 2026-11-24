@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.4.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grades_teacher.js"] = "33.4.6"; // file version, checked by common.js
 // v33: Results space of the teacher: « Each quiz » (as before), « Marks » (every column, typed in the app or imported),
 // « Final mark » (the formula of the class) and « What students see » (opened and closed at any time, for a time).
 const GT = { raw: null, b: null, cid: null, entry: null, edit: null, saveTimer: null, busy: false };
@@ -102,7 +102,7 @@ function renderMarks() {
   if (!b.cols.length && !b.rows.length) { $("gTable").innerHTML = `<p class="muted">No student and no evaluation yet.</p>`; return; }
   $("gTable").innerHTML = `<table class="g-table"><thead><tr><th class="g-name">Student</th>` +
     b.cols.map((c, j) => `<th class="${c.counts ? "" : "g-off"} ${GT.entry === j ? "g-entrycol" : ""}">
-      <button class="linklike g-head" data-gcol="${j}" title="${edit ? "Type the marks of this column" : ""}">${esc(c.title)}</button>
+      <button class="linklike g-head" data-gcol="${j}" title="${esc(colChain(c))}">${esc(c.title)}</button>
       <div class="g-sub">/${GRADE.fmt(c.scale)} · ${c.counts ? "→ " + esc(GRADE.PART_LABEL[c.part]) : "does not count"}</div></th>`).join("") +
     `<th class="g-final">Final</th></tr></thead><tbody>` +
     rows.map((r) => `<tr><td class="g-name"><button class="linklike" data-profile="${r.st.id}">${esc(r.st.last_name)} ${esc(r.st.first_name)}</button>
@@ -133,6 +133,13 @@ $("gTable").addEventListener("keydown", (e) => {
   const all = [...$("gTable").querySelectorAll(".g-in")], i = all.indexOf(inp);
   if (all[i + 1]) { all[i + 1].focus(); all[i + 1].select(); }
 });
+// v33.4.5: the chain session > quiz > passes behind a column of Marks (tooltip and detail line)
+function colChain(c) {
+  if (c.type !== "quiz") return edit_hint();
+  const q = c.quizzes || [], ses = [...new Set(q.map((x) => x.session_title).filter(Boolean))], tt = [...new Set(q.map((x) => String(x.title || "").replace(/ \(run \d+\)$/, "")))];
+  return `${c.cat ? GRADE.CAT_NAMES[c.cat] : "Type not set"} · quiz « ${tt.join(" / ")} » · session ${ses.join(", ") || "?"} · ${q.length} pass(es)${GT.raw.can_edit ? " — click to type the marks" : ""}`;
+}
+function edit_hint() { return GT.raw.can_edit ? "Type the marks of this column" : ""; }
 function renderEntryBar() {
   const bar = $("gEntryBar");
   if (GT.entry == null || !GT.b.cols[GT.entry]) { bar.classList.add("hidden"); return; }
@@ -140,10 +147,15 @@ function renderEntryBar() {
   bar.classList.remove("hidden");
   bar.innerHTML = `<strong>Typing the column: ${esc(c.title)} (/${GRADE.fmt(c.scale)})</strong>
     <span class="muted" style="font-size:13px">Tab or Enter = next student · « abs » = absent (0) · « exc » = excused · empty = not typed${c.type === "quiz" ? " (the computed mark stays)" : ""}</span>
+    ${c.type === "quiz" ? `<label class="muted" style="font-size:13px">Type <select id="gCat" style="width:auto"><option value="">(not set)</option>${Object.keys(GRADE.CAT_NAMES).map((k) => `<option value="${k}" ${c.cat === k ? "selected" : ""}>${esc(GRADE.CAT_NAMES[k])}</option>`).join("")}</select></label>` : ""}
+    <span class="muted" style="font-size:12px;flex-basis:100%">${esc(colChain(c))}</span>
     <span style="flex:1"></span>${c.type === "item" ? `<button class="small secondary" id="gEntryImport">Import this column (Excel)</button>
     <button class="small secondary" id="gItemEdit">Rename…</button><button class="small red" id="gItemDel">Delete the column</button>` : ""}
     <button class="small green" id="gEntrySave">Save the column</button><button class="small secondary" id="gEntryCancel">Cancel</button>`;
   $("gEntryCancel").onclick = () => { GT.entry = null; renderMarks(); };
+  if ($("gCat")) $("gCat").onchange = async () => {   // the type is corrected on the quizzes and their prepared quiz: Results, Marks and the final mark follow
+    try { await rpc("t_set_quiz_category", { p_class: classId, p_key: c.key, p_category: $("gCat").value }); toast("Type changed for « " + c.title + " ».", "ok"); await loadGrades(); }
+    catch (e) { toast(String(e.message || e), "err"); } };
   $("gEntrySave").onclick = () => saveEntry(c);
   if (c.type === "item") {
     $("gEntryImport").onclick = () => { GT.importOnly = c.item.id; $("gImportFile").value = ""; $("gImportFile").click(); };
@@ -386,13 +398,16 @@ function renderFormula() {
   $("gModels").querySelectorAll("button").forEach((b) => b.classList.add("model"));   // v33.1: the generic models stand out
   $("gParts").innerHTML = GRADE.PARTS.concat(b.sep ? ["bonus"] : []).map((p) => {
     const on = p === "bonus" || !!S.on[p];
-    const src = p === "bonus" ? `points × ${S.bonus_factor}, at most 20` : (b.cols.filter((c) => c.counts && c.part === p).map((c) => esc(c.title)).join(", ") || (p === "td" && !on ? "no TD in this class" : "no column yet"));
+    const src = p === "bonus" ? `points × ${S.bonus_factor}, at most 20` : p === "attendance" ? "present / sessions held, per type (excused left out); a TP unit counts once" : (b.cols.filter((c) => c.counts && c.part === p).map((c) => esc(c.title)).join(", ") || (p === "td" && !on ? "no TD in this class" : "no column yet"));
     return `<div class="g-part ${on ? "" : "off"}"><div class="row" style="gap:6px;align-items:center;flex-wrap:nowrap">
         <input type="checkbox" data-gon="${p}" ${on ? "checked" : ""} ${ro ? "disabled" : ""} style="width:18px;height:18px" aria-label="Use ${GRADE.PART_LABEL[p]}">
         <span style="flex:1"><strong>${GRADE.PART_LABEL[p]}</strong><div class="muted" style="font-size:12px">${src}</div></span>
         <button class="small secondary" data-gw="${p}" data-d="-5" ${ro ? "disabled" : ""}>−</button>
         <input class="g-w" data-gwin="${p}" value="${on ? S.weights[p] : ""}" ${on && !ro ? "" : "disabled"} inputmode="numeric" aria-label="Weight ${GRADE.PART_LABEL[p]}"> %
         <button class="small secondary" data-gw="${p}" data-d="5" ${ro ? "disabled" : ""}>+</button></div>
+      ${on && p === "attendance" ? `<div class="row" style="gap:6px;align-items:center;margin:4px 0 0 26px"><span class="muted" style="font-size:12px">Share of each type:</span>
+        ${[["course", "Course"], ["td", "TD"], ["tp", "TP"]].map(([k, l]) => `<label style="font-size:12px">${l} <input class="g-w" data-gattw="${k}" value="${(S.att_w || {})[k] ?? 1}" inputmode="numeric" ${ro ? "disabled" : ""}></label>`).join("")}
+        <span class="muted" style="font-size:12px">(0 = not counted)</span></div>` : ""}
       ${on && ["quiz", "tp", "td"].includes(p) ? `<div class="row" style="gap:4px;align-items:center;margin:4px 0 0 26px"><span class="muted" style="font-size:12px">Keep:</span>
         ${[0, 3, 4].map((n) => chip(Number(S.best[p]) === n, n ? n + " best" : "all", `data-gbest="${p}" data-n="${n}"`)).join("")}
         <input class="g-w" data-gbestin="${p}" value="${[0, 3, 4].includes(Number(S.best[p])) ? "" : S.best[p]}" placeholder="N" inputmode="numeric" ${ro ? "disabled" : ""}></div>` : ""}</div>`;
@@ -453,6 +468,7 @@ $("rt-formula").addEventListener("change", async (e) => {
   const num = (v) => Number(String(v).replace(",", "."));
   if (t.dataset.gon) setS((S) => { if (t.dataset.gon === "bonus") S.bonus_mode = "add"; else { S.on[t.dataset.gon] = t.checked; S.model = "custom"; } });
   else if (t.dataset.gwin) { const v = num(t.value); if (isNaN(v) || v < 0 || v > 100) { toast("A weight from 0 to 100.", "error"); renderFormula(); return; } setS((S) => { S.weights[t.dataset.gwin] = v; S.model = "custom"; }); }
+  else if (t.dataset.gattw) { const v = parseFloat(t.value); setS((S) => { S.att_w = Object.assign({ course: 1, td: 1, tp: 1 }, S.att_w); S.att_w[t.dataset.gattw] = v >= 0 ? v : 1; }); }
   else if (t.dataset.gbestin) { const v = parseInt(t.value, 10); setS((S) => { S.best[t.dataset.gbestin] = v > 0 ? v : 0; }); }
   else if (t.id === "gStepOther") { const v = num(t.value); if (v > 0 && v <= 5) setS((S) => { S.step = v; }); else if (t.value) toast("A rounding step between 0.01 and 5.", "error"); }
   else if (t.id === "gCapOther") { const v = num(t.value); if (v >= 0 && v <= 20) setS((S) => { S.bonus_cap = v; }); else if (t.value) toast("A cap from 0 to 20.", "error"); }

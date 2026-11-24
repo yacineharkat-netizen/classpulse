@@ -1,4 +1,4 @@
-(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.4.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["grading.js"] = "33.4.6"; // file version, checked by common.js
 // v33: final mark of a class. One evaluation column = a quiz / test / TP, or a column typed in the app (exam, project, oral…).
 // v33.2: in a unit (TP1) the quizzes are grouped by UNIT, whatever their title (the same quiz reused, or one quiz per
 // sub-group): the n-th graded quiz of each pass (attendance run) goes to column n (« TP1 · test 2 »). A quiz concerns only
@@ -7,16 +7,28 @@
 // Each column counts or not, and goes into one part: quiz | tp | td | exam | project. The final mark is
 // the weighted mean of the parts (out of 20), with the bonus added to its part (capped) or as a part of its own.
 const GRADE = (() => {
-  const PARTS = ["exam", "project", "tp", "td", "quiz"];
-  const PART_LABEL = { exam: "Exam", project: "Project", tp: "TP", td: "TD", quiz: "Quizzes and tests", bonus: "Bonus" };
+  const PARTS = ["exam", "project", "tp", "td", "quiz", "attendance"];   // v33.4.6: « attendance » has no column: it is computed from the sessions
+  const CAT_LABEL = { prep: "Prep", report: "Report", tp_final: "TP · Final test", cc1: "CC1", cc2: "CC2" };
+  const CAT_NAMES = { prep: "Preparation quiz", report: "Report quiz (compte rendu)", tp_final: "Final TP test", cc1: "CC1", cc2: "CC2" };
+  // v33.4.5: the name of a quiz column is computed from the type of the quiz (set once on the prepared quiz): « TP1 · Prep »,
+  // « TP1 · Report », « TP · Final test », « CC2 »; without a type: the unit (« TP1 · quiz 2 ») or the title of the quiz.
+  const colTitle = (q, unit, n, many, ses) => {
+    const cat = q.category, lab = CAT_LABEL[cat];
+    if (cat === "tp_final") return lab;
+    if (cat === "cc1" || cat === "cc2") return unit ? lab + " · " + unit : lab + (q.session_title || ses.title ? " · " + (q.session_title || ses.title) : "");
+    if (unit) return unit + " · " + (lab || "quiz " + n);
+    return lab ? lab + " · " + (q.session_title || ses.title || q.title) : q.title;
+  };
+  const PART_LABEL = { exam: "Exam", project: "Project", tp: "TP", td: "TD", quiz: "Quizzes and tests", attendance: "Attendance", bonus: "Bonus" };
   const PART_OF_BONUS = { quiz: "course", tp: "tp", td: "td" };   // bonus category added to each part
   const MODELS = {
-    td: { label: "With TD", weights: { exam: 50, project: 15, tp: 15, td: 10, quiz: 10 }, on: { exam: true, project: true, tp: true, td: true, quiz: true } },
-    notd: { label: "Without TD", weights: { exam: 50, project: 20, tp: 20, td: 0, quiz: 10 }, on: { exam: true, project: true, tp: true, td: false, quiz: true } },
-    noexam: { label: "Without exam", weights: { exam: 0, project: 40, tp: 40, td: 0, quiz: 20 }, on: { exam: false, project: true, tp: true, td: false, quiz: true } },
+    td: { label: "With TD", weights: { exam: 50, project: 15, tp: 15, td: 10, quiz: 10, attendance: 5 }, on: { exam: true, project: true, tp: true, td: true, quiz: true, attendance: false } },
+    notd: { label: "Without TD", weights: { exam: 50, project: 20, tp: 20, td: 0, quiz: 10, attendance: 5 }, on: { exam: true, project: true, tp: true, td: false, quiz: true, attendance: false } },
+    noexam: { label: "Without exam", weights: { exam: 0, project: 40, tp: 40, td: 0, quiz: 20, attendance: 5 }, on: { exam: false, project: true, tp: true, td: false, quiz: true, attendance: false } },
   };
   const DEFAULTS = {
-    model: "notd", weights: { exam: 50, project: 20, tp: 20, td: 0, quiz: 10, bonus: 5 }, on: { exam: true, project: true, tp: true, td: false, quiz: true },
+    model: "notd", weights: { exam: 50, project: 20, tp: 20, td: 0, quiz: 10, attendance: 5, bonus: 5 }, on: { exam: true, project: true, tp: true, td: false, quiz: true, attendance: false },
+    att_w: { course: 1, td: 1, tp: 1 },   // v33.4.6: relative weight of the sessions of each type inside the attendance part
     best: { quiz: 0, tp: 0, td: 0 }, bonus_on: { course: true, td: true, tp: true }, bonus_mode: "add", bonus_cap: 2, bonus_factor: 4,
     step: 0.25, show_detail: true,
   };
@@ -61,13 +73,18 @@ const GRADE = (() => {
       const key = q.key || "q:" + (unit ? unit + "#" + n : "id|" + q.id);
       if (!colOf[key]) {
         const e = evals[key] || {};
-        colOf[key] = { key, type: "quiz", kind: q.kind || "quiz", unit, title: unit ? unit + (multi[unit] ? " · test " + n : "") : q.title, date: q.date,
+        colOf[key] = { key, type: "quiz", kind: q.kind || "quiz", unit, cat: q.category || "", title: colTitle(q, unit, n, false, ses), date: q.date,
           scale: Number(q.total_points || 20), quizzes: [],
           counts: e.counts == null ? true : !!e.counts, part: e.component || (q.kind === "tp" || ses.kind === "tp" ? "tp" : ses.kind === "td" ? "td" : "quiz") };
         cols.push(colOf[key]);
       }
       colOf[key].quizzes.push(q);
     });
+    cols.forEach((c) => {   // the type of a column: the first quiz of it that has one (the passes of the sub-groups put together)
+      const withCat = c.quizzes.find((x) => x.category);
+      if (withCat && !c.cat) { c.cat = withCat.category; c.title = colTitle(Object.assign({}, c.quizzes[0], { category: withCat.category }), c.unit, Math.max(1, Number(c.quizzes[0].pass_index) || 1), false, sessionOf[c.quizzes[0].session_id] || {}); }
+    });
+    { const seen = {}; cols.forEach((c) => { const t = c.title; seen[t] = (seen[t] || 0) + 1; if (seen[t] > 1) c.title = t + " (" + seen[t] + ")"; }); }   // v33.4.5: two columns never share a name
     // attendance by session: who came, in which pass (run)
     const came = {}, excusedIn = {};
     d.attendance.forEach((a) => {
@@ -136,6 +153,28 @@ const GRADE = (() => {
       if (ses.some((x) => inGroup(x, st))) return { v: 0, st: "abs", quiz: target };             // came to no pass of the unit
       return { v: null, st: "none", quiz: target };
     };
+    // v33.4.6: attendance by type. A session is held when its day has passed (or someone was checked in). The passes of a unit
+    // (TP1 SG1, TP1 SG2) are ONE session for a student; a student who came in any of them is present; excused is left out.
+    const today = new Date().toISOString().slice(0, 10), hasRows = {}; d.attendance.forEach((a) => { hasRows[a.session_id] = true; });
+    const typeOf = (x) => (x.kind === "td" ? "td" : x.kind === "tp" ? "tp" : "course");
+    const heldItems = {};
+    d.sessions.filter((x) => (x.date && x.date < today) || hasRows[x.id]).forEach((x) => {
+      const t = typeOf(x), u = String(x.unit || "").toUpperCase(), k = u ? t + ":U:" + u : t + ":S:" + x.id;
+      (heldItems[k] = heldItems[k] || { type: t, sessions: [] }).sessions.push(x);
+    });
+    const attendanceOf = (st) => {
+      const by = { course: { n: 0, p: 0 }, td: { n: 0, p: 0 }, tp: { n: 0, p: 0 } };
+      Object.values(heldItems).forEach((it) => {
+        if (!it.sessions.some((x) => inGroup(x, st))) return;                       // not his group
+        if (it.sessions.some((x) => came[x.id + "|" + st.id])) { by[it.type].n++; by[it.type].p++; return; }
+        if (it.sessions.some((x) => excusedIn[x.id + "|" + st.id])) return;          // excused: left out
+        by[it.type].n++;
+      });
+      const w = S.att_w || { course: 1, td: 1, tp: 1 }, used = Object.keys(by).filter((t) => by[t].n > 0 && Number(w[t]) > 0), ws = used.reduce((a, t) => a + Number(w[t]), 0);
+      const n = ws ? (used.reduce((a, t) => a + Number(w[t]) * by[t].p / by[t].n, 0) / ws) * 20 : null;
+      const notes = Object.keys(by).filter((t) => by[t].n > 0).map((t) => ({ course: "Course", td: "TD", tp: "TP" }[t] + " " + by[t].p + "/" + by[t].n)).join(" · ");
+      return { n, notes: notes || "no session held yet" };
+    };
     const bonus = {}; (d.bonuses || []).forEach((b) => { bonus[b.student_id + "|" + b.category] = Number(b.points); });
     const bonusOf = (st) => ({ course: bonus[st.id + "|course"] || 0, td: bonus[st.id + "|td"] || 0, tp: bonus[st.id + "|tp"] || 0 });
 
@@ -145,6 +184,7 @@ const GRADE = (() => {
     const compute = (st) => {
       const cells = cols.map((c) => cell(c, st)), bo = bonusOf(st), parts = {};
       PARTS.forEach((p) => {
+        if (p === "attendance") { parts.attendance = attendanceOf(st); return; }   // v33.4.6
         const mine = cols.map((c, i) => ({ c, x: cells[i] })).filter(({ c }) => c.counts && c.part === p);
         const vals = mine.filter(({ x }) => x.st === "mark" || x.st === "abs").map(({ c, x }) => ({ c, n: (x.v / c.scale) * 20 })).sort((a, b) => b.n - a.n);
         const N = Number(S.best[p] || 0), kept = N ? vals.slice(0, N) : vals, dropped = N ? vals.slice(N) : [];
@@ -178,5 +218,6 @@ const GRADE = (() => {
       + (sep ? "" : " · bonus added (at most +" + S.bonus_cap + ")") + " · rounded to " + S.step;
     return { S, cols, rows, stats, active, wSum, formula, cell, sep };
   }
-  return { PARTS, PART_LABEL, MODELS, DEFAULTS, settings, build, fmt, r2 };
+  const nameOf = (q) => colTitle(q, String(q.unit || "").toUpperCase(), Math.max(1, Number(q.pass_index) || 1), false, { title: q.session });
+  return { nameOf, attendanceNote: null, PARTS, PART_LABEL, CAT_LABEL, CAT_NAMES, MODELS, DEFAULTS, settings, build, fmt, r2 };
 })();

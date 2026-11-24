@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-version="33.4.4">
+<html lang="en" data-version="33.4.6">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClassPulse - teacher</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B2545">
-<link rel="stylesheet" href="css/style.css?v=33.4.4">
+<link rel="stylesheet" href="css/style.css?v=33.4.6">
 </head>
 <body class="v33b">
 
@@ -356,7 +356,7 @@
         <p class="muted">A session created by mistake can be corrected (title, date, time, type) or deleted with its attendance and quizzes.
           <strong>Open</strong> takes you to the live session. <strong>Group</strong>: the TD group or TP sub-group of the session (empty = whole class);
           only its students are expected. <strong>Unit</strong>: the same name (e.g. TP1) for the sessions of one lab run once per sub-group.</p>
-        <div id="sessionsAlerts"></div>
+        <div id="sessionsAlerts"></div><div id="sessionsMerge"></div>
         <div class="card-head wrap ses-filters">
           <input id="sesSearch" class="search-sm" placeholder="Title, unit, code" aria-label="Search a session">
           <label class="small-t">Type <select id="sesKind"><option value="">All</option><option value="course">Course</option><option value="td">TD</option><option value="tp">TP</option></select></label>
@@ -518,7 +518,7 @@
       </div>
       <div class="card hidden" id="resultsDetailCard">
         <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <h2 id="resultsTitle" style="margin:0"></h2>
+          <h2 id="resultsTitle" style="margin:0"></h2><div id="resultsChain"></div>
           <div><button id="resultsExport" class="small green">Download this quiz (Excel)</button> <button id="resultsBack" class="small secondary">◀ All the quizzes</button></div>
         </div>
         <div id="resultsDetail"></div>
@@ -662,6 +662,15 @@
                   <option value="tp">Lab (TP) test</option>
                   <option value="survey">Survey (opinions, not graded)</option>
                 </select>
+                <label for="quizCategory">Marks: what is this quiz? <span class="muted">(the name of its column in Marks; change it later and everything follows)</span></label>
+                <select id="quizCategory">
+                  <option value="">(not set)</option>
+                  <option value="prep">Preparation quiz (before the lab)</option>
+                  <option value="report">Report quiz (compte rendu of the lab)</option>
+                  <option value="tp_final">Final TP test</option>
+                  <option value="cc1">CC1</option>
+                  <option value="cc2">CC2</option>
+                </select>
                 <label for="quizPace">Pace</label>
                 <select id="quizPace">
                   <option value="live">Live: one question at a time, with a timer</option>
@@ -794,6 +803,7 @@
         <p class="muted">Your documents are stored in the ClassPulse database, <strong>not on the public site</strong>: nobody can read them without being
           registered in a class where you made them visible. One document = a page (HTML file), and optionally its PDF and an attached file (code zip…).
           The same document can be used in several classes.</p>
+        <div id="libFilters" class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0"></div>
         <div id="documentsTable"></div>
         <h3 style="margin-top:18px">Add or replace a document</h3>
         <div class="doc-form">
@@ -866,6 +876,7 @@
           <h2 style="margin:0;margin-right:auto">Demos</h2>
           <select id="demoModule" style="width:auto"></select>
           <input id="demoSearch" placeholder="🔍 Search a demo" style="max-width:260px">
+          <label class="tick" style="margin:0"><input type="checkbox" id="demoShowAll"> Show all</label><span class="muted" id="demoShowAllInfo"></span>
           <button id="demoPublishToggle" class="orange">＋ Publish a demo</button>
         </div>
         <p class="muted">Demos of the site, yours, and those your colleagues share. To send one to the phones, choose a session in the Live session tab first.</p>
@@ -1175,6 +1186,7 @@
           <label class="span2">Remark <textarea id="newSessionRemark" rows="2" maxlength="600" placeholder="e.g. Bring your laptop charged · TP2 moved to room 12"></textarea></label>
           <label class="tick span2"><input type="checkbox" id="newSessionRemarkVis"> The students see the remark (session card, their Progress, a notification)</label>
         </div>
+        <div id="newPassHint"></div>
         <div class="row" style="margin-top:10px;gap:8px"><button id="createSessionBtn" class="btn gr">Create</button><button id="saveSessionBtn" class="btn gr hidden">Save</button>
           <span id="dlgNewNote" class="muted small-t"></span></div>
       </div></div>
@@ -1304,22 +1316,22 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/jszip.min.js"></script>
 <script src="config.js"></script>
-<script src="js/common.js?v=33.4.4"></script>
-<script src="js/excel.js?v=33.4.4"></script>
-<script src="js/teacher.js?v=33.4.4"></script>
-<script src="js/grading.js?v=33.4.4"></script>
-<script src="js/grades_teacher.js?v=33.4.4"></script>
-<script src="js/shell.js?v=33.4.4"></script>
-<script src="js/nav.js?v=33.4.4"></script>
-<script src="js/supervision.js?v=33.4.4"></script>
-<script src="js/ttview.js?v=33.4.4"></script>
-<script src="js/timetable.js?v=33.4.4"></script>
-<script src="js/tt_teacher.js?v=33.4.4"></script>
-<script src="js/floatqr.js?v=33.4.4"></script>
-<script src="js/v333.js?v=33.4.4"></script>
-<script src="js/v334.js?v=33.4.4"></script>
-<script src="js/v3341.js?v=33.4.4"></script>
-<script src="js/v3342.js?v=33.4.4"></script>
+<script src="js/common.js?v=33.4.6"></script>
+<script src="js/excel.js?v=33.4.6"></script>
+<script src="js/teacher.js?v=33.4.6"></script>
+<script src="js/grading.js?v=33.4.6"></script>
+<script src="js/grades_teacher.js?v=33.4.6"></script>
+<script src="js/shell.js?v=33.4.6"></script>
+<script src="js/nav.js?v=33.4.6"></script>
+<script src="js/supervision.js?v=33.4.6"></script>
+<script src="js/ttview.js?v=33.4.6"></script>
+<script src="js/timetable.js?v=33.4.6"></script>
+<script src="js/tt_teacher.js?v=33.4.6"></script>
+<script src="js/floatqr.js?v=33.4.6"></script>
+<script src="js/v333.js?v=33.4.6"></script>
+<script src="js/v334.js?v=33.4.6"></script>
+<script src="js/v3341.js?v=33.4.6"></script>
+<script src="js/v3342.js?v=33.4.6"></script>
 <script>
 // Version check (kept inside the page on purpose: it must work even if a .js file is old).
 (function () {

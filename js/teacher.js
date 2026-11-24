@@ -1,5 +1,5 @@
 // ClassPulse - teacher console.
-(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.4"; // file version, checked by common.js
+(window.CP_FILES = window.CP_FILES || {})["teacher.js"] = "33.4.6"; // file version, checked by common.js
 
 let classId = null;
 let sessionId = null;
@@ -226,6 +226,7 @@ async function selectClass(id) {
   if (changed && previous) { sessionId = null; localStorage.removeItem("cp_session"); }
   await loadSessions();
   loadClassContent();
+  if (changed) loadDemos();   // v33.4.6: the demos of this class
   // refresh the tab currently shown, so that it always matches the selected class
   if (changed && activeTab === "students") await loadStudents();
   if (changed && activeTab === "space") { $("statsDetail").dataset.doc = ""; $("statsDetail").innerHTML = ""; await loadDocs(); await loadDocStats(); }
@@ -357,6 +358,22 @@ async function closeForgottenAttendance() {
 // "09:40-11:10", or only the start time when no end time is set.
 function timeRange(s) { return (s.time || "") + (s.end_time ? "-" + s.end_time : ""); }
 
+// v33.4.5: the sub-groups of a TP created as separate sessions (« TP1 SG1 », « TP1 SG2 ») can be put together: each one becomes a pass.
+async function loadMergeSuggestions() {
+  const box = $("sessionsMerge"); if (!box) return;
+  let list = [];
+  try { list = await rpc("t_merge_candidates", { p_class: classId }); } catch (e) { box.innerHTML = ""; return; }
+  box.innerHTML = !list.length ? "" : `<div class="card" style="background:var(--bg2,#f3f6fb);margin:8px 0"><strong>Sessions that can be put together</strong>
+    <p class="muted" style="margin:4px 0">Same unit, same day: the sub-groups of one TP/TD are the passes of ONE session. Nothing is lost (attendance, quizzes, documents move over; a student present in both keeps his best status).</p>
+    ${list.map((c, i) => `<div class="row" style="gap:8px;align-items:center;margin:4px 0"><span>${esc(c.unit)} · ${esc(c.date)} · « ${esc(c.keep_title)} » + « ${esc(c.drop_title)} »</span><span class="grow"></span>
+      <button class="btn sec sm" data-merge-ses="${i}">Merge into one session</button></div>`).join("")}</div>`;
+  box.querySelectorAll("[data-merge-ses]").forEach((b) => b.onclick = async () => {
+    const c = list[Number(b.dataset.mergeSes)];
+    if (!confirm(`Put « ${c.drop_title} » into « ${c.keep_title} »?\nThe two groups become two passes of the same session. « ${c.drop_title} » disappears as a session; its attendance and quizzes are kept.`)) return;
+    try { const r = await rpc("t_merge_sessions", { p_class: classId, p_keep: c.keep, p_drop: c.drop }); toast("Merged: passes " + (r.groups || []).join(", "), "ok"); await loadSessions(); }
+    catch (e) { toast(e.message === "SESSION_BUSY" ? "Close the attendance and end the quiz of both sessions first." : e.message, "error"); }
+  });
+}
 // Two reminders: sessions never ended (red) and attendance still open (green).
 function renderSessionAlerts() {
   const notEnded = allSessions.filter((s) => !s.ended_at).length;
@@ -365,6 +382,7 @@ function renderSessionAlerts() {
     `<p><span class="badge ${notEnded ? "no" : "closed"}" id="notEndedCount">${notEnded} session(s) not ended</span>
         <span class="badge ${open.length ? "open" : "closed"}" id="attOpenCount">${open.length} attendance open</span>
         ${open.length ? `<span class="muted">Open: ${open.map((s) => esc(s.title)).join(", ")}. With a fixed code, anybody who knows it can check in: close it when the session is over.</span>` : ""}</p>`;
+  loadMergeSuggestions();   // v33.4.5
   $("sessionsBadge").textContent = open.length;
   $("sessionsBadge").classList.toggle("hidden", open.length === 0);
   $("sessionsBadge").title = open.length + " attendance open";
@@ -431,6 +449,23 @@ $("sesNewBtn").onclick = () => openSessionDialog(null);
 
 $("sessionSelect").onchange = () => selectSession($("sessionSelect").value);
 
+// v33.4.5: a TP/TD of the same unit already exists today: offer to add a pass to it (a new sub-group) instead of a second session
+async function refreshPassHint() {
+  const note = $("newPassHint"); if (!note) return;
+  note.innerHTML = "";
+  const kind = $("newSessionKind").value, unit = $("newSessionUnit").value.trim();
+  if (!classId || !["td", "tp"].includes(kind) || !unit || !$("saveSessionBtn").classList.contains("hidden")) return;
+  let list = [];
+  try { list = await rpc("t_same_day_sessions", { p_class: classId, p_kind: kind, p_unit: unit, p_date: $("newSessionDate").value || null }); } catch (e) { return; }
+  if (!list.length) return;
+  note.innerHTML = `<div class="muted" style="font-size:13px">Today, « ${esc(list[0].title)} » already exists for ${esc(unit)} (${esc((list[0].groups || []).join(", ") || "whole class")}).
+    The next sub-group is a <strong>pass</strong> of that session: <button class="btn sec sm" id="addPassBtn" type="button">Add a pass to « ${esc(list[0].title)} »</button></div>`;
+  $("addPassBtn").onclick = async () => {
+    sessionId = list[0].id; $("dlgNew").classList.add("hidden");
+    await loadSessions(); toast("Open the attendance of « " + list[0].title + " » and choose the sub-group of the new pass.", "ok");
+  };
+}
+["newSessionKind", "newSessionUnit", "newSessionDate"].forEach((id) => $(id).addEventListener("change", refreshPassHint));
 $("createSessionBtn").onclick = async () => {
   try {
     const s = await rpc("t_create_session", { p_class: classId, p_title: $("newSessionTitle").value || "Session", p_date: $("newSessionDate").value,
@@ -1901,6 +1936,8 @@ const demoPage = (prefix, page) => new URL(`d/${prefix}/${page}`, siteBase()).hr
 // The teacher's browser installs the service worker at once (the phones do it on their first visit).
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw-demos.js", { scope: "./d/" }).catch(() => {});
 
+// v33.4.6: demos attached to the classes. This class: its own demos + those attached to no class; « Show all » adds the others.
+const DEMO_CLS = { here: new Set(), elsewhere: new Set() };
 async function loadDemos() {
   let published = [];
   try { published = await rpc("t_list_demos"); } catch (e) { published = []; }
@@ -1908,6 +1945,9 @@ async function loadDemos() {
       url: new URL(l.url, siteBase()).href, screen: l.screen ? new URL(l.screen, siteBase()).href : null }))
     .concat(published.map((d) => ({ kind: d.mine ? "mine" : "colleague", id: d.id, title: d.title, module: d.module, description: d.description,
       url: demoPage(d.prefix, d.entry), screen: d.screen ? demoPage(d.prefix, d.screen) : null, shared: d.shared, files: d.files, in_db: d.in_db })));
+  allDemos.forEach((d) => { d.key = d.id || "site:" + d.title; });
+  try { const dc = classId ? await rpc("t_demo_classes", { p_class: classId }) : { here: [], elsewhere: [] }; DEMO_CLS.here = new Set(dc.here); DEMO_CLS.elsewhere = new Set(dc.elsewhere); }
+  catch (e) { DEMO_CLS.here = new Set(); DEMO_CLS.elsewhere = new Set(); }
   const modules = [...new Set(allDemos.map((d) => d.module || "Other"))].sort();
   const keep = $("demoModule").value || localStorage.getItem("cp_demo_module") || "";
   $("demoModule").innerHTML = `<option value="">All modules</option>` + modules.map((m) => `<option ${m === keep ? "selected" : ""}>${esc(m)}</option>`).join("");
@@ -1919,7 +1959,11 @@ function guessModule(label) { return /^IoT/i.test(label) ? "IoT" : /^Edge/i.test
 
 function renderDemos() {
   const m = $("demoModule").value, f = norm($("demoSearch").value);
-  const list = allDemos.filter((d) => (!m || (d.module || "Other") === m) && (!f || norm(`${d.title} ${d.description} ${d.module}`).includes(f)));
+  const showAll = $("demoShowAll") && $("demoShowAll").checked;
+  const visibleHere = (d) => DEMO_CLS.here.has(d.key) || !DEMO_CLS.elsewhere.has(d.key);
+  const hidden = allDemos.filter((d) => !visibleHere(d)).length;
+  if ($("demoShowAllInfo")) $("demoShowAllInfo").textContent = hidden && !showAll ? hidden + " demo(s) of your other classes are hidden." : "";
+  const list = allDemos.filter((d) => (showAll || visibleHere(d)) && (!m || (d.module || "Other") === m) && (!f || norm(`${d.title} ${d.description} ${d.module}`).includes(f)));
   const groups = [...new Set(list.map((d) => d.module || "Other"))].sort();
   const badge = { site: '<span class="badge site">site</span>', mine: '<span class="badge mine">mine</span>', colleague: '<span class="badge colleague">colleague</span>' };
   $("demosList").innerHTML = list.length === 0 ? `<p class="muted">No demo${f || m ? " for this search" : ""}.</p>` : groups.map((g) => `<div class="demo-group"><h3>${esc(g)}</h3><div class="demo-grid">` +
@@ -1930,13 +1974,19 @@ function renderDemos() {
         ${d.screen ? `<a href="${esc(d.screen)}" target="classpulse_demo_screen"><button class="orange">Big screen</button></a>` : ""}
         <a href="${esc(d.url)}" target="_blank" rel="noopener"><button class="secondary">Phone page</button></a>
         <button class="green" data-push-url="${esc(d.url)}" data-push-label="${esc(d.title)}">Push to phones</button>
+        <button class="small ${DEMO_CLS.here.has(d.key) ? "green" : "secondary"}" data-demo-cls="${esc(d.key)}" data-on="${DEMO_CLS.here.has(d.key) ? 1 : 0}" title="Attach this demo to the current class (it is then shown first for this class)">${DEMO_CLS.here.has(d.key) ? "✓ In this class" : "Attach to this class"}</button>
         ${d.kind === "mine" ? `<button class="red" data-demo-del="${d.id}">Delete</button>` : ""}
       </div></div>`).join("") + `</div></div>`).join("");
   $("demosList").querySelectorAll("[data-push-url]").forEach((b) => b.onclick = () => pushLink({ label: b.dataset.pushLabel, url: b.dataset.pushUrl }));
+  $("demosList").querySelectorAll("[data-demo-cls]").forEach((b) => b.onclick = async () => {
+    try { await rpc("t_set_demo_class", { p_class: classId, p_key: b.dataset.demoCls, p_on: b.dataset.on !== "1" }); await loadDemos(); }
+    catch (e) { toast(e.message, "error"); }
+  });
   $("demosList").querySelectorAll("[data-demo-del]").forEach((b) => b.onclick = () => deleteDemo(b.dataset.demoDel));
 }
 $("demoModule").onchange = () => { localStorage.setItem("cp_demo_module", $("demoModule").value); renderDemos(); };
 $("demoSearch").oninput = renderDemos;
+if ($("demoShowAll")) $("demoShowAll").onchange = renderDemos;
 $("demoPublishToggle").onclick = () => $("demoPublish").classList.toggle("hidden");
 
 // ----- publishing a folder
@@ -2106,8 +2156,27 @@ async function loadDocs() {
   });
 
   // my private documents
-  $("documentsTable").innerHTML = myDocuments.length === 0 ? `<p class="muted">No document yet. Add the first one below.</p>` :
-    `<table><tr><th>Module</th><th>Document</th><th>Type</th><th>Content</th><th>Used in</th><th></th></tr>` + myDocuments.map((m) =>
+  // v33.4.6: filters of My library (search, module, type, used in this class or not): the library grows with the years
+  const lf = (window.LIBF = window.LIBF || { q: "", module: "", kind: "", used: "" });
+  const mods = [...new Set(myDocuments.map((m) => m.module || "").filter(Boolean))].sort();
+  $("libFilters").innerHTML = myDocuments.length < 4 ? "" : `<input id="libQ" placeholder="🔍 Search a document" value="${esc(lf.q)}" style="max-width:230px">
+    <select id="libModule" style="width:auto"><option value="">All modules</option>${mods.map((m) => `<option ${lf.module === m ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
+    <select id="libKind" style="width:auto"><option value="">All types</option>${Object.entries(DOC_KIND).map(([k, l]) => `<option value="${k}" ${lf.kind === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+    <select id="libUsed" style="width:auto"><option value="">Used or not</option><option value="in" ${lf.used === "in" ? "selected" : ""}>In this class</option><option value="out" ${lf.used === "out" ? "selected" : ""}>Not in this class</option><option value="none" ${lf.used === "none" ? "selected" : ""}>In no class</option></select>
+    <button class="small secondary" id="libClear">Clear</button><span class="muted" id="libCount"></span>`;
+  const libShown = myDocuments.filter((m) => (!lf.q || norm(`${m.title} ${m.module} ${m.file_name || ""}`).includes(norm(lf.q))) && (!lf.module || m.module === lf.module) && (!lf.kind || m.kind === lf.kind)
+    && (!lf.used || (lf.used === "in" ? inClass.has(m.id) : lf.used === "out" ? !inClass.has(m.id) : !m.classes)));
+  if ($("libCount")) $("libCount").textContent = libShown.length + " / " + myDocuments.length;
+  if ($("libQ")) {
+    const again = () => { loadDocs(); };
+    $("libQ").oninput = () => { lf.q = $("libQ").value; clearTimeout(lf.t); lf.t = setTimeout(() => { again(); setTimeout(() => { const e = $("libQ"); if (e) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); } }, 50); }, 250); };
+    $("libModule").onchange = () => { lf.module = $("libModule").value; again(); };
+    $("libKind").onchange = () => { lf.kind = $("libKind").value; again(); };
+    $("libUsed").onchange = () => { lf.used = $("libUsed").value; again(); };
+    $("libClear").onclick = () => { Object.assign(lf, { q: "", module: "", kind: "", used: "" }); again(); };
+  }
+  $("documentsTable").innerHTML = myDocuments.length === 0 ? `<p class="muted">No document yet. Add the first one below.</p>` : libShown.length === 0 ? `<p class="muted">No document for these filters.</p>` :
+    `<table><tr><th>Module</th><th>Document</th><th>Type</th><th>Content</th><th>Used in</th><th></th></tr>` + libShown.map((m) =>
     `<tr><td>${esc(m.module)}</td><td><a href="doc.html?preview=${m.id}" target="_blank">${esc(m.title)}</a></td><td>${DOC_KIND[m.kind] || m.kind}</td>
       <td><span class="doc-parts">${m.has_html ? `<span class="badge ok">page ${m.html_kb} kB</span>` : ""}${m.pdf_kb != null ? `<span class="badge info">PDF ${m.pdf_kb} kB</span>` : ""}${m.file_name ? `<span class="badge info">📎 ${esc(m.file_name)}</span>` : ""}</span></td>
       <td>${m.classes} class(es)</td>
@@ -2789,6 +2858,12 @@ async function loadResults() {
 }
 // v33.2: a quiz of a TP: its unit and the sub-group of its pass are added to its name (« TP1 · SG2 · TP test »)
 function resName(q) { return q.unit ? [String(q.unit).toUpperCase(), q.run_group || "", q.title].filter(Boolean).join(" · ") : q.title; }
+// v33.4.5: session > type > quiz > pass, and the name of its column in Marks: the same words everywhere
+function resChain(q) {
+  if (q.kind === "survey" || q.graded === false) return "";
+  const cat = q.category ? GRADE.CAT_NAMES[q.category] : "type not set";
+  return `<div class="muted" style="font-size:12px">${esc(q.session || "")} › ${esc(cat)}${q.run_group ? " › " + esc(q.run_group) : ""} → Marks: <strong>${esc(GRADE.nameOf(q))}</strong></div>`;
+}
 function renderResultsList() {
   const r = resultsList;
   if (!r) return;
@@ -2806,7 +2881,7 @@ function renderResultsList() {
   $("resultsList").innerHTML = `<table><tr><th>Date</th><th>Quiz</th><th>Type</th><th>Session</th><th>Start</th><th>Duration</th><th>Quest.</th><th>Answers</th><th>Answered</th><th>Mean</th>
       ${r.is_teacher ? "<th>Assistants</th>" : ""}<th></th></tr>` + list.map((q) => `<tr>
       <td style="white-space:nowrap">${esc(q.date)}${q.time ? " " + esc(q.time) : ""}</td>
-      <td><strong>${esc(resName(q))}</strong>${q.graded ? "" : ' <span class="muted">(not graded)</span>'}${q.empty ? ' <span class="badge no">empty: nobody answered</span>' : ""}
+      <td><strong>${esc(resName(q))}</strong>${resChain(q)}${q.graded ? "" : ' <span class="muted">(not graded)</span>'}${q.empty ? ' <span class="badge no">empty: nobody answered</span>' : ""}
         ${q.corrected ? ` <span class="badge info">${q.corrected} corrected</span>` : ""}
         ${q.not_counted ? ' <span class="badge no" title="Out of the marks, the averages and the absences">Not counted</span>' : ""}
         ${looksTrial(q) ? ' <span class="badge orange" title="Under 2 minutes or under 3 students: probably a trial. Open it to set « Not counted ».">looks like a trial</span>' : ""}</td>
@@ -2865,6 +2940,7 @@ function renderResult() {
   const d = resultsData, q = d.quiz, edit = d.level === "edit";
   const rl = resultsList && resultsList.quizzes ? resultsList.quizzes.find((x) => x.id === q.id) : null;
   $("resultsTitle").textContent = rl ? resName(rl) : q.title;
+  $("resultsChain").innerHTML = rl ? resChain(rl) : "";   // v33.4.5
   $("resultsExport").classList.toggle("hidden", !(edit || d.level === "export"));
   const qById = {};
   d.questions.forEach((qu) => { qById[qu.id] = qu; });
@@ -3564,7 +3640,7 @@ async function openTplEditor(t) {
   const d = t || { title: "", folder: $("tplFolderFilter").value || "", kind: isTeacher() ? "quiz" : "tp", pace: "live", lock_screen: true, ask_variant: false, graded: true,
                    total_points: 20, scoring: "partial", reveal_mode: "each", time_override: null, shuffle: false, per_student_count: null, show_on_projector: false, show_answer_count: false, question_ids: [] };
   $("quizTitle").value = d.title; $("quizFolder").value = d.folder || "";
-  $("quizKind").value = d.kind; $("quizPace").value = d.pace; $("quizLock").checked = d.lock_screen; $("quizVariant").checked = d.ask_variant;
+  $("quizCategory").value = d.category || ""; $("quizKind").value = d.kind; $("quizPace").value = d.pace; $("quizLock").checked = d.lock_screen; $("quizVariant").checked = d.ask_variant;
   $("quizGraded").checked = d.graded; $("quizMarkVis").value = d.mark_visibility || "end"; $("quizKeepOpen").checked = !!d.keep_open;
   $("quizKeepOpenRow").classList.toggle("hidden", d.pace !== "self"); $("quizTotal").value = Number(d.total_points); $("quizScoring").value = d.scoring; $("quizReveal").value = d.reveal_mode;
   $("quizTime").value = d.time_override ? String(d.time_override) : ""; $("quizShuffle").checked = d.shuffle;
@@ -3612,7 +3688,7 @@ $("tplSaveBtn").onclick = async () => {
   const perStudent = $("quizPerStudent").checked ? Number($("quizPerStudentN").value) : null;
   if (perStudent && (perStudent < 1 || perStudent > tplPicked.length)) { toast(`Each student can get 1 to ${tplPicked.length} questions.`, "error"); return; }
   const data = { title: $("quizTitle").value.trim() || defaultQuizTitle(tplPicked), folder: $("quizFolder").value.trim(), question_ids: tplPicked,
-    shuffle: $("quizShuffle").checked, kind: $("quizKind").value, pace: $("quizPace").value, lock_screen: $("quizLock").checked, ask_variant: $("quizVariant").checked,
+    shuffle: $("quizShuffle").checked, category: $("quizCategory").value, kind: $("quizKind").value, pace: $("quizPace").value, lock_screen: $("quizLock").checked, ask_variant: $("quizVariant").checked,
     graded: $("quizGraded").checked, mark_visibility: $("quizMarkVis").value, keep_open: $("quizPace").value === "self" && $("quizKeepOpen").checked,
     total_points: Number($("quizTotal").value) || 20, scoring: $("quizScoring").value, reveal_mode: $("quizReveal").value,
     time_override: $("quizTime").value ? Number($("quizTime").value) : null, per_student_count: perStudent,
